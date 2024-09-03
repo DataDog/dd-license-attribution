@@ -8,68 +8,82 @@ import sys
 import os
 import re
 
-def get_owner_repo(repo_url):
+def get_github_owner_repo(repo_url):
     # Regular expression to match GitHub URLs and extract owner and repo
     match = re.match(r'https?://github\.com/([^/]+)/([^/]+)', repo_url)
     if match:
         return match.group(1), match.group(2)
     else:
-        raise ValueError("Invalid GitHub URL")
+        raise ValueError("Invalid GitHub URL: " + repo_url)
 
-def get_license_info(repo_url):
-    # Extract owner and repo using the regular expression
-    owner, repo = get_owner_repo(repo_url)
-    
+def request_clearly_define_package_info(package_resource_type, package_resource_provider, package_namespace, package_name):
     # Make a GET request to the Clearly Defined API to retrieve the repository information
     conn = http.client.HTTPSConnection("api.clearlydefined.io")
-    conn.request("GET", f"/definitions?type=git&provider=github&name={repo}&namespace={owner}")
+    conn.request("GET", f"/definitions?type={package_resource_type}&provider={package_resource_provider}&name={package_name}&namespace={package_namespace}")
     response = conn.getresponse()
     
     # Check if the request was successful
     if response.status == 200:
         # Extract the license information from the response
         repo_info = json.loads(response.read())
-        if len(repo_info.get("data")) > 1:
-            latest_release_info = sorted(
-                [x for x in repo_info.get("data", []) if x.get("described", {}).get("releaseDate")],
-                    key=lambda x: x.get("described", {}).get("releaseDate", "1970-01-01T00:00:00Z"),
-                    reverse=True
-            )[0]
-            # using the latest_release_info coordinates make a new request to get the release information
-            coordinates = latest_release_info.get("coordinates");
-            r_type = coordinates.get("type")
-            r_provider = coordinates.get("provider")
-            r_namespace = coordinates.get("namespace")
-            r_name = coordinates.get("name")
-            r_revision = coordinates.get("revision")
-            conn.request("GET", f"/definitions/{r_type}/{r_provider}/{r_namespace}/{r_name}/{r_revision}")
-            response = conn.getresponse()
-            if response.status == 200:
-                # Extract the release information from the response
-                repo_info = json.loads(response.read())
-                
-                # Extract the copyright information
-                copyright_info = repo_info.get("licensed").get("facets").get("core").get("attribution").get("parties")
-                if copyright_info is None:
-                    copyright_info = []
-                return {
-                    "Component": repo_info.get("described").get("sourceLocation").get("name"), 
-                    "Origin": repo_info.get("described").get("urls").get("registry"),
-                    "License": repo_info.get("licensed").get("declared"), 
-                    "Copyright": " ".join([f'{c}' for c in copyright_info])
-                }
-            else:
-                # print that there is no release information and exit on error
-                print("No release information found for revision")
-            exit(3)
-        else:
-            # print that there is no release information and exit on error
-            print(f"No release information found for repository {repo}")
-            exit(2)
+        return repo_info
+    else:
+        # Print that there is no repository information and exit on error
+        print("No repository information found")
+        exit(1)
+
+def request_clearly_define_release_info(package_resource_type, package_resource_provider, package_namespace, package_name, package_revision):
+    # Make a GET request to the Clearly Defined API to retrieve the release information
+    conn = http.client.HTTPSConnection("api.clearlydefined.io")
+    conn.request("GET", f"/definitions/{package_resource_type}/{package_resource_provider}/{package_namespace}/{package_name}/{package_revision}")
+    response = conn.getresponse()
+    
+    # Check if the request was successful
+    if response.status == 200:
+        # Extract the release information from the response
+        release_info = json.loads(response.read())
+        return release_info
+    else:
+        # Print that there is no release information and exit on error
+        print("No release information found")
+        exit(2)
+
+def get_license_info_for_github_project(owner, repo):
+    package_resource_type = "git"
+    package_resource_provider = "github"
+
+    # Make a GET request to the Clearly Defined API to retrieve the repository information
+    repo_info = request_clearly_define_package_info(package_resource_type, package_resource_provider, owner, repo)
+    
+    if len(repo_info.get("data")) > 1:
+        latest_release_info = sorted(
+            [x for x in repo_info.get("data", []) if x.get("described", {}).get("releaseDate")],
+                key=lambda x: x.get("described", {}).get("releaseDate", "1970-01-01T00:00:00Z"),
+                reverse=True
+        )[0]
+        # using the latest_release_info coordinates make a new request to get the release information
+        coordinates = latest_release_info.get("coordinates");
+        r_type = coordinates.get("type")
+        r_provider = coordinates.get("provider")
+        r_namespace = coordinates.get("namespace")
+        r_name = coordinates.get("name")
+        r_revision = coordinates.get("revision")
+        release_info = request_clearly_define_release_info(r_type, r_provider, r_namespace, r_name, r_revision)
+            
+        # Extract the copyright information
+        copyright_info = release_info.get("licensed").get("facets").get("core").get("attribution").get("parties")
+        if copyright_info is None:
+            copyright_info = []
+        return {
+            "Component": release_info.get("described").get("sourceLocation").get("name"), 
+            "Origin": release_info.get("described").get("urls").get("registry"),
+            "License": release_info.get("licensed").get("declared"), 
+            "Copyright": " ".join([f'{c}' for c in copyright_info])
+        }
     else:
         # print that there is no release information and exit on error
-        print("No repo information found for repository")
-        exit(1)
+        print(f"No release information found for repository {repo}")
+        exit(2)
 
 
 def print_license_info(repo_url):
@@ -78,9 +92,11 @@ def print_license_info(repo_url):
     # print header
     writer.writerow(["Component", "Origin", "License", "Copyright"])
     # print the license information of the top package
-    get_license_info(repo_url)
+    owner, repo = get_github_owner_repo(repo_url)
+    get_license_info_for_github_project(owner, repo)
     # Get the license information of the top package
-    license_info = get_license_info(repo_url)
+    owner, repo = get_github_owner_repo(repo_url)
+    license_info = get_license_info_for_github_project(owner, repo)
     writer.writerow([license_info["Component"], license_info["Origin"], license_info["License"], license_info["Copyright"]])
 
     # Get the dependencies information
@@ -92,7 +108,8 @@ def print_license_info(repo_url):
         # Replace git+https: with https:
         origin = origin.replace("git+https:", "https:")
         # Get the license information of the dependency
-        license_info = get_license_info(origin)
+        origin_owner, origin_repo = get_github_owner_repo(origin)
+        license_info = get_license_info_for_github_project(origin_owner, origin_repo)
         writer.writerow([license_info["Component"], license_info["Origin"], license_info["License"], license_info["Copyright"]])        
 
 def get_dependencies(repo_url):
