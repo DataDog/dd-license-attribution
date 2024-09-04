@@ -121,9 +121,13 @@ def get_license_info_for_gopm_project(package_url):
             "Copyright": " ".join([f'{c}' for c in copyright_info])
         }
     else:
+        # if the release information is not found, and the package is from github, try using the github owner and repo name
+        if "github.com" in package_url:
+            owner, repo = get_github_owner_repo(package_url.replace("go:", "https://"))
+            return get_license_info_for_github_project(owner, repo)
         # print that there is no release information and exit on error
         print(f"\033[91mNo release information found for repository {package_url}\033[0m", file=sys.stderr)
-        exit(2)
+        raise Exception(f"No release information found for repository {package_name}")
 
 def print_license_info(repo_url):
     # Print the license information to standard output
@@ -148,7 +152,11 @@ def print_license_info(repo_url):
             #remove go: from the origin
             origin = origin.replace("go:", "")
             # Get the license information of the dependency
-            license_info = get_license_info_for_gopm_project(dependency["Component"])
+            try:
+                license_info = get_license_info_for_gopm_project(dependency["Component"])
+            except Exception as e:
+                print(str(e), file=sys.stderr)
+                continue
         writer.writerow([license_info["Component"], license_info["Origin"], license_info["License"], license_info["Copyright"]])        
 
 def get_dependencies(repo_url):
