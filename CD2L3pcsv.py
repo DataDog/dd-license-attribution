@@ -29,7 +29,7 @@ def request_clearly_define_package_info(package_resource_type, package_resource_
         return repo_info
     else:
         # Print that there is no repository information and exit on error
-        print("No repository information found")
+        print("\033[91mNo repository information found\033[0m", file=sys.stderr)
         exit(1)
 
 def request_clearly_define_release_info(package_resource_type, package_resource_provider, package_namespace, package_name, package_revision):
@@ -45,7 +45,7 @@ def request_clearly_define_release_info(package_resource_type, package_resource_
         return release_info
     else:
         # Print that there is no release information and exit on error
-        print("No release information found")
+        print("\033[91mNo release information found\033[0m", file=sys.stderr)
         exit(2)
 
 def get_license_info_for_github_project(owner, repo):
@@ -82,34 +82,73 @@ def get_license_info_for_github_project(owner, repo):
         }
     else:
         # print that there is no release information and exit on error
-        print(f"No release information found for repository {repo}")
+        print("\033[91mNo release information found for repository {repo}\033[0m", file=sys.stderr)
         exit(2)
 
+def get_license_info_for_gopm_project(package_url):
+    package_resource_type = "go"
+    package_resource_provider = "golang"
+    split_url = package_url.split("/")
+    package_namespace = split_url[0] + "%2" + split_url[1]
+    package_name = split_url[2]
+    
+    # Make a GET request to the Clearly Defined API to retrieve the repository information
+    repo_info = request_clearly_define_package_info(package_resource_type, package_resource_provider, package_namespace, package_name)
+    
+    if len(repo_info.get("data")) > 1:
+        latest_release_info = sorted(
+            [x for x in repo_info.get("data", []) if x.get("described", {}).get("releaseDate")],
+                key=lambda x: x.get("described", {}).get("releaseDate", "1970-01-01T00:00:00Z"),
+                reverse=True
+        )[0]
+        # using the latest_release_info coordinates make a new request to get the release information
+        coordinates = latest_release_info.get("coordinates");
+        r_type = coordinates.get("type")
+        r_provider = coordinates.get("provider")
+        r_namespace = coordinates.get("namespace")
+        r_name = coordinates.get("name")
+        r_revision = coordinates.get("revision")
+        release_info = request_clearly_define_release_info(r_type, r_provider, r_namespace, r_name, r_revision)
+            
+        # Extract the copyright information
+        copyright_info = release_info.get("licensed").get("facets").get("core").get("attribution").get("parties")
+        if copyright_info is None:
+            copyright_info = []
+        return {
+            "Component": release_info.get("described").get("sourceLocation").get("name"), 
+            "Origin": release_info.get("described").get("urls").get("registry"),
+            "License": release_info.get("licensed").get("declared"), 
+            "Copyright": " ".join([f'{c}' for c in copyright_info])
+        }
+    else:
+        # print that there is no release information and exit on error
+        print(f"\033[91mNo release information found for repository {package_url}\033[0m", file=sys.stderr)
+        exit(2)
 
 def print_license_info(repo_url):
     # Print the license information to standard output
     writer = csv.writer(sys.stdout)
     # print header
     writer.writerow(["Component", "Origin", "License", "Copyright"])
-    # print the license information of the top package
-    owner, repo = get_github_owner_repo(repo_url)
-    get_license_info_for_github_project(owner, repo)
-    # Get the license information of the top package
-    owner, repo = get_github_owner_repo(repo_url)
-    license_info = get_license_info_for_github_project(owner, repo)
-    writer.writerow([license_info["Component"], license_info["Origin"], license_info["License"], license_info["Copyright"]])
-
-    # Get the dependencies information
+ 
+    # Get the dependencies information, includes top package in result
     dependencies = get_dependencies(repo_url)
     for dependency in dependencies:
+        license_info = {}
         origin = dependency["Origin"]
-        if origin == "NOASSERTION" and dependency["Component"].startswith("go:github.com/"):
-            origin = "https://" + dependency["Component"].replace("go:", "")
-        # Replace git+https: with https:
-        origin = origin.replace("git+https:", "https:")
-        # Get the license information of the dependency
-        origin_owner, origin_repo = get_github_owner_repo(origin)
-        license_info = get_license_info_for_github_project(origin_owner, origin_repo)
+        if origin == "NOASSERTION" and dependency["Component"].startswith("go:"):
+            origin = dependency["Component"]
+        if origin.startswith("git+https:"):
+            # Replace git+https: with https:
+            origin = origin.replace("git+https:", "https:")
+            # Get the license information of the dependency
+            origin_owner, origin_repo = get_github_owner_repo(origin)
+            license_info = get_license_info_for_github_project(origin_owner, origin_repo)
+        elif origin.startswith("go:"):
+            #remove go: from the origin
+            origin = origin.replace("go:", "")
+            # Get the license information of the dependency
+            license_info = get_license_info_for_gopm_project(dependency["Component"])
         writer.writerow([license_info["Component"], license_info["Origin"], license_info["License"], license_info["Copyright"]])        
 
 def get_dependencies(repo_url):
@@ -140,7 +179,7 @@ def get_dependencies(repo_url):
         return dependencies
     else:
         # Print that there is no repository information and exit on error
-        print("No repository information found")
+        print("\033[91mNo repository information found\033[0m", file=sys.stderr)
         exit(1)
 
 def main():
