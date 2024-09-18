@@ -10,7 +10,19 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["https://github.com/DataDog/dd-trace-go"],
+            "args": [
+                "https://github.com/DataDog/integrations-core",
+                "https://github.com/DataDog/integrations-extras",
+                // "https://github.com/DataDog/datadog-agent",
+                // "https://github.com/DataDog/dd-trace-go",
+                // "https://github.com/DataDog/dd-trace-js",
+                // "https://github.com/DataDog/dd-trace-rb",
+                // "https://github.com/DataDog/dd-trace-dotnet",
+                // "https://github.com/DataDog/dd-trace-cpp",
+                // "https://github.com/DataDog/dd-trace-php",
+                // "https://github.com/DataDog/dd-trace-py",
+                // "https://github.com/DataDog/dd-trace-java"
+            ],
             "env": {
                 // Set the GITHUB_TOKEN environment variable before opening vscode. 
                 // Then start vscode using the command `code .`
