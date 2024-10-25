@@ -3,13 +3,15 @@ from setuptools import setup, find_packages
 setup(
     name='ospo-tools',
     version='0.1.0',
-    packages=find_packages(),
+    packages=find_packages(where='src'),
+    package_dir={'': 'src'},
     install_requires=[
         'pytest',
+        'agithub',
     ],
     entry_points={
         'console_scripts': [
-            'generate-3rd-party-csv=ospo_tools.generate_3rd_party_csv:main',
+            'generate_3rd_party_csv=ospo_tools.generate_3rd_party_csv:cli',
         ],
     },
     author='Damian Vicino',

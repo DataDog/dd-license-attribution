@@ -1,0 +1,1 @@
+from ospo_tools.report_generator.report_generator import ReportGenerator
