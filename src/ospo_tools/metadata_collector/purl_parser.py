@@ -8,6 +8,8 @@ class PurlParser:
         pass
 
     def get_github_owner_and_repo(self, purl):
+        if purl is None:
+            return None, None
         # remove protocol from purl
         if "://" in purl:
             purl = purl.split("://")[1]
@@ -18,6 +20,8 @@ class PurlParser:
         return None, None
 
     def get_gitlab_owner_and_repo(self, purl):
+        if purl is None:
+            return None, None
         # remove protocol from purl
         if "://" in purl:
             purl = purl.split("://")[1]
