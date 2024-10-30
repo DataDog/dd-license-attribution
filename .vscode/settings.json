@@ -3,5 +3,15 @@
         "tests"
     ],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.black-formatter",
+    },
+    "black-formatter.path": [
+        "venv/bin/black"
+    ],
+    "flake8.path": [
+        "venv/bin/flake8"
+    ],
+    "editor.formatOnSave": true,
 }

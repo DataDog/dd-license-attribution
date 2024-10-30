@@ -9,8 +9,10 @@ setup(
         "agithub",
     ],
     extras_require={
-        'dev': [
-            'pytest',
+        "dev": [
+            "pytest",
+            "black",
+            "flake8",
         ],
     },
     entry_points={

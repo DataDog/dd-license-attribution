@@ -1,0 +1,7 @@
+{
+    "recommendations": [
+        "ms-python.python",
+        "ms-python.black-formatter", // Black formatter
+        "ms-python.flake8", // Flake8 linter
+    ]
+}
