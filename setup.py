@@ -6,9 +6,15 @@ setup(
     packages=find_packages(where="src"),
     package_dir={"": "src"},
     install_requires=[
-        "pytest",
         "agithub",
     ],
+    extras_require={
+        "dev": [
+            "pytest",
+            "black",
+            "flake8",
+        ],
+    },
     entry_points={
         "console_scripts": [
             "generate_3rd_party_csv=ospo_tools.generate_3rd_party_csv:cli",

@@ -34,6 +34,27 @@ export GITHUB_TOKEN=YOUR_TOKEN
 venv/bin/generate_3rd_party_csv https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
 
+### Development
+
+To develop install the development dependencies in a virtual environement:
+
+```bash
+# starting at the root of the repository
+# create and activate a venv
+python3 -m venv venv
+source venv/bin/activate
+pip install ".[dev]"
+```
+
+#### Linting
+
+We currently use `black` to reformat files and `flake8` for PEP8 suggestions.
+If you use VSCode, files will be automatically reformatted on saving. You can also run black from the command line:
+
+```bash
+venv/bin/black src/ tests/
+```
+
 ### current state
 
 - Initial set of dependencies is collected via github-sbom api.
