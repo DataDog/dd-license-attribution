@@ -1,4 +1,3 @@
-import re
 from agithub.GitHub import GitHub
 from ospo_tools.metadata_collector.metadata import Metadata
 from ospo_tools.metadata_collector.purl_parser import PurlParser
