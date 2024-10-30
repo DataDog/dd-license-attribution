@@ -23,19 +23,16 @@ class GitHubRepositoryMetadataCollectionStrategy(MetadataCollectionStrategy):
             if owner is None or repo is None:
                 updated_metadata.append(package)
                 continue
-            if not package.copyright:
+            if not package.copyright or not package.license:
                 #get the repository information
                 status, repository = self.client.repos[owner][repo].get()
                 if status == 200:
                     package.copyright = repository['owner']['login']
-            if not package.license:
-                #get the license information
-                status, license = self.client.repos[owner][repo].license.get()
-                if status == 200 and license and 'license' in license:
-                    #get the license information
-                    package.license = license['license'].get('spdx_id',None)
-                    if package.license == 'NOASSERTION':
-                        package.license = None
+                    if repository['license']:
+                        #get the license information
+                        package.license = repository['license'].get('spdx_id',None)
+                        if package.license == 'NOASSERTION':
+                            package.license = None
             updated_metadata.append(package)
         metadata.clear()
         metadata.extend(updated_metadata)
