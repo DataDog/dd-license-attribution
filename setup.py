@@ -14,6 +14,7 @@ setup(
         "dev": [
             "pytest",
             "pytest-cov",
+            "pytest-mock",
             "mypy",
             "black",
             "flake8",
