@@ -16,7 +16,7 @@ class GitHubRepositoryMetadataCollectionStrategy(MetadataCollectionStrategy):
         self.purl_parser = PurlParser()
 
     # method to get the metadata
-    def augment_metadata(self, metadata):
+    def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = []
         for package in metadata:
             if not package.origin:
@@ -37,5 +37,4 @@ class GitHubRepositoryMetadataCollectionStrategy(MetadataCollectionStrategy):
                         if package.license == "NOASSERTION":
                             package.license = None
             updated_metadata.append(package)
-        metadata.clear()
-        metadata.extend(updated_metadata)
+        return updated_metadata

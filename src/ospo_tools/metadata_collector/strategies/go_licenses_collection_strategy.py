@@ -50,9 +50,7 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
                         package.name.replace("go:", "")
                     )
                 updated_metadata.append(package)
-            metadata.clear()
-            metadata.extend(updated_metadata)
-            return
+            return updated_metadata
         # so far we do not have an example package where we can get the license from go-licenses
         # dd-trace-go, datado-agent, strauss-red-team, all return: build constraints exclude all Go files in ...
         # we will revisit when we find a package that works with it or after making those work with go-licenses

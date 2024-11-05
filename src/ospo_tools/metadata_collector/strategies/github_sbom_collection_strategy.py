@@ -90,8 +90,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     copyright=copyright,
                 )
                 updated_metadata.append(updated_package)
-        metadata.clear()
-        metadata.extend(updated_metadata)
+        return updated_metadata
 
     def get_github_generated_sbom(self, owner, repo):
         status, result = self.client.repos[owner][repo]["dependency-graph"].sbom.get()
