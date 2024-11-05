@@ -6,4 +6,4 @@ from ospo_tools.metadata_collector.metadata import Metadata
 class MetadataCollectionStrategy(ABC):
     @abstractmethod
     def augment_metadata(self, metadata: List[Metadata]) -> List[Metadata]:
-        pass
+        raise NotImplementedError
