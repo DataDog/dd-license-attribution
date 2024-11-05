@@ -11,9 +11,10 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": [
-                "https://github.com/DataDog/stratus-red-team",
+                // "https://github.com/DataDog/stratus-red-team",
                 // "https://github.com/DataDog/dd-trace-go",
                 // "https://github.com/DataDog/datadog-agent",
+                "https://github.com/DataDog/ospo-tools",
             ],
             "env": {
                 // Set the GITHUB_TOKEN environment variable before opening vscode. 
