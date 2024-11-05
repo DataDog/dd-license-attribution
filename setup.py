@@ -14,6 +14,7 @@ setup(
         "dev": [
             "pytest",
             "pytest-cov",
+            "mypy",
             "black",
             "flake8",
         ],
