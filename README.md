@@ -49,8 +49,21 @@ To develop install the development dependencies in a virtual environement:
 # create and activate a venv
 python3 -m venv venv
 source venv/bin/activate
-pip install ".[dev]"
+pip install -e ".[dev]"
 ```
+
+#### Coverage report
+
+To generate test coverage reports locally the following lines need to be run in the root of the repository.
+
+```bash
+# for unit tests
+pytest tests/unit
+# for integration tests
+pytest tests/integration
+```
+
+Github PRs and Push will trigger a run of unit tests for validation and fail if coverage is not enough.
 
 #### Linting
 

@@ -13,6 +13,7 @@ setup(
     extras_require={
         "dev": [
             "pytest",
+            "pytest-cov",
             "black",
             "flake8",
         ],
