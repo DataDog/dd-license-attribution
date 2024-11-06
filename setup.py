@@ -8,6 +8,7 @@ setup(
     install_requires=[
         "agithub",
         "scancode-toolkit",
+        "typer",
     ],
     extras_require={
         "dev": [
