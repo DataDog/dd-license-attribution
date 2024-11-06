@@ -67,7 +67,7 @@ Github PRs and Push will trigger a run of unit tests for validation and fail if 
 
 #### Linting
 
-We currently use `black` to reformat files and `flake8` for PEP8 suggestions.
+We currently use `black` to reformat files.
 If you use VSCode, files will be automatically reformatted on saving. You can also run black from the command line:
 
 ```bash

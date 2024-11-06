@@ -12,8 +12,5 @@
     "black-formatter.path": [
         "venv/bin/black"
     ],
-    "flake8.path": [
-        "venv/bin/flake8"
-    ],
     "editor.formatOnSave": true,
 }
