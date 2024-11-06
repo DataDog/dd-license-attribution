@@ -1,4 +1,3 @@
-from agithub.GitHub import GitHub
 import tempfile
 import os
 from shlex import quote
@@ -13,11 +12,8 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 
 
 class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
-    def __init__(self, github_token):
-        if not github_token:
-            self.client = GitHub()
-        else:
-            self.client = GitHub(token=github_token)
+    def __init__(self, github_client):
+        self.client = github_client
         self.purl_parser = PurlParser()
         # create a temporary directory for github shallow clones
         self.temp_dir = tempfile.TemporaryDirectory()

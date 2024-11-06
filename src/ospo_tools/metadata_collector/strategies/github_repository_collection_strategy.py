@@ -1,5 +1,3 @@
-from agithub.GitHub import GitHub
-
 from ospo_tools.metadata_collector.metadata import Metadata
 from ospo_tools.metadata_collector.purl_parser import PurlParser
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
@@ -8,11 +6,8 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 
 
 class GitHubRepositoryMetadataCollectionStrategy(MetadataCollectionStrategy):
-    def __init__(self, github_token):
-        if not github_token:
-            self.client = GitHub()
-        else:
-            self.client = GitHub(token=github_token)
+    def __init__(self, github_client):
+        self.client = github_client
         self.purl_parser = PurlParser()
 
     # method to get the metadata

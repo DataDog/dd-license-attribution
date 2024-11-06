@@ -1,4 +1,3 @@
-from agithub.GitHub import GitHub
 from ospo_tools.metadata_collector.metadata import Metadata
 from ospo_tools.metadata_collector.purl_parser import PurlParser
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
@@ -8,9 +7,8 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 
 class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
     # constructor
-    def __init__(self, github_token):
-        self.github_token = github_token
-        self.client = GitHub(token=github_token)
+    def __init__(self, github_client):
+        self.client = github_client
         self.purl_parser = PurlParser()
 
     # method to get the metadata
@@ -21,7 +19,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
             if owner is None or repo is None:
                 updated_metadata.append(package)
                 continue
-            sbom = self.get_github_generated_sbom(owner, repo)
+            sbom = self.__get_github_generated_sbom(owner, repo)
             packages_in_sbom = sbom["packages"]
             for sbom_package in packages_in_sbom:
                 # skipping CI dependencies declared as actoin:
@@ -82,17 +80,23 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                 if not copyright:
                     copyright = ""
 
-                updated_package = Metadata(
-                    name=sbom_package["name"],
-                    version=version,
-                    origin=origin,
-                    license=license,
-                    copyright=copyright,
-                )
-                updated_metadata.append(updated_package)
+                if new_package_metadata: # update with new information
+                    new_package_metadata.version = version
+                    new_package_metadata.origin = origin
+                    new_package_metadata.license = license
+                    new_package_metadata.copyright = copyright
+                else: # create a new metadata and append it to the updated_metadata
+                    updated_package = Metadata(
+                        name=sbom_package["name"],
+                        version=version,
+                        origin=origin,
+                        license=license,
+                        copyright=copyright,
+                    )
+                    updated_metadata.append(updated_package)
         return updated_metadata
 
-    def get_github_generated_sbom(self, owner, repo):
+    def __get_github_generated_sbom(self, owner, repo):
         status, result = self.client.repos[owner][repo]["dependency-graph"].sbom.get()
         if status == 200:
             return result["sbom"]
