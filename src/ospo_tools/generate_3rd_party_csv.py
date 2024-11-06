@@ -13,6 +13,9 @@ from ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy im
 from ospo_tools.metadata_collector.strategies.go_licenses_collection_strategy import (
     GoLicensesMetadataCollectionStrategy,
 )
+from ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
+    ScanCodeToolkitMetadataCollectionStrategy,
+)
 from ospo_tools.report_generator.report_generator import ReportGenerator
 from ospo_tools.report_generator.writters.csv_reporting_writter import (
     CSVReportingWritter,
@@ -35,6 +38,7 @@ def cli():
         [
             GitHubSbomMetadataCollectionStrategy(github_token),
             GoLicensesMetadataCollectionStrategy(args.package),
+            ScanCodeToolkitMetadataCollectionStrategy(github_token),
             GitHubRepositoryMetadataCollectionStrategy(github_token),
         ]
     )

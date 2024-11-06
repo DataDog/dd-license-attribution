@@ -4,6 +4,7 @@ import re
 from shlex import quote
 import sys
 import tempfile
+
 from ospo_tools.metadata_collector.metadata import Metadata
 from ospo_tools.metadata_collector.purl_parser import PurlParser
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (

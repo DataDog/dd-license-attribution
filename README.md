@@ -16,7 +16,13 @@ Because, these tools require calls to public APIs, and the APIs may trottle down
 
 - python3 - [Python install instructions](https://www.python.org/downloads/)
 - gopkg - [GoLang and GoPkg install instructions](https://go.dev/doc/install)
-- go-licenses - [GoLicenses install instructions](https://go.dev/doc/install)
+- go-licenses - [GoLicenses install instructions](https://github.com/google/go-licenses?tab=readme-ov-file#installation)
+- libmagic:
+    1. Install dependency libmagic from your OS package manager.
+        - In MacOS: `brew install libmagic`
+        - In Debian based Linux: `apt get install libmagic-dev`
+    1. Install python-libmagic from pip: `pip install python-libmagic`
+
 
 ### usage
 
