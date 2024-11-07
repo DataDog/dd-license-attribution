@@ -5,3 +5,6 @@ exclude_lines =
 
     # Don't complain if tests don't hit defensive assertion code:
     raise NotImplementedError
+
+[run]
+omit = src/ospo_tools/generate_3rd_party_csv.py
