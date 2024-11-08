@@ -25,7 +25,8 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
             )
         )
         if result != 0:
-            raise Exception(f"Failed to clone repository: {repository_url}")
+            self.temp_dir.cleanup()
+            raise ValueError(f"Failed to clone repository: {repository_url}")
         # setting up go licenses
         cwd = os.getcwd()
         os.chdir(self.temp_dir_name)
@@ -46,7 +47,7 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
             # rename packages with no metadata associated that start with go:
             for package in metadata:
                 if not package.origin and package.name.startswith("go:"):
-                    package.origin = self.infer_origin_heuristic(
+                    package.origin = self.__infer_origin_heuristic(
                         package.name.replace("go:", "")
                     )
                 updated_metadata.append(package)
@@ -58,7 +59,7 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
             "GoLicensesMetadataCollectionStrategy.augment_metadata is not implemented"
         )
 
-    def infer_origin_heuristic(self, package_name):
+    def __infer_origin_heuristic(self, package_name):
         # we may be able to infer the origin from the package name by scraping information from websites
         # starting at the one referenced in the name of the package.
 
@@ -107,7 +108,7 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
                     )
                     if match:
                         new_url = match.group(1)
-                        return self.infer_origin_heuristic(new_url)
+                        return self.__infer_origin_heuristic(new_url)
                     return package_name
 
                 # try to match UnitMeta-repo class tag a
@@ -116,7 +117,7 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
                 )
                 if match:
                     new_url = match.group(1)
-                    return self.infer_origin_heuristic(new_url)
+                    return self.__infer_origin_heuristic(new_url)
 
                 # try to match go-import meta tag
                 match = re.search(
@@ -124,7 +125,7 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
                 )
                 if match:
                     new_url = match.group(1)
-                    return self.infer_origin_heuristic(new_url)
+                    return self.__infer_origin_heuristic(new_url)
 
                 # try to match Source Code labeled links
                 match = re.search(
@@ -134,7 +135,7 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
                 )
                 if match:
                     new_url = match.group(1)
-                    return self.infer_origin_heuristic(new_url)
+                    return self.__infer_origin_heuristic(new_url)
         except http.client.HTTPException as e:
             print(
                 f"SSL verification failed for {domain}{path} skipping the request: {e}",
