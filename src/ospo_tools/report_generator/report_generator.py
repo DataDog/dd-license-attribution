@@ -1,7 +1,6 @@
 class ReportGenerator:
-    def __init__(self, metadata, reporting_writer):
-        self.metadata = metadata
+    def __init__(self, reporting_writer):
         self.reporting_writer = reporting_writer
 
-    def generate_report(self):
-        return self.reporting_writer.write(self.metadata)
+    def generate_report(self, metadata):
+        return self.reporting_writer.write(metadata)

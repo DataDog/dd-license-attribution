@@ -50,9 +50,9 @@ def main(
     )
     metadata = metadata_collector.collect_metadata(package)
 
-    csv_reporter = ReportGenerator(metadata, CSVReportingWritter())
+    csv_reporter = ReportGenerator(CSVReportingWritter())
 
-    output = csv_reporter.generate_report()
+    output = csv_reporter.generate_report(metadata)
     print(output)
 
 
