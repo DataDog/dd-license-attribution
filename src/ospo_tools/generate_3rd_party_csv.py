@@ -44,7 +44,7 @@ def main(
         [
             GitHubSbomMetadataCollectionStrategy(github_token, github_client),
             GoLicensesMetadataCollectionStrategy(package),
-            ScanCodeToolkitMetadataCollectionStrategy(github_token, github_client),
+            ScanCodeToolkitMetadataCollectionStrategy(github_token),
             GitHubRepositoryMetadataCollectionStrategy(github_token, github_client),
         ]
     )

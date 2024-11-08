@@ -1,7 +1,7 @@
 import tempfile
 import os
 from shlex import quote
-from scancode.api import get_licenses, get_copyrights
+import scancode
 
 
 from ospo_tools.metadata_collector.metadata import Metadata
@@ -12,8 +12,7 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 
 
 class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
-    def __init__(self, github_client):
-        self.client = github_client
+    def __init__(self):
         self.purl_parser = PurlParser()
         # create a temporary directory for github shallow clones
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -41,7 +40,6 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
             repository_url = f"https://github.com/{owner}/{repo}"
             # some repositories provide more than one package, if already cloned, we skip
             if not os.path.exists(f"{self.temp_dir_name}/{owner}-{repo}"):
-
                 dest_path = f"{self.temp_dir_name}/{owner}-{repo}"
                 result = os.system(
                     "git clone --depth 1 {} {}".format(
@@ -49,14 +47,14 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     )
                 )
                 if result != 0:
-                    raise Exception(f"Failed to clone repository: {repository_url}")
+                    raise ValueError(f"Failed to clone repository: {repository_url}")
             if not package.license:
                 # get list of files at the base directory of the repository to attempt to find licenses
                 files = os.listdir(dest_path)
                 licenses = []
                 for file in files:
                     file_abs_path = f"{dest_path}/{file}"
-                    license = get_licenses(file_abs_path)
+                    license = scancode.api.get_licenses(file_abs_path)
                     if (
                         "detected_license_expression_spdx" in license
                         and license["detected_license_expression_spdx"]
@@ -73,7 +71,7 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                 for root, _, files in os.walk(dest_path):
                     for file in files:
                         file_abs_path = f"{root}/{file}"
-                        copyright = get_copyrights(file_abs_path)
+                        copyright = scancode.api.get_copyrights(file_abs_path)
                         if copyright["holders"]:
                             [
                                 copyrights["holders"].append(c["holder"])
