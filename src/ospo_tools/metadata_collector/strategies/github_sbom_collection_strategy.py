@@ -3,16 +3,18 @@ from ospo_tools.metadata_collector.purl_parser import PurlParser
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
+from agithub.GitHub import GitHub
+from typing import Any, Tuple
 
 
 class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
     # constructor
-    def __init__(self, github_client):
+    def __init__(self, github_client: GitHub) -> None:
         self.client = github_client
         self.purl_parser = PurlParser()
 
     # method to get the metadata
-    def augment_metadata(self, metadata):
+    def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = []
         for package in metadata:
             owner, repo = self.purl_parser.get_github_owner_and_repo(package.origin)
@@ -80,12 +82,12 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                 if not copyright:
                     copyright = ""
 
-                if new_package_metadata: # update with new information
+                if new_package_metadata:  # update with new information
                     new_package_metadata.version = version
                     new_package_metadata.origin = origin
                     new_package_metadata.license = license
                     new_package_metadata.copyright = copyright
-                else: # create a new metadata and append it to the updated_metadata
+                else:  # create a new metadata and append it to the updated_metadata
                     updated_package = Metadata(
                         name=sbom_package["name"],
                         version=version,
@@ -96,7 +98,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     updated_metadata.append(updated_package)
         return updated_metadata
 
-    def __get_github_generated_sbom(self, owner, repo):
+    def __get_github_generated_sbom(self, owner: str, repo: str) -> Any:
         status, result = self.client.repos[owner][repo]["dependency-graph"].sbom.get()
         if status == 200:
             return result["sbom"]

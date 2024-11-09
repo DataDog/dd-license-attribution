@@ -29,7 +29,7 @@ def main(
     package: Annotated[
         str, typer.Argument(help="The package to generate the report for.")
     ],
-):
+) -> None:
     """
     Generate a CSV report of third party dependencies for a given open source repository.
     """
@@ -42,10 +42,10 @@ def main(
 
     metadata_collector = MetadataCollector(
         [
-            GitHubSbomMetadataCollectionStrategy(github_token, github_client),
+            GitHubSbomMetadataCollectionStrategy(github_client),
             GoLicensesMetadataCollectionStrategy(package),
-            ScanCodeToolkitMetadataCollectionStrategy(github_token),
-            GitHubRepositoryMetadataCollectionStrategy(github_token, github_client),
+            ScanCodeToolkitMetadataCollectionStrategy(),
+            GitHubRepositoryMetadataCollectionStrategy(github_client),
         ]
     )
     metadata = metadata_collector.collect_metadata(package)

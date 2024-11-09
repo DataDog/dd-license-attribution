@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import tempfile
 import os
 from shlex import quote
@@ -12,18 +13,18 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 
 
 class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
-    def __init__(self):
+    def __init__(self) -> None:
         self.purl_parser = PurlParser()
         # create a temporary directory for github shallow clones
         self.temp_dir = tempfile.TemporaryDirectory()
         # in the temporary directory make a shallow clone of the repository
         self.temp_dir_name = self.temp_dir.name
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.temp_dir.cleanup()
 
     # method to get the metadata
-    def augment_metadata(self, metadata):
+    def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = []
         for package in metadata:
             # if the package has a license and a copyright
@@ -66,7 +67,11 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     package.license = ", ".join(clean_licenses)
             # copyright
             if not package.copyright:
-                copyrights = {"holders": [], "authors": [], "copyrights": []}
+                copyrights = {
+                    "holders": [],
+                    "authors": [],
+                    "copyrights": [],
+                }
                 # get list of all files to attempt to find copyright information
                 for root, _, files in os.walk(dest_path):
                     for file in files:
@@ -104,7 +109,7 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
             updated_metadata.append(package)
         return updated_metadata
 
-    def cleanup_licenses(self, licenses):
+    def cleanup_licenses(self, licenses: list[str]) -> list[str]:
         # split the licenses by 'AND'
         ret_licenses = []
         for license in licenses:

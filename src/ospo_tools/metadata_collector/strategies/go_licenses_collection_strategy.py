@@ -13,7 +13,7 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 
 
 class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
-    def __init__(self, repository_url):
+    def __init__(self, repository_url: str) -> None:
         self.purl_parser = PurlParser()
         # create a temporary directory
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -38,10 +38,9 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
             self.go_licenses = file.readlines()
         os.chdir(cwd)
         self.temp_dir.cleanup()
-        self.temp_dir = None
 
     # method to get the metadata
-    def augment_metadata(self, metadata):
+    def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = []
         if not self.go_licenses:
             # rename packages with no metadata associated that start with go:
@@ -59,7 +58,7 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
             "GoLicensesMetadataCollectionStrategy.augment_metadata is not implemented"
         )
 
-    def __infer_origin_heuristic(self, package_name):
+    def __infer_origin_heuristic(self, package_name: str) -> str:
         # we may be able to infer the origin from the package name by scraping information from websites
         # starting at the one referenced in the name of the package.
 

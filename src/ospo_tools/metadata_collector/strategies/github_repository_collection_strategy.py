@@ -3,10 +3,11 @@ from ospo_tools.metadata_collector.purl_parser import PurlParser
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
+from agithub.GitHub import GitHub
 
 
 class GitHubRepositoryMetadataCollectionStrategy(MetadataCollectionStrategy):
-    def __init__(self, github_client):
+    def __init__(self, github_client: GitHub):
         self.client = github_client
         self.purl_parser = PurlParser()
 
