@@ -253,7 +253,6 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
         ),
     ]
 
-
     mock_walk_return_value = [
         (
             "test_path",

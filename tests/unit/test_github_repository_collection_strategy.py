@@ -235,6 +235,7 @@ def test_github_repository_collection_strategy_do_not_override_license_if_previo
     purl_parser_object.get_github_owner_and_repo.assert_called_once_with("test_purl")
     repo_info_mock.get.assert_called_once_with()
 
+
 def test_github_repository_collection_strategy_do_not_override_copyright_if_previously_set_and_updating_license(
     mocker,
 ):

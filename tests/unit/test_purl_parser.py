@@ -2,6 +2,7 @@ from ospo_tools.metadata_collector.purl_parser import PurlParser
 
 import pytest
 
+
 @pytest.mark.parametrize(
     "purl",
     [

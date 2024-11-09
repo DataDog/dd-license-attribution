@@ -208,7 +208,7 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
             version="3.0",
             origin="test_purl_2",
             license="APACHE-2.0",
-            copyright=""
+            copyright="",
         ),
     ]
 
