@@ -12,6 +12,14 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 )
 
 
+def list_dir(dest_path):
+    return os.listdir(dest_path)
+
+
+def walk_directory(dest_path):
+    return os.walk(dest_path)
+
+
 class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
     def __init__(self) -> None:
         self.purl_parser = PurlParser()
@@ -51,7 +59,7 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     raise ValueError(f"Failed to clone repository: {repository_url}")
             if not package.license:
                 # get list of files at the base directory of the repository to attempt to find licenses
-                files = os.listdir(dest_path)
+                files = list_dir(dest_path)
                 licenses = []
                 for file in files:
                     file_abs_path = f"{dest_path}/{file}"
@@ -73,7 +81,7 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     "copyrights": [],
                 }
                 # get list of all files to attempt to find copyright information
-                for root, _, files in os.walk(dest_path):
+                for root, _, files in walk_directory(dest_path):
                     for file in files:
                         file_abs_path = f"{root}/{file}"
                         copyright = scancode.api.get_copyrights(file_abs_path)

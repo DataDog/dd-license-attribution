@@ -64,7 +64,10 @@ def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos
     temp_dir_object.name = "test_temp_dir"
     mocker.patch("tempfile.TemporaryDirectory", return_value=temp_dir_object)
     system_mock = mocker.patch("os.system", return_value=0)
-    listdir_mock = mocker.patch("os.listdir", return_value=["file1", "file2"])
+    listdir_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        return_value=["file1", "file2"],
+    )
 
     initial_metadata = [
         Metadata(
@@ -134,7 +137,6 @@ def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos
         "git clone --depth 1 https://github.com/owner/repo test_temp_dir/owner-repo"
     )
     listdir_mock.assert_called_once_with("test_temp_dir/owner-repo")
-
     temp_dir_object.cleanup.assert_called_once()
 
 
@@ -261,7 +263,10 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
         ),  # Simulates one directory with two files
     ]
 
-    walk_mock = mocker.patch("os.walk", return_value=mock_walk_return_value)
+    walk_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory",
+        return_value=mock_walk_return_value,
+    )
 
     with patch(
         "os.path.exists", side_effect=mock_exists_side_effect_false

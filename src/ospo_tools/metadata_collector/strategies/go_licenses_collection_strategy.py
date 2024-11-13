@@ -12,32 +12,37 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 )
 
 
+def change_directory(dir_name):
+    os.chdir(dir_name)
+
+
+def get_current_working_directory():
+    return os.getcwd()
+
+
 class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
     def __init__(self, repository_url: str) -> None:
         self.purl_parser = PurlParser()
         # create a temporary directory
-        self.temp_dir = tempfile.TemporaryDirectory()
-        # in the temporary directory make a shallow clone of the repository
-        self.temp_dir_name = self.temp_dir.name
-        result = os.system(
-            "git clone --depth 1 {} {}".format(
-                quote(repository_url), quote(self.temp_dir_name)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # in the temporary directory make a shallow clone of the repository
+            result = os.system(
+                "git clone --depth 1 {} {}".format(
+                    quote(repository_url), quote(temp_dir.name)
+                )
             )
-        )
-        if result != 0:
-            self.temp_dir.cleanup()
-            raise ValueError(f"Failed to clone repository: {repository_url}")
-        # setting up go licenses
-        cwd = os.getcwd()
-        os.chdir(self.temp_dir_name)
-        os.system("go mod download")
-        os.system("go mod vendor")
-        os.system("go-licenses csv . > licenses.csv")
-        # read the licenses from the csv file to a list
-        with open("licenses.csv", "r") as file:
-            self.go_licenses = file.readlines()
-        os.chdir(cwd)
-        self.temp_dir.cleanup()
+            if result != 0:
+                raise ValueError(f"Failed to clone repository: {repository_url}")
+            # setting up go licenses
+            cwd = get_current_working_directory()
+            change_directory(temp_dir.name)
+            os.system("go mod download")
+            os.system("go mod vendor")
+            os.system("go-licenses csv . > licenses.csv")
+            # read the licenses from the csv file to a list
+            with open("licenses.csv", "r") as file:
+                self.go_licenses = file.readlines()
+                change_directory(cwd)
 
     # method to get the metadata
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
