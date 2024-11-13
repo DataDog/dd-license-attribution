@@ -50,8 +50,11 @@ warn_return_any = "True"
 warn_unused_ignores = "True"
 warn_redundant_casts = "True"
 
-[tool.mypy.overrides."scancode"]
-ignore_missing_imports = "True"
+[tool.mypy.overrides]
+[[tool.mypy.overrides]]
+module = "scancode"
+ignore_missing_imports = true
 
-[tool.mypy.overrides."agithub.GitHub"]
-ignore_missing_imports = "True"
+[[tool.mypy.overrides]]
+module = "agithub.GitHub"
+ignore_missing_imports = true
