@@ -21,12 +21,17 @@ def walk_directory(dest_path):
 
 
 class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
-    def __init__(self) -> None:
+    def __init__(
+        self, license_source_files: list[str], copyright_source_files: list[str]
+    ) -> None:
         self.purl_parser = PurlParser()
         # create a temporary directory for github shallow clones
         self.temp_dir = tempfile.TemporaryDirectory()
         # in the temporary directory make a shallow clone of the repository
         self.temp_dir_name = self.temp_dir.name
+        # save the source files lists
+        self.license_source_files = license_source_files
+        self.copyright_source_files = copyright_source_files
 
     def __del__(self) -> None:
         self.temp_dir.cleanup()

@@ -31,7 +31,11 @@ def test_scancode_toolkit_collection_strategy_skips_packages_with_license_and_co
         )
     ]
 
-    strategy = ScanCodeToolkitMetadataCollectionStrategy()
+    license_files = ["license1", "license2"]
+    copyright_files = ["copy1", "copy2"]
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        license_source_files=license_files, copyright_source_files=copyright_files
+    )
     updated_metadata = strategy.augment_metadata(initial_metadata)
     del strategy  # to call __del__ method
 
@@ -91,7 +95,11 @@ def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos
         "detected_license_expression_spdx": "APACHE-2.0"
     }
 
-    strategy = ScanCodeToolkitMetadataCollectionStrategy()
+    license_files = ["license1", "license2"]
+    copyright_files = ["copy1", "copy2"]
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        license_source_files=license_files, copyright_source_files=copyright_files
+    )
 
     with patch(
         "os.path.exists", side_effect=mock_exists_side_effect_false
@@ -166,7 +174,11 @@ def test_scancode_toolkit_collection_strategy_with_github_repository_failing_clo
         ),
     ]
 
-    strategy = ScanCodeToolkitMetadataCollectionStrategy()
+    license_files = ["license1", "license2"]
+    copyright_files = ["copy1", "copy2"]
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        license_source_files=license_files, copyright_source_files=copyright_files
+    )
     with pytest.raises(
         ValueError, match="Failed to clone repository: https://github.com/owner/repo"
     ):
@@ -186,7 +198,11 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
     temp_dir_object.name = "test_temp_dir"
     mocker.patch("tempfile.TemporaryDirectory", return_value=temp_dir_object)
 
-    strategy = ScanCodeToolkitMetadataCollectionStrategy()
+    license_files = ["license1", "license2"]
+    copyright_files = ["copy1", "copy2"]
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        license_source_files=license_files, copyright_source_files=copyright_files
+    )
 
     system_mock = mocker.patch("os.system", return_value=0)
 
