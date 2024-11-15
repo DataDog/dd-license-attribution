@@ -1,8 +1,8 @@
-from agithub.GitHub import GitHub
+from dataclasses import dataclass
 import tempfile
 import os
 from shlex import quote
-from scancode.api import get_licenses, get_copyrights
+import scancode
 
 
 from ospo_tools.metadata_collector.metadata import Metadata
@@ -12,23 +12,27 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 )
 
 
+def list_dir(dest_path):
+    return os.listdir(dest_path)
+
+
+def walk_directory(dest_path):
+    return os.walk(dest_path)
+
+
 class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
-    def __init__(self, github_token):
-        if not github_token:
-            self.client = GitHub()
-        else:
-            self.client = GitHub(token=github_token)
+    def __init__(self) -> None:
         self.purl_parser = PurlParser()
         # create a temporary directory for github shallow clones
         self.temp_dir = tempfile.TemporaryDirectory()
         # in the temporary directory make a shallow clone of the repository
         self.temp_dir_name = self.temp_dir.name
 
-    def __del__(self):
+    def __del__(self) -> None:
         self.temp_dir.cleanup()
 
     # method to get the metadata
-    def augment_metadata(self, metadata):
+    def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = []
         for package in metadata:
             # if the package has a license and a copyright
@@ -45,7 +49,6 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
             repository_url = f"https://github.com/{owner}/{repo}"
             # some repositories provide more than one package, if already cloned, we skip
             if not os.path.exists(f"{self.temp_dir_name}/{owner}-{repo}"):
-
                 dest_path = f"{self.temp_dir_name}/{owner}-{repo}"
                 result = os.system(
                     "git clone --depth 1 {} {}".format(
@@ -53,14 +56,14 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     )
                 )
                 if result != 0:
-                    raise Exception(f"Failed to clone repository: {repository_url}")
+                    raise ValueError(f"Failed to clone repository: {repository_url}")
             if not package.license:
                 # get list of files at the base directory of the repository to attempt to find licenses
-                files = os.listdir(dest_path)
+                files = list_dir(dest_path)
                 licenses = []
                 for file in files:
                     file_abs_path = f"{dest_path}/{file}"
-                    license = get_licenses(file_abs_path)
+                    license = scancode.api.get_licenses(file_abs_path)
                     if (
                         "detected_license_expression_spdx" in license
                         and license["detected_license_expression_spdx"]
@@ -72,12 +75,16 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     package.license = ", ".join(clean_licenses)
             # copyright
             if not package.copyright:
-                copyrights = {"holders": [], "authors": [], "copyrights": []}
+                copyrights = {
+                    "holders": [],
+                    "authors": [],
+                    "copyrights": [],
+                }
                 # get list of all files to attempt to find copyright information
-                for root, _, files in os.walk(dest_path):
+                for root, _, files in walk_directory(dest_path):
                     for file in files:
                         file_abs_path = f"{root}/{file}"
-                        copyright = get_copyrights(file_abs_path)
+                        copyright = scancode.api.get_copyrights(file_abs_path)
                         if copyright["holders"]:
                             [
                                 copyrights["holders"].append(c["holder"])
@@ -110,7 +117,7 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
             updated_metadata.append(package)
         return updated_metadata
 
-    def cleanup_licenses(self, licenses):
+    def cleanup_licenses(self, licenses: list[str]) -> list[str]:
         # split the licenses by 'AND'
         ret_licenses = []
         for license in licenses:

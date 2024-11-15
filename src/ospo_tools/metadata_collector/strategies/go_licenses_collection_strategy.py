@@ -12,47 +12,50 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 )
 
 
+def change_directory(dir_name):
+    os.chdir(dir_name)
+
+
+def get_current_working_directory():
+    return os.getcwd()
+
+
 class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
-    def __init__(self, repository_url):
+    def __init__(self, repository_url: str) -> None:
         self.purl_parser = PurlParser()
         # create a temporary directory
-        self.temp_dir = tempfile.TemporaryDirectory()
-        # in the temporary directory make a shallow clone of the repository
-        self.temp_dir_name = self.temp_dir.name
-        result = os.system(
-            "git clone --depth 1 {} {}".format(
-                quote(repository_url), quote(self.temp_dir_name)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # in the temporary directory make a shallow clone of the repository
+            result = os.system(
+                "git clone --depth 1 {} {}".format(
+                    quote(repository_url), quote(temp_dir.name)
+                )
             )
-        )
-        if result != 0:
-            raise Exception(f"Failed to clone repository: {repository_url}")
-        # setting up go licenses
-        cwd = os.getcwd()
-        os.chdir(self.temp_dir_name)
-        os.system("go mod download")
-        os.system("go mod vendor")
-        os.system("go-licenses csv . > licenses.csv")
-        # read the licenses from the csv file to a list
-        with open("licenses.csv", "r") as file:
-            self.go_licenses = file.readlines()
-        os.chdir(cwd)
-        self.temp_dir.cleanup()
-        self.temp_dir = None
+            if result != 0:
+                raise ValueError(f"Failed to clone repository: {repository_url}")
+            # setting up go licenses
+            cwd = get_current_working_directory()
+            change_directory(temp_dir.name)
+            os.system("go mod download")
+            os.system("go mod vendor")
+            os.system("go-licenses csv . > licenses.csv")
+            # read the licenses from the csv file to a list
+            with open("licenses.csv", "r") as file:
+                self.go_licenses = file.readlines()
+                change_directory(cwd)
 
     # method to get the metadata
-    def augment_metadata(self, metadata):
+    def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = []
         if not self.go_licenses:
             # rename packages with no metadata associated that start with go:
             for package in metadata:
                 if not package.origin and package.name.startswith("go:"):
-                    package.origin = self.infer_origin_heuristic(
+                    package.origin = self.__infer_origin_heuristic(
                         package.name.replace("go:", "")
                     )
                 updated_metadata.append(package)
-            metadata.clear()
-            metadata.extend(updated_metadata)
-            return
+            return updated_metadata
         # so far we do not have an example package where we can get the license from go-licenses
         # dd-trace-go, datado-agent, strauss-red-team, all return: build constraints exclude all Go files in ...
         # we will revisit when we find a package that works with it or after making those work with go-licenses
@@ -60,7 +63,7 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
             "GoLicensesMetadataCollectionStrategy.augment_metadata is not implemented"
         )
 
-    def infer_origin_heuristic(self, package_name):
+    def __infer_origin_heuristic(self, package_name: str) -> str:
         # we may be able to infer the origin from the package name by scraping information from websites
         # starting at the one referenced in the name of the package.
 
@@ -109,7 +112,7 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
                     )
                     if match:
                         new_url = match.group(1)
-                        return self.infer_origin_heuristic(new_url)
+                        return self.__infer_origin_heuristic(new_url)
                     return package_name
 
                 # try to match UnitMeta-repo class tag a
@@ -118,7 +121,7 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
                 )
                 if match:
                     new_url = match.group(1)
-                    return self.infer_origin_heuristic(new_url)
+                    return self.__infer_origin_heuristic(new_url)
 
                 # try to match go-import meta tag
                 match = re.search(
@@ -126,7 +129,7 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
                 )
                 if match:
                     new_url = match.group(1)
-                    return self.infer_origin_heuristic(new_url)
+                    return self.__infer_origin_heuristic(new_url)
 
                 # try to match Source Code labeled links
                 match = re.search(
@@ -136,7 +139,7 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
                 )
                 if match:
                     new_url = match.group(1)
-                    return self.infer_origin_heuristic(new_url)
+                    return self.__infer_origin_heuristic(new_url)
         except http.client.HTTPException as e:
             print(
                 f"SSL verification failed for {domain}{path} skipping the request: {e}",

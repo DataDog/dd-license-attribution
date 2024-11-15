@@ -3,6 +3,7 @@
 
 import os
 import typer
+from agithub.GitHub import GitHub
 from typing import Annotated
 
 from ospo_tools.metadata_collector import MetadataCollector
@@ -28,25 +29,30 @@ def main(
     package: Annotated[
         str, typer.Argument(help="The package to generate the report for.")
     ],
-):
+) -> None:
     """
     Generate a CSV report of third party dependencies for a given open source repository.
     """
     github_token = os.environ.get("GITHUB_TOKEN")
 
+    if not github_token:
+        github_client = GitHub()
+    else:
+        github_client = GitHub(token=github_token)
+
     metadata_collector = MetadataCollector(
         [
-            GitHubSbomMetadataCollectionStrategy(github_token),
+            GitHubSbomMetadataCollectionStrategy(github_client),
             GoLicensesMetadataCollectionStrategy(package),
-            ScanCodeToolkitMetadataCollectionStrategy(github_token),
-            GitHubRepositoryMetadataCollectionStrategy(github_token),
+            ScanCodeToolkitMetadataCollectionStrategy(),
+            GitHubRepositoryMetadataCollectionStrategy(github_client),
         ]
     )
     metadata = metadata_collector.collect_metadata(package)
 
-    csv_reporter = ReportGenerator(metadata, CSVReportingWritter())
+    csv_reporter = ReportGenerator(CSVReportingWritter())
 
-    output = csv_reporter.generate_report()
+    output = csv_reporter.generate_report(metadata)
     print(output)
 
 

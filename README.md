@@ -49,12 +49,25 @@ To develop install the development dependencies in a virtual environement:
 # create and activate a venv
 python3 -m venv venv
 source venv/bin/activate
-pip install ".[dev]"
+pip install -e ".[dev]"
 ```
+
+#### Coverage report
+
+To generate test coverage reports locally the following lines need to be run in the root of the repository.
+
+```bash
+# for unit tests
+pytest tests/unit
+# for integration tests
+pytest tests/integration
+```
+
+Github PRs and Push will trigger a run of unit tests for validation and fail if coverage is not enough.
 
 #### Linting
 
-We currently use `black` to reformat files and `flake8` for PEP8 suggestions.
+We currently use `black` to reformat files.
 If you use VSCode, files will be automatically reformatted on saving. You can also run black from the command line:
 
 ```bash
