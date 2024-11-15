@@ -3,7 +3,7 @@ import tempfile
 import os
 from shlex import quote
 from typing import Iterator
-import scancode
+import scancode.api
 
 
 from ospo_tools.metadata_collector.metadata import Metadata
@@ -33,13 +33,11 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
         # in the temporary directory make a shallow clone of the repository
         self.temp_dir_name = self.temp_dir.name
         # save the source files lists
-        if not license_source_files:
-            license_source_files = []
-        else:
+        self.license_source_files: list[str] | None = None
+        if license_source_files is not None:
             self.license_source_files = [file.lower() for file in license_source_files]
-        if not copyright_source_files:
-            self.copyright_source_files = []
-        else:
+        self.copyright_source_files: list[str] | None = None
+        if copyright_source_files is not None:
             self.copyright_source_files = [
                 file.lower() for file in copyright_source_files
             ]
@@ -56,6 +54,8 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                 updated_metadata.append(package)
                 continue
             # otherwise we make a shallow clone of the repository
+            if not package.origin and package.name is not None:
+                package.origin = package.name
             owner, repo = self.purl_parser.get_github_owner_and_repo(package.origin)
             # if not github repository available, we skip for now
             if owner is None or repo is None:

@@ -30,6 +30,8 @@ class GitHubRepositoryMetadataCollectionStrategy(MetadataCollectionStrategy):
                         package.license = repository["license"].get("spdx_id", None)
                         if package.license == "NOASSERTION":
                             package.license = None
+                elif status == 301:
+                    continue  # repository moved but we not supporting redirects here yet
                 else:
                     raise ValueError(
                         f"Failed to get repository information for {owner}/{repo}"
