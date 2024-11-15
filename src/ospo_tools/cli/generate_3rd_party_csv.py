@@ -50,7 +50,7 @@ def main(
                 default_config.preset_license_file_locations,
                 default_config.preset_copyright_file_locations,
             ),
-            ScanCodeToolkitMetadataCollectionStrategy([], []),
+            ScanCodeToolkitMetadataCollectionStrategy(),
             GitHubRepositoryMetadataCollectionStrategy(github_client),
         ]
     )

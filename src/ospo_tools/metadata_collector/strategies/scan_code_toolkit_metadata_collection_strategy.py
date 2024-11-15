@@ -22,7 +22,9 @@ def walk_directory(dest_path):
 
 class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
     def __init__(
-        self, license_source_files: list[str], copyright_source_files: list[str]
+        self,
+        license_source_files: list[str] = None,
+        copyright_source_files: list[str] = None,
     ) -> None:
         self.purl_parser = PurlParser()
         # create a temporary directory for github shallow clones
@@ -30,8 +32,16 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
         # in the temporary directory make a shallow clone of the repository
         self.temp_dir_name = self.temp_dir.name
         # save the source files lists
-        self.license_source_files = license_source_files
-        self.copyright_source_files = copyright_source_files
+        if not license_source_files:
+            license_source_files = []
+        else:
+            self.license_source_files = [file.lower() for file in license_source_files]
+        if not copyright_source_files:
+            self.copyright_source_files = []
+        else:
+            self.copyright_source_files = [
+                file.lower() for file in copyright_source_files
+            ]
 
     def __del__(self) -> None:
         self.temp_dir.cleanup()
@@ -64,7 +74,15 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     raise ValueError(f"Failed to clone repository: {repository_url}")
             if not package.license:
                 # get list of files at the base directory of the repository to attempt to find licenses
-                files = list_dir(dest_path)
+                # filter files to be only the ones that are in the license source files list (non case sensitive)
+                if not self.license_source_files:
+                    files = list_dir(dest_path)
+                else:
+                    files = [
+                        file
+                        for file in list_dir(dest_path)
+                        if file.lower() in self.license_source_files
+                    ]
                 licenses = []
                 for file in files:
                     file_abs_path = f"{dest_path}/{file}"
@@ -86,7 +104,16 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     "copyrights": [],
                 }
                 # get list of all files to attempt to find copyright information
-                for root, _, files in walk_directory(dest_path):
+                for root, _, all_files in walk_directory(dest_path):
+                    # filter the files to be only the ones that are in the copyright source files
+                    if not self.copyright_source_files:
+                        files = all_files
+                    else:
+                        files = [
+                            file
+                            for file in all_files
+                            if file.lower() in self.copyright_source_files
+                        ]
                     for file in files:
                         file_abs_path = f"{root}/{file}"
                         copyright = scancode.api.get_copyrights(file_abs_path)
@@ -118,6 +145,8 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                 elif copyrights["copyrights"]:
                     # remove duplicates
                     copyrights = list(set(copyrights["copyrights"]))
+                else:
+                    copyrights = []
                 package.copyright = ", ".join(copyrights)
             updated_metadata.append(package)
         return updated_metadata
