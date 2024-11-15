@@ -2,6 +2,7 @@ from dataclasses import dataclass
 import tempfile
 import os
 from shlex import quote
+from typing import Iterator
 import scancode
 
 
@@ -12,19 +13,19 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 )
 
 
-def list_dir(dest_path):
+def list_dir(dest_path: str) -> list[str]:
     return os.listdir(dest_path)
 
 
-def walk_directory(dest_path):
+def walk_directory(dest_path: str) -> Iterator[tuple[str, list[str], list[str]]]:
     return os.walk(dest_path)
 
 
 class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
     def __init__(
         self,
-        license_source_files: list[str] = None,
-        copyright_source_files: list[str] = None,
+        license_source_files: list[str] | None = None,
+        copyright_source_files: list[str] | None = None,
     ) -> None:
         self.purl_parser = PurlParser()
         # create a temporary directory for github shallow clones
@@ -98,7 +99,7 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     package.license = ", ".join(clean_licenses)
             # copyright
             if not package.copyright:
-                copyrights = {
+                copyrights: dict[str, list[str]] = {
                     "holders": [],
                     "authors": [],
                     "copyrights": [],
@@ -118,36 +119,30 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                         file_abs_path = f"{root}/{file}"
                         copyright = scancode.api.get_copyrights(file_abs_path)
                         if copyright["holders"]:
-                            [
+                            for c in copyright["holders"]:
                                 copyrights["holders"].append(c["holder"])
-                                for c in copyright["holders"]
-                            ]
                         elif copyright["authors"]:
-                            [
+                            for c in copyright["authors"]:
                                 copyrights["authors"].append(c["author"])
-                                for c in copyright["authors"]
-                            ]
                         elif copyright["copyrights"]:
-                            # map all copyrights field to a list
-                            [
+                            for c in copyright["copyrights"]:
                                 copyrights["copyrights"].append(c["copyright"])
-                                for c in copyright["copyrights"]
-                            ]
+                filtered_copyrights = []
                 # If we find a declaration of copyright holders, we use that.
                 if copyrights["holders"]:
                     # remove duplicates
-                    copyrights = list(set(copyrights["holders"]))
+                    filtered_copyrights = list(set(copyrights["holders"]))
                 # If we do not find a declaration of holders, we use the authors.
                 elif copyrights["authors"]:
                     # remove duplicates
-                    copyrights = list(set(copyrights["authors"]))
+                    filtered_copyrights = list(set(copyrights["authors"]))
                 # If we do not find a declaration of holders or authors, we use the copyrights disclaimers in raw.
                 elif copyrights["copyrights"]:
                     # remove duplicates
-                    copyrights = list(set(copyrights["copyrights"]))
+                    filtered_copyrights = list(set(copyrights["copyrights"]))
                 else:
-                    copyrights = []
-                package.copyright = ", ".join(copyrights)
+                    filtered_copyrights = []
+                package.copyright = ", ".join(filtered_copyrights)
             updated_metadata.append(package)
         return updated_metadata
 

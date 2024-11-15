@@ -24,7 +24,7 @@ from ospo_tools.report_generator.writters.csv_reporting_writter import (
     CSVReportingWritter,
 )
 
-from ospo_tools.config import default_config
+import ospo_tools.config.cli_configs as cli_config
 
 
 def main(
@@ -47,8 +47,8 @@ def main(
             GitHubSbomMetadataCollectionStrategy(github_client),
             GoLicensesMetadataCollectionStrategy(package),
             ScanCodeToolkitMetadataCollectionStrategy(
-                default_config.preset_license_file_locations,
-                default_config.preset_copyright_file_locations,
+                cli_config.default_config.preset_license_file_locations,
+                cli_config.default_config.preset_copyright_file_locations,
             ),
             ScanCodeToolkitMetadataCollectionStrategy(),
             GitHubRepositoryMetadataCollectionStrategy(github_client),
