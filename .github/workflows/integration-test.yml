@@ -1,0 +1,39 @@
+name: Run Tests to check CLIs are not fundamentally broken
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python
+        uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b #v5.3.0
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run the generate_third_party_cli.py script with the --help flag
+        run: |
+          source venv/bin/activate
+          venv/bin/generate_3rd_party_csv --help
+
+      - name: Run the generate_third_party_cli.py script against the Stratus Red Team repository
+        run: |
+          source venv/bin/activate 
+          venv/bin/generate_3rd_party_csv --only-root-project https://github.com/DataDog/stratus-red-team
