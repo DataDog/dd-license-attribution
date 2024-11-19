@@ -19,8 +19,7 @@ def test_go_licenses_collection_strategy_clones_and_run_go_license_on_init(mocke
         return_value=purl_parser_object,
     )
     temp_dir_object = mocker.Mock()
-    temp_dir_object.name = "test_temp_dir"
-    temp_dir_object.__enter__ = mocker.Mock(return_value=temp_dir_object)
+    temp_dir_object.__enter__ = mocker.Mock(return_value="test_temp_dir")
     temp_dir_object.__exit__ = mocker.Mock(return_value=None)
     temp_dir_mock = mocker.patch(
         "tempfile.TemporaryDirectory", return_value=temp_dir_object
@@ -71,8 +70,7 @@ def test_go_licenses_collection_strategy_failing_clone_raises_exception(mocker):
         return_value=purl_parser_object,
     )
     temp_dir_object = mocker.Mock()
-    temp_dir_object.name = "test_temp_dir"
-    temp_dir_object.__enter__ = mocker.Mock(return_value=temp_dir_object)
+    temp_dir_object.__enter__ = mocker.Mock(return_value="test_temp_dir")
     temp_dir_object.__exit__ = mocker.Mock(return_value=None)
     temp_dir_mock = mocker.patch(
         "tempfile.TemporaryDirectory", return_value=temp_dir_object
@@ -94,8 +92,7 @@ def test_go_licenses_collection_strategy_do_not_miss_or_replace_non_go_packages(
         return_value=purl_parser_object,
     )
     temp_dir_object = mocker.Mock()
-    temp_dir_object.name = "test_temp_dir"
-    temp_dir_object.__enter__ = mocker.Mock(return_value=temp_dir_object)
+    temp_dir_object.__enter__ = mocker.Mock(return_value="test_temp_dir")
     temp_dir_object.__exit__ = mocker.Mock(return_value=None)
     mocker.patch("tempfile.TemporaryDirectory", return_value=temp_dir_object)
 

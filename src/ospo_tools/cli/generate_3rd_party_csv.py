@@ -31,6 +31,7 @@ def main(
     package: Annotated[
         str, typer.Argument(help="The package to generate the report for.")
     ],
+    deep_scanning: Annotated[bool, typer.Option(help="Enable deep scanning.")] = False,
 ) -> None:
     """
     Generate a CSV report of third party dependencies for a given open source repository.
@@ -42,18 +43,21 @@ def main(
     else:
         github_client = GitHub(token=github_token)
 
-    metadata_collector = MetadataCollector(
-        [
-            GitHubSbomMetadataCollectionStrategy(github_client),
-            GoLicensesMetadataCollectionStrategy(package),
-            ScanCodeToolkitMetadataCollectionStrategy(
-                cli_config.default_config.preset_license_file_locations,
-                cli_config.default_config.preset_copyright_file_locations,
-            ),
-            ScanCodeToolkitMetadataCollectionStrategy(),
-            GitHubRepositoryMetadataCollectionStrategy(github_client),
-        ]
-    )
+    strategies = [
+        GitHubSbomMetadataCollectionStrategy(github_client),
+        GoLicensesMetadataCollectionStrategy(package),
+        ScanCodeToolkitMetadataCollectionStrategy(
+            cli_config.default_config.preset_license_file_locations,
+            cli_config.default_config.preset_copyright_file_locations,
+        ),
+    ]
+
+    if deep_scanning:
+        strategies.append(ScanCodeToolkitMetadataCollectionStrategy())
+
+    strategies.append(GitHubRepositoryMetadataCollectionStrategy(github_client))
+
+    metadata_collector = MetadataCollector(strategies)
     metadata = metadata_collector.collect_metadata(package)
 
     csv_reporter = ReportGenerator(CSVReportingWritter())
