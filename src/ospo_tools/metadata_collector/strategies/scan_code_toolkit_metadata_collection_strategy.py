@@ -95,8 +95,7 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                         licenses.append(license["detected_license_expression_spdx"])
                 # if we found a license, we update the package metadata
                 if licenses:
-                    clean_licenses = self.cleanup_licenses(licenses)
-                    package.license = ", ".join(clean_licenses)
+                    package.license = self.cleanup_licenses(licenses)
             # copyright
             if not package.copyright:
                 copyrights: dict[str, list[str]] = {
@@ -127,22 +126,20 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                         elif copyright["copyrights"]:
                             for c in copyright["copyrights"]:
                                 copyrights["copyrights"].append(c["copyright"])
-                filtered_copyrights = []
                 # If we find a declaration of copyright holders, we use that.
                 if copyrights["holders"]:
                     # remove duplicates
-                    filtered_copyrights = list(set(copyrights["holders"]))
+                    package.copyright = list(set(copyrights["holders"]))
                 # If we do not find a declaration of holders, we use the authors.
                 elif copyrights["authors"]:
                     # remove duplicates
-                    filtered_copyrights = list(set(copyrights["authors"]))
+                    package.copyright = list(set(copyrights["authors"]))
                 # If we do not find a declaration of holders or authors, we use the copyrights disclaimers in raw.
                 elif copyrights["copyrights"]:
                     # remove duplicates
-                    filtered_copyrights = list(set(copyrights["copyrights"]))
+                    package.copyright = list(set(copyrights["copyrights"]))
                 else:
-                    filtered_copyrights = []
-                package.copyright = ", ".join(filtered_copyrights)
+                    package.copyright = []
             updated_metadata.append(package)
         return updated_metadata
 

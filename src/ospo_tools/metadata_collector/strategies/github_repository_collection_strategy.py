@@ -24,12 +24,13 @@ class GitHubRepositoryMetadataCollectionStrategy(MetadataCollectionStrategy):
                 status, repository = self.client.repos[owner][repo].get()
                 if status == 200:
                     if not package.copyright:
-                        package.copyright = repository["owner"]["login"]
+                        package.copyright = [repository["owner"]["login"]]
                     if repository["license"] and not package.license:
                         # get the license information
-                        package.license = repository["license"].get("spdx_id", None)
-                        if package.license == "NOASSERTION":
-                            package.license = None
+                        if repository["license"].get("spdx_id", None) == "NOASSERTION":
+                            package.license = []
+                        else:
+                            package.license = [repository["license"].get("spdx_id")]
                 elif status == 301:
                     continue  # repository moved but we not supporting redirects here yet
                 else:
