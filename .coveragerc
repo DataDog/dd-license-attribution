@@ -7,4 +7,6 @@ exclude_lines =
     raise NotImplementedError
 
 [run]
-omit = src/ospo_tools/generate_3rd_party_csv.py
+omit =
+    src/ospo_tools/cli/*
+    src/ospo_tools/config/*
