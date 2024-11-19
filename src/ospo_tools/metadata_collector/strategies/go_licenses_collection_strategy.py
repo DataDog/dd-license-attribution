@@ -1,4 +1,4 @@
-import http
+import http.client
 import os
 import re
 from shlex import quote
@@ -12,11 +12,11 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 )
 
 
-def change_directory(dir_name):
+def change_directory(dir_name: str) -> None:
     os.chdir(dir_name)
 
 
-def get_current_working_directory():
+def get_current_working_directory() -> str:
     return os.getcwd()
 
 
@@ -28,14 +28,14 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
             # in the temporary directory make a shallow clone of the repository
             result = os.system(
                 "git clone --depth 1 {} {}".format(
-                    quote(repository_url), quote(temp_dir.name)
+                    quote(repository_url), quote(temp_dir)
                 )
             )
             if result != 0:
                 raise ValueError(f"Failed to clone repository: {repository_url}")
             # setting up go licenses
             cwd = get_current_working_directory()
-            change_directory(temp_dir.name)
+            change_directory(temp_dir)
             os.system("go mod download")
             os.system("go mod vendor")
             os.system("go-licenses csv . > licenses.csv")
@@ -50,7 +50,11 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
         if not self.go_licenses:
             # rename packages with no metadata associated that start with go:
             for package in metadata:
-                if not package.origin and package.name.startswith("go:"):
+                if (
+                    not package.origin
+                    and package.name is not None
+                    and package.name.startswith("go:")
+                ):
                     package.origin = self.__infer_origin_heuristic(
                         package.name.replace("go:", "")
                     )
@@ -91,6 +95,10 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
             # deal with redirections
             while response.status in (301, 302, 303, 307, 308):
                 location = response.getheader("Location")
+                if location is None:
+                    raise ValueError(
+                        f"Redirection status {response.status} without location header"
+                    )
                 if location.startswith("/"):
                     conn = http.client.HTTPSConnection(domain)
                     path = location
