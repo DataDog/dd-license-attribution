@@ -45,7 +45,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     ),
                     None,
                 )
-                version, origin, license, copyright = None, None, None, None
+                version, origin, license, copyright = None, None, [], []
 
                 # if there was previous values copy them to the new metadata
                 if old_package_metadata and not new_package_metadata:
@@ -80,7 +80,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                 ):
                     license = sbom_package["licenseDeclared"]
                 if not copyright:
-                    copyright = ""
+                    copyright = []
 
                 if new_package_metadata:  # update with new information
                     new_package_metadata.version = version

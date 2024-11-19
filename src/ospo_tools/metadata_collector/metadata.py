@@ -10,5 +10,5 @@ class Metadata:
     name: str | None  # AKA component
     version: str | None  # package version or commit hash
     origin: str | None  # package manager purl or repository url
-    license: str | None  # SPDX format license
-    copyright: str | None  # Copyright owners
+    license: list[str]  # SPDX format license
+    copyright: list[str]  # Copyright owners

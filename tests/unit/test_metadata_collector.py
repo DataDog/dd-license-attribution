@@ -18,7 +18,7 @@ def test_metadata_collector_with_no_strategies_returns_empty_metadata():
     metadata_collector = MetadataCollector([])
     metadata = metadata_collector.collect_metadata("package")
     expected = [
-        Metadata(name="", version="", origin="package", license="", copyright="")
+        Metadata(name="", version="", origin="package", license=[], copyright=[])
     ]
     assert metadata == expected
 
@@ -29,7 +29,7 @@ def test_metadata_collector_with_one_strategy_returns_metadata(mocker):
         version="version",
         origin="origin",
         license="license",
-        copyright="copyright",
+        copyright=["copyright"],
     )
     mock_strategy = mocker.Mock(spec=MetadataCollectionStrategy)
 
@@ -40,7 +40,7 @@ def test_metadata_collector_with_one_strategy_returns_metadata(mocker):
     actual_metadata = metadata_collector.collect_metadata("package")
 
     mock_strategy.augment_metadata.assert_called_once_with(
-        [Metadata(name="", version="", origin="package", license="", copyright="")]
+        [Metadata(name="", version="", origin="package", license=[], copyright=[])]
     )
     assert actual_metadata == expected
 
