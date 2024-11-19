@@ -28,5 +28,14 @@ default_config = Config(
         "CONTRIBUTORS",
         "CONTRIBUTORS.md",
         "CONTRIBUTORS.txt",
+        # Some licenses include the copyright in their license file
+        "LICENSE",
+        "LICENSE.code",
+        "LICENSE.txt",
+        "LICENSE.md",
+        "COPYING",
+        "LICENCE",  # I know it is misspelled, but it is common in the wild
+        "LICENCE.md",  # I know it is misspelled, but it is common in the wild
+        "license/LICENSE.txt",
     ],
 )
