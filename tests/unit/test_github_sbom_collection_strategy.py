@@ -19,7 +19,11 @@ def test_github_sbom_collection_strategy_returns_same_metadata_if_not_a_github_r
     )
     purl_parser_object.get_github_owner_and_repo.return_value = (None, None)
 
-    strategy = GitHubSbomMetadataCollectionStrategy(github_client=github_client_mock)
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        with_root_project=True,
+        with_transitive_dependencies=True,
+    )
 
     initial_metadata = [
         Metadata(
@@ -55,7 +59,7 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
 ):
     sbom_mock = mocker.Mock()
     sbom_mock.get.return_value = (404, "Not Found")
-    gh_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+    github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
     purl_parser_object = mocker.Mock()
     mocker.patch(
@@ -64,7 +68,11 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
     )
     purl_parser_object.get_github_owner_and_repo.return_value = ("owner", "repo")
 
-    strategy = GitHubSbomMetadataCollectionStrategy(github_client=gh_mock)
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        with_root_project=True,
+        with_transitive_dependencies=True,
+    )
 
     initial_metadata = [
         Metadata(
@@ -100,7 +108,7 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
             }
         },
     )
-    gh_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+    github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
     purl_parser_object = mocker.Mock()
     mocker.patch(
@@ -109,7 +117,11 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
     )
     purl_parser_object.get_github_owner_and_repo.return_value = ("owner", "repo")
 
-    strategy = GitHubSbomMetadataCollectionStrategy(github_client=gh_mock)
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        with_root_project=True,
+        with_transitive_dependencies=True,
+    )
 
     initial_metadata = [
         Metadata(
@@ -157,7 +169,7 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
             }
         },
     )
-    gh_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+    github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
     purl_parser_object = mocker.Mock()
     mocker.patch(
@@ -169,22 +181,26 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
         (None, None),
     ]
 
-    strategy = GitHubSbomMetadataCollectionStrategy(github_client=gh_mock)
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        with_root_project=True,
+        with_transitive_dependencies=True,
+    )
 
     initial_metadata = [
         Metadata(
             name="package1",
             version=None,
             origin="test_purl",
-            license=None,
-            copyright=None,
+            license=[],
+            copyright=[],
         ),
         Metadata(  # this package is not in the sbom shouldn't be lost
             name="package2",
             version=None,
             origin=None,
-            license=None,
-            copyright=None,
+            license=[],
+            copyright=[],
         ),
     ]
 
@@ -193,21 +209,21 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
             name="package1",
             version="2.0",
             origin="test_purl",
-            license="APACHE-2.0",
+            license=["APACHE-2.0"],
             copyright=[],
         ),
         Metadata(
             name="package2",
             version=None,
             origin=None,
-            license=None,
-            copyright=None,
+            license=[],
+            copyright=[],
         ),
         Metadata(
             name="package3",
             version="3.0",
             origin="test_purl_2",
-            license="APACHE-2.0",
+            license=["APACHE-2.0"],
             copyright=[],
         ),
     ]
@@ -223,3 +239,192 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
     )
 
     sbom_mock.get.assert_called_once_with()
+
+
+def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_false(
+    mocker,
+):
+    sbom_mock = mocker.Mock()
+    sbom_mock.get.return_value = (
+        200,
+        {
+            "sbom": {
+                "packages": [
+                    {
+                        "name": "package1",
+                        "versionInfo": "2.0",
+                        "licenseDeclared": "APACHE-2.0",
+                        "downloadLocation": "test_purl",
+                    },
+                    {
+                        "name": "package2",
+                        "versionInfo": "3.0",
+                        "licenseDeclared": "APACHE-2.0",
+                        "downloadLocation": "test_purl_2",
+                    },
+                ]
+            }
+        },
+    )
+    github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+
+    purl_parser_object = mocker.Mock()
+    mocker.patch(
+        "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.PurlParser",
+        return_value=purl_parser_object,
+    )
+    purl_parser_object.get_github_owner_and_repo.return_value = ("owner", "repo")
+
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        with_root_project=True,
+        with_transitive_dependencies=False,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            version=None,
+            origin="test_purl",
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    expected_metadata = [
+        Metadata(
+            name="package1",
+            version="2.0",
+            origin="test_purl",
+            license=["APACHE-2.0"],
+            copyright=[],
+        )
+    ]
+
+    assert updated_metadata == expected_metadata
+
+    purl_parser_object.get_github_owner_and_repo.assert_called_once_with("test_purl")
+    sbom_mock.get.assert_called_once_with()
+
+
+def test_strategy_does_not_keep_root_when_with_root_project_is_false(
+    mocker,
+):
+    sbom_mock = mocker.Mock()
+    sbom_mock.get.return_value = (
+        200,
+        {
+            "sbom": {
+                "packages": [
+                    {
+                        "name": "package1",
+                        "versionInfo": "2.0",
+                        "licenseDeclared": "APACHE-2.0",
+                        "downloadLocation": "test_purl",
+                    },
+                    {
+                        "name": "package2",
+                        "versionInfo": "3.0",
+                        "licenseDeclared": "APACHE-2.0",
+                        "downloadLocation": "test_purl_2",
+                    },
+                ]
+            }
+        },
+    )
+    github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+
+    purl_parser_object = mocker.Mock()
+    mocker.patch(
+        "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.PurlParser",
+        return_value=purl_parser_object,
+    )
+    purl_parser_object.get_github_owner_and_repo.return_value = ("owner", "repo")
+
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        with_root_project=False,
+        with_transitive_dependencies=True,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            version=None,
+            origin="test_purl",
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    expected_metadata = [
+        Metadata(
+            name="package2",
+            version="3.0",
+            origin="test_purl_2",
+            license=["APACHE-2.0"],
+            copyright=[],
+        )
+    ]
+
+    assert updated_metadata == expected_metadata
+
+
+def test_strategy_returns_empty_list_when_run_without_root_and_without_dependencies(
+    mocker,
+):
+    # This is not a useful use case, but it is a valid one and may help uncover corner case bugs
+    sbom_mock = mocker.Mock()
+    sbom_mock.get.return_value = (
+        200,
+        {
+            "sbom": {
+                "packages": [
+                    {
+                        "name": "package1",
+                        "versionInfo": "2.0",
+                        "licenseDeclared": "APACHE-2.0",
+                        "downloadLocation": "test_purl",
+                    },
+                    {
+                        "name": "package2",
+                        "versionInfo": "3.0",
+                        "licenseDeclared": "APACHE-2.0",
+                        "downloadLocation": "test_purl_2",
+                    },
+                ]
+            }
+        },
+    )
+    github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+
+    purl_parser_object = mocker.Mock()
+    purl_parser_object.get_github_owner_and_repo.return_value = ("owner", "repo")
+    mocker.patch(
+        "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.PurlParser",
+        return_value=purl_parser_object,
+    )
+
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        with_root_project=False,
+        with_transitive_dependencies=False,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            version=None,
+            origin="test_purl",
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    assert updated_metadata == []

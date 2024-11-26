@@ -9,9 +9,16 @@ from typing import Any, Tuple
 
 class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
     # constructor
-    def __init__(self, github_client: GitHub) -> None:
+    def __init__(
+        self,
+        github_client: GitHub,
+        with_root_project: bool,
+        with_transitive_dependencies: bool,
+    ) -> None:
         self.client = github_client
         self.purl_parser = PurlParser()
+        self.with_root_project = with_root_project
+        self.with_transitive_dependencies = with_transitive_dependencies
 
     # method to get the metadata
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
@@ -23,6 +30,17 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                 continue
             sbom = self.__get_github_generated_sbom(owner, repo)
             packages_in_sbom = sbom["packages"]
+            if not self.with_root_project:
+                # Exclude the root project from the metadata
+                packages_in_sbom = [
+                    pkg for pkg in packages_in_sbom if package.name != pkg["name"]
+                ]
+            if not self.with_transitive_dependencies:
+                packages_in_sbom = [
+                    pkg
+                    for pkg in packages_in_sbom
+                    if pkg["name"] in {pkg.name for pkg in metadata}
+                ]
             for sbom_package in packages_in_sbom:
                 # skipping CI dependencies declared as actoin:
                 if sbom_package["name"].startswith("action"):
@@ -78,7 +96,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     and "licenseDeclared" in sbom_package
                     and sbom_package["licenseDeclared"] != "NOASSERTION"
                 ):
-                    license = sbom_package["licenseDeclared"]
+                    license = [sbom_package["licenseDeclared"]]
                 if not copyright:
                     copyright = []
 

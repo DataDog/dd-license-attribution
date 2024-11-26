@@ -32,6 +32,12 @@ def main(
         str, typer.Argument(help="The package to generate the report for.")
     ],
     deep_scanning: Annotated[bool, typer.Option(help="Enable deep scanning.")] = False,
+    with_transitive_dependencies: Annotated[
+        bool, typer.Option(help="Include transitive dependencies.")
+    ] = True,
+    with_root_project: Annotated[
+        bool, typer.Option(help="Include the root project.")
+    ] = True,
 ) -> None:
     """
     Generate a CSV report of third party dependencies for a given open source repository.
@@ -44,7 +50,9 @@ def main(
         github_client = GitHub(token=github_token)
 
     strategies = [
-        GitHubSbomMetadataCollectionStrategy(github_client),
+        GitHubSbomMetadataCollectionStrategy(
+            github_client, with_root_project, with_transitive_dependencies
+        ),
         GoLicensesMetadataCollectionStrategy(package),
         ScanCodeToolkitMetadataCollectionStrategy(
             cli_config.default_config.preset_license_file_locations,
