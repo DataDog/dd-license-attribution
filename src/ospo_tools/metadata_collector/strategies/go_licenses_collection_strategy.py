@@ -38,7 +38,7 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
             change_directory(temp_dir)
             os.system("go mod download")
             os.system("go mod vendor")
-            os.system("go-licenses csv . > licenses.csv")
+            os.system("go-licenses csv ./... > licenses.csv")
             # read the licenses from the csv file to a list
             with open("licenses.csv", "r") as file:
                 self.go_licenses = file.readlines()
