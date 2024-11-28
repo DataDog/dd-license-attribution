@@ -2,6 +2,7 @@
 # Here we parse parameters and call the right metadata_collector and report_generator
 
 import os
+import sys
 import typer
 from agithub.GitHub import GitHub
 from typing import Annotated
@@ -31,17 +32,31 @@ def main(
     package: Annotated[
         str, typer.Argument(help="The package to generate the report for.")
     ],
-    deep_scanning: Annotated[bool, typer.Option(help="Enable deep scanning.")] = False,
-    with_transitive_dependencies: Annotated[
-        bool, typer.Option(help="Include transitive dependencies.")
-    ] = True,
-    with_root_project: Annotated[
-        bool, typer.Option(help="Include the root project.")
-    ] = True,
+    deep_scanning: Annotated[
+        bool, typer.Option("--deep-scanning", help="Enable deep scanning.")
+    ] = False,
+    only_transitive_dependencies: Annotated[
+        bool,
+        typer.Option(
+            "--only-transitive-dependencies",
+            help="Only report on transitive dependencies.",
+        ),
+    ] = False,
+    only_root_project: Annotated[
+        bool,
+        typer.Option("--only-root-project", help="Only report on the root project."),
+    ] = False,
 ) -> None:
     """
     Generate a CSV report of third party dependencies for a given open source repository.
     """
+    if only_root_project and only_transitive_dependencies:
+        print(
+            "\033[91mCannot specify both --only-root-project and --only-transitive-dependencies\033[0m",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
     github_token = os.environ.get("GITHUB_TOKEN")
 
     if not github_token:
@@ -51,7 +66,7 @@ def main(
 
     strategies = [
         GitHubSbomMetadataCollectionStrategy(
-            github_client, with_root_project, with_transitive_dependencies
+            github_client, only_root_project, only_transitive_dependencies
         ),
         GoLicensesMetadataCollectionStrategy(package),
         ScanCodeToolkitMetadataCollectionStrategy(

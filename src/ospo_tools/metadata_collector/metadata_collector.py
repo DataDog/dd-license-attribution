@@ -17,7 +17,11 @@ class MetadataCollector:
         # for each strategy in the list of strategies collect metadata and
         # pass it to next strategy
         initial_package_metadata = Metadata(
-            name="", version="", origin=package, license=[], copyright=[]
+            name=package.replace("https://", "").replace("http://", ""),
+            version="",
+            origin=package,
+            license=[],
+            copyright=[],
         )
         metadata = [initial_package_metadata]
         for strategy in self.strategies:

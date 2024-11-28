@@ -36,11 +36,16 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     pkg for pkg in packages_in_sbom if package.name != pkg["name"]
                 ]
             if not self.with_transitive_dependencies:
-                packages_in_sbom = [
+                filtered_packages = [
                     pkg
                     for pkg in packages_in_sbom
-                    if pkg["name"] in {pkg.name for pkg in metadata}
+                    if any(
+                        m_pkg.name is not None
+                        and pkg["name"].lower().startswith(m_pkg.name.lower())
+                        for m_pkg in metadata
+                    )
                 ]
+                packages_in_sbom = filtered_packages
             for sbom_package in packages_in_sbom:
                 # skipping CI dependencies declared as actoin:
                 if sbom_package["name"].startswith("action"):
