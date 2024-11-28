@@ -8,6 +8,9 @@ from agithub.GitHub import GitHub
 from typing import Annotated
 
 from ospo_tools.metadata_collector import MetadataCollector
+from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
+    MetadataCollectionStrategy,
+)
 from ospo_tools.metadata_collector.strategies.github_repository_collection_strategy import (
     GitHubRepositoryMetadataCollectionStrategy,
 )
@@ -33,6 +36,7 @@ def main(
     package: Annotated[
         str, typer.Argument(help="The package to generate the report for.")
     ],
+
     deep_scanning: Annotated[
         bool, typer.Option("--deep-scanning", help="Enable deep scanning.")
     ] = False,
@@ -47,6 +51,13 @@ def main(
         bool,
         typer.Option("--only-root-project", help="Only report on the root project."),
     ] = False,
+    go_licenses_csv_file: Annotated[
+        str,
+        typer.Option(
+            help="The path to the Go licenses CSV output file to be used as hint."
+        ),
+    ] = "",
+
 ) -> None:
     """
     Generate a CSV report of third party dependencies for a given open source repository.
@@ -71,14 +82,20 @@ def main(
     else:
         github_client = GitHub(token=github_token)
 
-    strategies = [
-        GitHubSbomMetadataCollectionStrategy(github_client, project_scope),
-        GoLicensesMetadataCollectionStrategy(package),
+    strategies: list[MetadataCollectionStrategy] = [
+        GitHubSbomMetadataCollectionStrategy(github_client),
+    ]
+    if go_licenses_csv_file:
+        with open(go_licenses_csv_file, "r") as f:
+            go_licenses_report_hint = f.read()
+        strategies.append(GoLicensesMetadataCollectionStrategy(go_licenses_report_hint))
+
+    strategies.append(
         ScanCodeToolkitMetadataCollectionStrategy(
             cli_config.default_config.preset_license_file_locations,
             cli_config.default_config.preset_copyright_file_locations,
-        ),
-    ]
+        )
+    )
 
     if deep_scanning:
         strategies.append(ScanCodeToolkitMetadataCollectionStrategy())
