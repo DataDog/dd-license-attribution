@@ -13,6 +13,7 @@ from ospo_tools.metadata_collector.strategies.github_repository_collection_strat
 )
 from ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy import (
     GitHubSbomMetadataCollectionStrategy,
+    ProjectScope,
 )
 from ospo_tools.metadata_collector.strategies.go_licenses_collection_strategy import (
     GoLicensesMetadataCollectionStrategy,
@@ -56,6 +57,12 @@ def main(
             file=sys.stderr,
         )
         sys.exit(1)
+    if not only_root_project and not only_transitive_dependencies:
+        project_scope = ProjectScope.ALL
+    elif only_root_project:
+        project_scope = ProjectScope.ONLY_ROOT_PROJECT
+    elif only_transitive_dependencies:
+        project_scope = ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
 
     github_token = os.environ.get("GITHUB_TOKEN")
 
@@ -65,9 +72,7 @@ def main(
         github_client = GitHub(token=github_token)
 
     strategies = [
-        GitHubSbomMetadataCollectionStrategy(
-            github_client, only_root_project, only_transitive_dependencies
-        ),
+        GitHubSbomMetadataCollectionStrategy(github_client, project_scope),
         GoLicensesMetadataCollectionStrategy(package),
         ScanCodeToolkitMetadataCollectionStrategy(
             cli_config.default_config.preset_license_file_locations,

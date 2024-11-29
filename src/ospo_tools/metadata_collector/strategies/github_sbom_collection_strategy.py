@@ -3,22 +3,31 @@ from ospo_tools.metadata_collector.purl_parser import PurlParser
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
+from enum import Enum
 from agithub.GitHub import GitHub
-from typing import Any, Tuple
+from typing import Any
+
+
+class ProjectScope(Enum):
+    ONLY_ROOT_PROJECT = "Only Root Project"
+    ONLY_TRANSITIVE_DEPENDENCIES = "Only Transitive Dependencies"
+    ALL = "All"
 
 
 class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
     # constructor
-    def __init__(
-        self,
-        github_client: GitHub,
-        with_root_project: bool,
-        with_transitive_dependencies: bool,
-    ) -> None:
+    def __init__(self, github_client: GitHub, project_scope: ProjectScope) -> None:
         self.client = github_client
         self.purl_parser = PurlParser()
-        self.with_root_project = with_root_project
-        self.with_transitive_dependencies = with_transitive_dependencies
+        if project_scope == ProjectScope.ONLY_ROOT_PROJECT:
+            self.with_root_project = True
+            self.with_transitive_dependencies = False
+        elif project_scope == ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES:
+            self.with_root_project = False
+            self.with_transitive_dependencies = True
+        elif project_scope == ProjectScope.ALL:
+            self.with_root_project = True
+            self.with_transitive_dependencies = True
 
     # method to get the metadata
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
