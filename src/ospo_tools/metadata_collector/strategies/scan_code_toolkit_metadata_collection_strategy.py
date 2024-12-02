@@ -17,6 +17,10 @@ def list_dir(dest_path: str) -> list[str]:
     return os.listdir(dest_path)
 
 
+def path_exists(file_path: str) -> bool:
+    return os.path.exists(file_path)
+
+
 def walk_directory(dest_path: str) -> Iterator[tuple[str, list[str], list[str]]]:
     return os.walk(dest_path)
 
@@ -65,7 +69,7 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
             repository_url = f"https://github.com/{owner}/{repo}"
             # some repositories provide more than one package, if already cloned, we skip
             dest_path = f"{self.temp_dir_name}/{owner}-{repo}"
-            if not os.path.exists(dest_path):
+            if not path_exists(dest_path):
                 result = os.system(
                     "git clone --depth 1 {} {}".format(
                         quote(repository_url), quote(dest_path)
