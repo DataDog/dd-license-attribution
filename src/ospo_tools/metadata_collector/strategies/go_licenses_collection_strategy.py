@@ -33,7 +33,7 @@ class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
         updated_metadata = []
         for package in metadata:
             for hint in self.go_licenses_from_hint:
-                if package.name == f"go:{hint['name']}":
+                if package.name == f"{hint['name']}":
                     package.license.append(hint["license"])
             updated_metadata.append(package)
         return updated_metadata
