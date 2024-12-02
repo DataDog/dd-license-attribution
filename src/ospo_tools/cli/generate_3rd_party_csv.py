@@ -25,6 +25,7 @@ from ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collect
     ScanCodeToolkitMetadataCollectionStrategy,
 )
 from ospo_tools.report_generator.report_generator import ReportGenerator
+import json
 from ospo_tools.report_generator.writters.csv_reporting_writter import (
     CSVReportingWritter,
 )
@@ -36,7 +37,6 @@ def main(
     package: Annotated[
         str, typer.Argument(help="The package to generate the report for.")
     ],
-
     deep_scanning: Annotated[
         bool, typer.Option("--deep-scanning", help="Enable deep scanning.")
     ] = False,
@@ -57,7 +57,12 @@ def main(
             help="The path to the Go licenses CSV output file to be used as hint."
         ),
     ] = "",
-
+    debug: Annotated[
+        str,
+        typer.Option(
+            help="A JSON formatted object used for debugging purposes. This is not a stable interface."
+        ),
+    ] = "",
 ) -> None:
     """
     Generate a CSV report of third party dependencies for a given open source repository.
@@ -74,6 +79,31 @@ def main(
         project_scope = ProjectScope.ONLY_ROOT_PROJECT
     elif only_transitive_dependencies:
         project_scope = ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
+    enabled_strategies = {
+        "GitHubSbomMetadataCollectionStrategy": True,
+        "GoLicensesMetadataCollectionStrategy": True,
+        "ScanCodeToolkitMetadataCollectionStrategy": True,
+        "GitHubRepositoryMetadataCollectionStrategy": True,
+    }
+
+    if debug:
+        debug_info = json.loads(debug)
+        if "enabled_strategies" in debug_info:
+            debug_enabled_strategies = debug_info["enabled_strategies"]
+            for strategy in enabled_strategies:
+                if strategy not in debug_enabled_strategies:
+                    enabled_strategies[strategy] = False
+            print(f"DEBUG: Enabled strategies: {enabled_strategies}")
+        else:
+            print(
+                "DEBUG: No strategies enabled - if you wanted to enable strategies, please provide a debug object with a list of them in the 'enabled_strategies' key."
+            )
+            print(
+                'DEBUG: Example: --debug \'{"enabled_strategies": ["GitHubSbomMetadataCollectionStrategy", "GoLicensesMetadataCollectionStrategy"]}\''
+            )
+            print(
+                "DEBUG: Available strategies: GitHubSbomMetadataCollectionStrategy, GoLicensesMetadataCollectionStrategy, ScanCodeToolkitMetadataCollectionStrategy, GitHubRepositoryMetadataCollectionStrategy"
+            )
 
     github_token = os.environ.get("GITHUB_TOKEN")
 
@@ -82,25 +112,33 @@ def main(
     else:
         github_client = GitHub(token=github_token)
 
-    strategies: list[MetadataCollectionStrategy] = [
-        GitHubSbomMetadataCollectionStrategy(github_client),
-    ]
-    if go_licenses_csv_file:
+    strategies: list[MetadataCollectionStrategy] = []
+
+    if enabled_strategies["GitHubSbomMetadataCollectionStrategy"]:
+        strategies.append(
+            GitHubSbomMetadataCollectionStrategy(github_client, project_scope)
+        )
+
+    if (
+        enabled_strategies["GoLicensesMetadataCollectionStrategy"]
+        and go_licenses_csv_file
+    ):
         with open(go_licenses_csv_file, "r") as f:
             go_licenses_report_hint = f.read()
         strategies.append(GoLicensesMetadataCollectionStrategy(go_licenses_report_hint))
 
-    strategies.append(
-        ScanCodeToolkitMetadataCollectionStrategy(
-            cli_config.default_config.preset_license_file_locations,
-            cli_config.default_config.preset_copyright_file_locations,
+    if enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"]:
+        strategies.append(
+            ScanCodeToolkitMetadataCollectionStrategy(
+                cli_config.default_config.preset_license_file_locations,
+                cli_config.default_config.preset_copyright_file_locations,
+            )
         )
-    )
+        if deep_scanning:
+            strategies.append(ScanCodeToolkitMetadataCollectionStrategy())
 
-    if deep_scanning:
-        strategies.append(ScanCodeToolkitMetadataCollectionStrategy())
-
-    strategies.append(GitHubRepositoryMetadataCollectionStrategy(github_client))
+    if enabled_strategies["GitHubRepositoryMetadataCollectionStrategy"]:
+        strategies.append(GitHubRepositoryMetadataCollectionStrategy(github_client))
 
     metadata_collector = MetadataCollector(strategies)
     metadata = metadata_collector.collect_metadata(package)
