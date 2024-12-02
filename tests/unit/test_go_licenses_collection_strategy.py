@@ -13,7 +13,7 @@ def test_go_licenses_with_non_properly_formatted_go_licenses_report_hint_raises_
 
     initial_metadata = [
         Metadata(
-            name="go:test_package", origin=None, license=[], version=None, copyright=[]
+            name="test_package", origin=None, license=[], version=None, copyright=[]
         )
     ]
 
@@ -28,14 +28,14 @@ def test_go_licenses_collection_strategy_parses_the_hint_and_uses_its_licenses(m
 
     initial_metadata = [
         Metadata(
-            name="go:package1",
+            name="package1",
             origin=None,
             license=[],
             version=[],
             copyright=[],
         ),
         Metadata(
-            name="go:package2",
+            name="package2",
             origin=None,
             license=[],
             version=[],
@@ -46,14 +46,14 @@ def test_go_licenses_collection_strategy_parses_the_hint_and_uses_its_licenses(m
     result = strategy.augment_metadata(initial_metadata)
     expected_metadata = [
         Metadata(
-            name="go:package1",
+            name="package1",
             origin=None,
             license=["license1"],
             version=[],
             copyright=[],
         ),
         Metadata(
-            name="go:package2",
+            name="package2",
             origin=None,
             license=["license2"],
             version=[],
@@ -70,14 +70,14 @@ def test_go_licenses_collection_strategy_do_not_add_hints_not_in_the_received_cl
 
     initial_metadata = [
         Metadata(
-            name="go:package1",
+            name="package1",
             origin=None,
             license=[],
             version=[],
             copyright=[],
         ),
         Metadata(
-            name="go:package3",
+            name="package3",
             origin=None,
             license=[],
             version=[],
@@ -88,14 +88,14 @@ def test_go_licenses_collection_strategy_do_not_add_hints_not_in_the_received_cl
     result = strategy.augment_metadata(initial_metadata)
     expected_metadata = [
         Metadata(
-            name="go:package1",
+            name="package1",
             origin=None,
             license=["license1"],
             version=[],
             copyright=[],
         ),
         Metadata(
-            name="go:package3",
+            name="package3",
             origin=None,
             license=[],
             version=[],
@@ -112,21 +112,21 @@ def test_licenses_collection_strategy_ignores_hints_that_are_empty_or_unknown():
 
     initial_metadata = [
         Metadata(
-            name="go:package1",
+            name="package1",
             origin=None,
             license=[],
             version=[],
             copyright=[],
         ),
         Metadata(
-            name="go:package2",
+            name="package2",
             origin=None,
             license=[],
             version=[],
             copyright=[],
         ),
         Metadata(
-            name="go:package3",
+            name="package3",
             origin=None,
             license=[],
             version=[],
