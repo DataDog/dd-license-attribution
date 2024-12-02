@@ -16,9 +16,15 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 
 def test_metadata_collector_with_no_strategies_returns_empty_metadata():
     metadata_collector = MetadataCollector([])
-    metadata = metadata_collector.collect_metadata("package")
+    metadata = metadata_collector.collect_metadata("https://package")
     expected = [
-        Metadata(name="", version="", origin="package", license=[], copyright=[])
+        Metadata(
+            name="package",
+            version="",
+            origin="https://package",
+            license=[],
+            copyright=[],
+        )
     ]
     assert metadata == expected
 
@@ -37,10 +43,18 @@ def test_metadata_collector_with_one_strategy_returns_metadata(mocker):
     expected = [mocked_metadata]
 
     metadata_collector = MetadataCollector([mock_strategy])
-    actual_metadata = metadata_collector.collect_metadata("package")
+    actual_metadata = metadata_collector.collect_metadata("http://package")
 
     mock_strategy.augment_metadata.assert_called_once_with(
-        [Metadata(name="", version="", origin="package", license=[], copyright=[])]
+        [
+            Metadata(
+                name="package",
+                version="",
+                origin="http://package",
+                license=[],
+                copyright=[],
+            )
+        ]
     )
     assert actual_metadata == expected
 

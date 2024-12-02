@@ -3,15 +3,31 @@ from ospo_tools.metadata_collector.purl_parser import PurlParser
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
+from enum import Enum
 from agithub.GitHub import GitHub
-from typing import Any, Tuple
+from typing import Any
+
+
+class ProjectScope(Enum):
+    ONLY_ROOT_PROJECT = "Only Root Project"
+    ONLY_TRANSITIVE_DEPENDENCIES = "Only Transitive Dependencies"
+    ALL = "All"
 
 
 class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
     # constructor
-    def __init__(self, github_client: GitHub) -> None:
+    def __init__(self, github_client: GitHub, project_scope: ProjectScope) -> None:
         self.client = github_client
         self.purl_parser = PurlParser()
+        if project_scope == ProjectScope.ONLY_ROOT_PROJECT:
+            self.with_root_project = True
+            self.with_transitive_dependencies = False
+        elif project_scope == ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES:
+            self.with_root_project = False
+            self.with_transitive_dependencies = True
+        elif project_scope == ProjectScope.ALL:
+            self.with_root_project = True
+            self.with_transitive_dependencies = True
 
     # method to get the metadata
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
@@ -23,6 +39,22 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                 continue
             sbom = self.__get_github_generated_sbom(owner, repo)
             packages_in_sbom = sbom["packages"]
+            if not self.with_root_project:
+                # Exclude the root project from the metadata
+                packages_in_sbom = [
+                    pkg for pkg in packages_in_sbom if package.name != pkg["name"]
+                ]
+            if not self.with_transitive_dependencies:
+                filtered_packages = [
+                    pkg
+                    for pkg in packages_in_sbom
+                    if any(
+                        m_pkg.name is not None
+                        and pkg["name"].lower().startswith(m_pkg.name.lower())
+                        for m_pkg in metadata
+                    )
+                ]
+                packages_in_sbom = filtered_packages
             for sbom_package in packages_in_sbom:
                 # skipping CI dependencies declared as actoin:
                 if sbom_package["name"].startswith("action"):
@@ -78,7 +110,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     and "licenseDeclared" in sbom_package
                     and sbom_package["licenseDeclared"] != "NOASSERTION"
                 ):
-                    license = sbom_package["licenseDeclared"]
+                    license = [sbom_package["licenseDeclared"]]
                 if not copyright:
                     copyright = []
 
