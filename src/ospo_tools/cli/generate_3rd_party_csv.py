@@ -128,14 +128,15 @@ def main(
         strategies.append(GoLicensesMetadataCollectionStrategy(go_licenses_report_hint))
 
     if enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"]:
-        strategies.append(
-            ScanCodeToolkitMetadataCollectionStrategy(
-                cli_config.default_config.preset_license_file_locations,
-                cli_config.default_config.preset_copyright_file_locations,
-            )
-        )
         if deep_scanning:
             strategies.append(ScanCodeToolkitMetadataCollectionStrategy())
+        else:
+            strategies.append(
+                ScanCodeToolkitMetadataCollectionStrategy(
+                    cli_config.default_config.preset_license_file_locations,
+                    cli_config.default_config.preset_copyright_file_locations,
+                )
+            )
 
     if enabled_strategies["GitHubRepositoryMetadataCollectionStrategy"]:
         strategies.append(GitHubRepositoryMetadataCollectionStrategy(github_client))
