@@ -173,19 +173,19 @@ def test_scancode_toolkit_collection_strategy_with_github_repository_failing_clo
 
 
 def mock_get_copyrights_side_effect(path):
-    if path == "test_path_1/copy1":
+    if path == "test_temp_dir/owner-repo/copy1":
         return {
             "holders": [{"holder": "Datadog Inc."}],
             "authors": [{"author": "Datadog Authors"}],
             "copyrights": [{"copyright": "Datadog Inc. 2024"}],
         }
-    elif path == "test_path_2/COPY2":
+    elif path == "test_temp_dir/owner-repo/test_path_2/COPY2":
         return {
             "holders": [],
             "authors": [{"author": "Datadog Authors"}],
             "copyrights": [{"copyright": "Datadog Inc. 2024"}],
         }
-    elif path == "test_path_3/copy1":
+    elif path == "test_temp_dir/owner-repo/test_path_3/copy1":
         return {
             "holders": [],
             "authors": [],
@@ -260,21 +260,21 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
     mock_walk_return_value_side_effect = [
         [
             (
-                "test_path_1",
+                "test_temp_dir/owner-repo",
                 [],
                 ["test_1", "test_2", "copy1", "COPY2"],
             ),
         ],
         [
             (
-                "test_path_2",
+                "test_temp_dir/owner-repo/test_path_2",
                 [],
                 ["test_3", "test_4", "copy1", "COPY2"],
             ),
         ],
         [
             (
-                "test_path_3",
+                "test_temp_dir/owner-repo/test_path_3",
                 [],
                 ["test_5", "test_6", "copy1", "COPY2"],
             ),
@@ -339,12 +339,12 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
 
     scancode_api_mock.get_copyrights.assert_has_calls(
         [
-            call("test_path_1/copy1"),
-            call("test_path_1/COPY2"),
-            call("test_path_2/copy1"),
-            call("test_path_2/COPY2"),
-            call("test_path_3/copy1"),
-            call("test_path_3/COPY2"),
+            call("test_temp_dir/owner-repo/copy1"),
+            call("test_temp_dir/owner-repo/COPY2"),
+            call("test_temp_dir/owner-repo/test_path_2/copy1"),
+            call("test_temp_dir/owner-repo/test_path_2/COPY2"),
+            call("test_temp_dir/owner-repo/test_path_3/copy1"),
+            call("test_temp_dir/owner-repo/test_path_3/COPY2"),
         ]
     )
 
@@ -408,21 +408,21 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
     mock_walk_return_value_side_effect = [
         [
             (
-                "test_path_1",
+                "test_temp_dir/owner-repo",
                 [],
                 ["test_1", "test_2", "copy1", "COPY2"],
             ),
         ],
         [
             (
-                "test_path_2",
+                "test_temp_dir/owner-repo/test_path_2",
                 [],
                 ["test_3", "test_4", "copy1", "COPY2"],
             ),
         ],
         [
             (
-                "test_path_3",
+                "test_temp_dir/owner-repo/test_path_3",
                 [],
                 ["test_5", "test_6", "copy1", "COPY2"],
             ),
@@ -487,18 +487,18 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
 
     scancode_api_mock.get_copyrights.assert_has_calls(
         [
-            call("test_path_1/test_1"),
-            call("test_path_1/test_2"),
-            call("test_path_1/copy1"),
-            call("test_path_1/COPY2"),
-            call("test_path_2/test_3"),
-            call("test_path_2/test_4"),
-            call("test_path_2/copy1"),
-            call("test_path_2/COPY2"),
-            call("test_path_3/test_5"),
-            call("test_path_3/test_6"),
-            call("test_path_3/copy1"),
-            call("test_path_3/COPY2"),
+            call("test_temp_dir/owner-repo/test_1"),
+            call("test_temp_dir/owner-repo/test_2"),
+            call("test_temp_dir/owner-repo/copy1"),
+            call("test_temp_dir/owner-repo/COPY2"),
+            call("test_temp_dir/owner-repo/test_path_2/test_3"),
+            call("test_temp_dir/owner-repo/test_path_2/test_4"),
+            call("test_temp_dir/owner-repo/test_path_2/copy1"),
+            call("test_temp_dir/owner-repo/test_path_2/COPY2"),
+            call("test_temp_dir/owner-repo/test_path_3/test_5"),
+            call("test_temp_dir/owner-repo/test_path_3/test_6"),
+            call("test_temp_dir/owner-repo/test_path_3/copy1"),
+            call("test_temp_dir/owner-repo/test_path_3/COPY2"),
         ]
     )
 
