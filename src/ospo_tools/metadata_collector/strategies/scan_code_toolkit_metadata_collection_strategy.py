@@ -13,16 +13,16 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 )
 
 
-def list_dir(clone_path: str) -> list[str]:
-    return os.listdir(clone_path)
+def list_dir(path: str) -> list[str]:
+    return os.listdir(path)
 
 
 def path_exists(file_path: str) -> bool:
     return os.path.exists(file_path)
 
 
-def walk_directory(clone_path: str) -> Iterator[tuple[str, list[str], list[str]]]:
-    return os.walk(clone_path)
+def walk_directory(path: str) -> Iterator[tuple[str, list[str], list[str]]]:
+    return os.walk(path)
 
 
 class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
