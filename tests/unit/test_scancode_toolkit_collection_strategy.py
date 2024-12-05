@@ -45,9 +45,9 @@ def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos
     mocker,
 ):
     purl_parser_object = mocker.Mock()
-    purl_parser_object.get_github_owner_and_repo.side_effect = [
-        (None, None),
-        ("owner", "repo"),
+    purl_parser_object.get_github_owner_repo_path.side_effect = [
+        (None, None, None),
+        ("owner", "repo", ""),
     ]
     mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.PurlParser",
@@ -123,7 +123,7 @@ def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos
 
     assert updated_metadata == expected_metadata
 
-    purl_parser_object.get_github_owner_and_repo.assert_has_calls(
+    purl_parser_object.get_github_owner_repo_path.assert_has_calls(
         [
             mocker.call("non_githubt_test_purl"),
             mocker.call("github_test_purl"),
@@ -139,8 +139,8 @@ def test_scancode_toolkit_collection_strategy_with_github_repository_failing_clo
     mocker,
 ):
     purl_parser_object = mocker.Mock()
-    purl_parser_object.get_github_owner_and_repo.side_effect = [
-        ("owner", "repo"),
+    purl_parser_object.get_github_owner_repo_path.side_effect = [
+        ("owner", "repo", ""),
     ]
     mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.PurlParser",
@@ -173,21 +173,27 @@ def test_scancode_toolkit_collection_strategy_with_github_repository_failing_clo
 
 
 def mock_get_copyrights_side_effect(path):
-    if path == "test_path_1/copy1":
+    if path == "test_temp_dir/owner-repo/copy1":
         return {
             "holders": [{"holder": "Datadog Inc."}],
             "authors": [{"author": "Datadog Authors"}],
             "copyrights": [{"copyright": "Datadog Inc. 2024"}],
         }
-    elif path == "test_path_2/COPY2":
+    elif path == "test_temp_dir/owner-repo/test_path_2/COPY2":
         return {
             "holders": [],
             "authors": [{"author": "Datadog Authors"}],
             "copyrights": [{"copyright": "Datadog Inc. 2024"}],
         }
-    elif path == "test_path_3/copy1":
+    elif path == "test_temp_dir/owner-repo/test_path_3/copy1":
         return {
             "holders": [],
+            "authors": [],
+            "copyrights": [{"copyright": "Datadog Inc. 2024"}],
+        }
+    elif path == "test_temp_dir/owner-repo/test_path_4/copy1":
+        return {
+            "holders": [{"holder": "An individual"}],
             "authors": [],
             "copyrights": [{"copyright": "Datadog Inc. 2024"}],
         }
@@ -203,7 +209,7 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
     mocker,
 ):
     purl_parser_object = mocker.Mock()
-    purl_parser_object.get_github_owner_and_repo.return_value = ("owner", "repo")
+    purl_parser_object.get_github_owner_repo_path.return_value = ("owner", "repo", "")
     mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.PurlParser",
         return_value=purl_parser_object,
@@ -260,21 +266,21 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
     mock_walk_return_value_side_effect = [
         [
             (
-                "test_path_1",
+                "test_temp_dir/owner-repo",
                 [],
                 ["test_1", "test_2", "copy1", "COPY2"],
             ),
         ],
         [
             (
-                "test_path_2",
+                "test_temp_dir/owner-repo/test_path_2",
                 [],
                 ["test_3", "test_4", "copy1", "COPY2"],
             ),
         ],
         [
             (
-                "test_path_3",
+                "test_temp_dir/owner-repo/test_path_3",
                 [],
                 ["test_5", "test_6", "copy1", "COPY2"],
             ),
@@ -323,7 +329,7 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
 
     assert updated_metadata == expected_metadata
 
-    purl_parser_object.get_github_owner_and_repo.assert_has_calls(
+    purl_parser_object.get_github_owner_repo_path.assert_has_calls(
         [
             mocker.call("github_test_purl_2"),
             mocker.call("github_test_purl_3"),
@@ -339,12 +345,12 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
 
     scancode_api_mock.get_copyrights.assert_has_calls(
         [
-            call("test_path_1/copy1"),
-            call("test_path_1/COPY2"),
-            call("test_path_2/copy1"),
-            call("test_path_2/COPY2"),
-            call("test_path_3/copy1"),
-            call("test_path_3/COPY2"),
+            call("test_temp_dir/owner-repo/copy1"),
+            call("test_temp_dir/owner-repo/COPY2"),
+            call("test_temp_dir/owner-repo/test_path_2/copy1"),
+            call("test_temp_dir/owner-repo/test_path_2/COPY2"),
+            call("test_temp_dir/owner-repo/test_path_3/copy1"),
+            call("test_temp_dir/owner-repo/test_path_3/COPY2"),
         ]
     )
 
@@ -353,7 +359,7 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
     mocker,
 ):
     purl_parser_object = mocker.Mock()
-    purl_parser_object.get_github_owner_and_repo.return_value = ("owner", "repo")
+    purl_parser_object.get_github_owner_repo_path.return_value = ("owner", "repo", "")
     mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.PurlParser",
         return_value=purl_parser_object,
@@ -408,21 +414,21 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
     mock_walk_return_value_side_effect = [
         [
             (
-                "test_path_1",
+                "test_temp_dir/owner-repo",
                 [],
                 ["test_1", "test_2", "copy1", "COPY2"],
             ),
         ],
         [
             (
-                "test_path_2",
+                "test_temp_dir/owner-repo/test_path_2",
                 [],
                 ["test_3", "test_4", "copy1", "COPY2"],
             ),
         ],
         [
             (
-                "test_path_3",
+                "test_temp_dir/owner-repo/test_path_3",
                 [],
                 ["test_5", "test_6", "copy1", "COPY2"],
             ),
@@ -471,7 +477,7 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
 
     assert updated_metadata == expected_metadata
 
-    purl_parser_object.get_github_owner_and_repo.assert_has_calls(
+    purl_parser_object.get_github_owner_repo_path.assert_has_calls(
         [
             mocker.call("github_test_purl_2"),
             mocker.call("github_test_purl_3"),
@@ -487,28 +493,28 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
 
     scancode_api_mock.get_copyrights.assert_has_calls(
         [
-            call("test_path_1/test_1"),
-            call("test_path_1/test_2"),
-            call("test_path_1/copy1"),
-            call("test_path_1/COPY2"),
-            call("test_path_2/test_3"),
-            call("test_path_2/test_4"),
-            call("test_path_2/copy1"),
-            call("test_path_2/COPY2"),
-            call("test_path_3/test_5"),
-            call("test_path_3/test_6"),
-            call("test_path_3/copy1"),
-            call("test_path_3/COPY2"),
+            call("test_temp_dir/owner-repo/test_1"),
+            call("test_temp_dir/owner-repo/test_2"),
+            call("test_temp_dir/owner-repo/copy1"),
+            call("test_temp_dir/owner-repo/COPY2"),
+            call("test_temp_dir/owner-repo/test_path_2/test_3"),
+            call("test_temp_dir/owner-repo/test_path_2/test_4"),
+            call("test_temp_dir/owner-repo/test_path_2/copy1"),
+            call("test_temp_dir/owner-repo/test_path_2/COPY2"),
+            call("test_temp_dir/owner-repo/test_path_3/test_5"),
+            call("test_temp_dir/owner-repo/test_path_3/test_6"),
+            call("test_temp_dir/owner-repo/test_path_3/copy1"),
+            call("test_temp_dir/owner-repo/test_path_3/COPY2"),
         ]
     )
 
 
 def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(mocker):
     purl_parser_object = mocker.Mock()
-    purl_parser_object.get_github_owner_and_repo.side_effect = [
-        ("owner", "repo"),
-        ("owner2", "repo2"),
-        ("owner", "repo"),
+    purl_parser_object.get_github_owner_repo_path.side_effect = [
+        ("owner", "repo", ""),
+        ("owner2", "repo2", ""),
+        ("owner", "repo", ""),
     ]
     mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.PurlParser",
@@ -601,7 +607,7 @@ def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(moc
 
     assert updated_metadata == expected_metadata
 
-    purl_parser_object.get_github_owner_and_repo.assert_has_calls(
+    purl_parser_object.get_github_owner_repo_path.assert_has_calls(
         [
             mocker.call("github_test_purl_1"),
             mocker.call("github_test_purl_2"),
@@ -623,5 +629,114 @@ def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(moc
             call("test_temp_dir/owner-repo"),
             call("test_temp_dir/owner2-repo2"),
             call("test_temp_dir/owner-repo"),
+        ]
+    )
+
+
+def test_scancode_toolkit_collection_strategy_pathed_dependencies_are_not_scanned_at_root(
+    mocker,
+):
+    purl_parser_object = mocker.Mock()
+    purl_parser_object.get_github_owner_repo_path.return_value = (
+        "owner",
+        "repo",
+        "/test_path_4",
+    )
+    mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.PurlParser",
+        return_value=purl_parser_object,
+    )
+    temp_dir_object = mocker.Mock()
+    temp_dir_object.name = "test_temp_dir"
+    mocker.patch("tempfile.TemporaryDirectory", return_value=temp_dir_object)
+
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        license_source_files=None, copyright_source_files=None
+    )
+
+    system_mock = mocker.patch("os.system", return_value=0)
+
+    scancode_api_mock = mocker.patch("scancode.api")
+    scancode_api_mock.get_copyrights.side_effect = mock_get_copyrights_side_effect
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            version=None,
+            origin="github_test_purl_1",
+            license=["APACHE-2.0"],
+            copyright=None,
+        ),
+    ]
+
+    walk_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory"
+    )
+    mock_walk_return_value_side_effect = [
+        [
+            (
+                "test_temp_dir/owner-repo",
+                [],
+                ["test_1", "test_2", "COPY2"],
+            ),
+            (
+                "test_temp_dir/owner-repo/test_path_2",
+                [],
+                ["test_3", "test_4", "COPY2"],
+            ),
+            (
+                "test_temp_dir/owner-repo/test_path_3",
+                [],
+                ["test_5", "test_6", "COPY2"],
+            ),
+            (
+                "test_temp_dir/owner-repo/test_path_4",
+                [],
+                ["test_7", "test_8", "copy1"],
+            ),
+        ],
+    ]
+
+    walk_mock.side_effect = mock_walk_return_value_side_effect
+
+    with patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        side_effect=[False, False, True],
+    ) as mock_exists:
+        updated_metadata = strategy.augment_metadata(initial_metadata)
+        assert mock_exists.call_count == 1
+
+    expected_metadata = [
+        Metadata(
+            name="package1",
+            version=None,
+            origin="github_test_purl_1",
+            license=["APACHE-2.0"],
+            copyright=["An individual"],
+        ),
+    ]
+
+    assert updated_metadata == expected_metadata
+
+    purl_parser_object.get_github_owner_repo_path.assert_has_calls(
+        [
+            mocker.call("github_test_purl_1"),
+        ]
+    )
+    system_mock.assert_called_with(
+        "git clone --depth 1 https://github.com/owner/repo test_temp_dir/owner-repo"
+    )
+    assert system_mock.call_count == 1
+
+    walk_mock.assert_called_with("test_temp_dir/owner-repo")
+
+    scancode_api_mock.get_copyrights.assert_has_calls(
+        [
+            call("test_temp_dir/owner-repo/test_1"),
+            call("test_temp_dir/owner-repo/test_2"),
+            call("test_temp_dir/owner-repo/COPY2"),
+            call("test_temp_dir/owner-repo/test_path_4/test_7"),
+            call("test_temp_dir/owner-repo/test_path_4/test_8"),
+            call("test_temp_dir/owner-repo/test_path_4/copy1"),
         ]
     )

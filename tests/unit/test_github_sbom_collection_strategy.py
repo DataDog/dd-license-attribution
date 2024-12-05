@@ -14,11 +14,11 @@ def test_github_sbom_collection_strategy_returns_same_metadata_if_not_a_github_r
     github_client_mock = mocker.Mock(spec_set=GitHub)
     purl_parser_object = mocker.Mock()
 
+    purl_parser_object.get_github_owner_repo_path.return_value = (None, None, None)
     mocker.patch(
         "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.PurlParser",
         return_value=purl_parser_object,
     )
-    purl_parser_object.get_github_owner_and_repo.return_value = (None, None)
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
@@ -38,7 +38,7 @@ def test_github_sbom_collection_strategy_returns_same_metadata_if_not_a_github_r
     updated_metadata = strategy.augment_metadata(initial_metadata)
     assert updated_metadata == initial_metadata
 
-    purl_parser_object.get_github_owner_and_repo.assert_called_once_with(
+    purl_parser_object.get_github_owner_repo_path.assert_called_once_with(
         "not_a_github_purl"
     )
 
@@ -66,7 +66,7 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
         "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.PurlParser",
         return_value=purl_parser_object,
     )
-    purl_parser_object.get_github_owner_and_repo.return_value = ("owner", "repo")
+    purl_parser_object.get_github_owner_repo_path.return_value = ("owner", "repo", "")
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
@@ -86,7 +86,7 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
     with pytest.raises(ValueError, match="Failed to get SBOM for owner/repo"):
         strategy.augment_metadata(initial_metadata)
 
-    purl_parser_object.get_github_owner_and_repo.assert_called_once_with("test_purl")
+    purl_parser_object.get_github_owner_repo_path.assert_called_once_with("test_purl")
     sbom_mock.get.assert_called_once_with()
 
 
@@ -114,7 +114,7 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
         "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.PurlParser",
         return_value=purl_parser_object,
     )
-    purl_parser_object.get_github_owner_and_repo.return_value = ("owner", "repo")
+    purl_parser_object.get_github_owner_repo_path.return_value = ("owner", "repo", "")
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
@@ -134,7 +134,7 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
     updated_metadata = strategy.augment_metadata(initial_metadata)
     assert updated_metadata == initial_metadata
 
-    purl_parser_object.get_github_owner_and_repo.assert_called_once_with("test_purl")
+    purl_parser_object.get_github_owner_repo_path.assert_called_once_with("test_purl")
     sbom_mock.get.assert_called_once_with()
 
 
@@ -174,9 +174,9 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
         "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.PurlParser",
         return_value=purl_parser_object,
     )
-    purl_parser_object.get_github_owner_and_repo.side_effect = [
-        ("owner", "repo"),
-        (None, None),
+    purl_parser_object.get_github_owner_repo_path.side_effect = [
+        ("owner", "repo", ""),
+        (None, None, None),
     ]
 
     strategy = GitHubSbomMetadataCollectionStrategy(
@@ -228,7 +228,7 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
     updated_metadata = strategy.augment_metadata(initial_metadata)
     assert sorted(updated_metadata, key=str) == sorted(expected_metadata, key=str)
 
-    purl_parser_object.get_github_owner_and_repo.assert_has_calls(
+    purl_parser_object.get_github_owner_repo_path.assert_has_calls(
         [
             call("test_purl"),
             call(None),
@@ -270,7 +270,7 @@ def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_fals
         "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.PurlParser",
         return_value=purl_parser_object,
     )
-    purl_parser_object.get_github_owner_and_repo.return_value = ("owner", "repo")
+    purl_parser_object.get_github_owner_repo_path.return_value = ("owner", "repo", "")
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
@@ -301,7 +301,7 @@ def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_fals
 
     assert updated_metadata == expected_metadata
 
-    purl_parser_object.get_github_owner_and_repo.assert_called_once_with("test_purl")
+    purl_parser_object.get_github_owner_repo_path.assert_called_once_with("test_purl")
     sbom_mock.get.assert_called_once_with()
 
 
@@ -337,7 +337,7 @@ def test_strategy_does_not_keep_root_when_with_root_project_is_false(
         "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.PurlParser",
         return_value=purl_parser_object,
     )
-    purl_parser_object.get_github_owner_and_repo.return_value = ("owner", "repo")
+    purl_parser_object.get_github_owner_repo_path.return_value = ("owner", "repo", "")
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,

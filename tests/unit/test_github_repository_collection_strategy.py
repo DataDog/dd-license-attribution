@@ -17,7 +17,7 @@ def test_github_repository_collection_strategy_returns_same_metadata_if_not_a_gi
         "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.PurlParser",
         return_value=purl_parser_object,
     )
-    purl_parser_object.get_github_owner_and_repo.return_value = (None, None)
+    purl_parser_object.get_github_owner_repo_path.return_value = (None, None, None)
 
     strategy = GitHubRepositoryMetadataCollectionStrategy(
         github_client=github_client_mock
@@ -36,7 +36,7 @@ def test_github_repository_collection_strategy_returns_same_metadata_if_not_a_gi
     updated_metadata = strategy.augment_metadata(initial_metadata)
     assert updated_metadata == initial_metadata
 
-    purl_parser_object.get_github_owner_and_repo.assert_called_once_with(
+    purl_parser_object.get_github_owner_repo_path.assert_called_once_with(
         "not_a_github_purl"
     )
 
@@ -59,9 +59,10 @@ def test_github_repository_collection_strategy_raise_exception_if_error_calling_
         "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.PurlParser",
         return_value=purl_parser_object,
     )
-    purl_parser_object.get_github_owner_and_repo.return_value = (
+    purl_parser_object.get_github_owner_repo_path.return_value = (
         "test_owner",
         "test_repo",
+        "",
     )
 
     strategy = GitHubRepositoryMetadataCollectionStrategy(github_client=gh_mock)
@@ -82,7 +83,7 @@ def test_github_repository_collection_strategy_raise_exception_if_error_calling_
     ):
         strategy.augment_metadata(initial_metadata)
 
-    purl_parser_object.get_github_owner_and_repo.assert_called_once_with("test_purl")
+    purl_parser_object.get_github_owner_repo_path.assert_called_once_with("test_purl")
     repo_info_mock.get.assert_called_once_with()
 
 
@@ -101,9 +102,10 @@ def test_github_repository_collection_strategy_returns_uses_repo_owner_when_no_c
         "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.PurlParser",
         return_value=purl_parser_object,
     )
-    purl_parser_object.get_github_owner_and_repo.return_value = (
+    purl_parser_object.get_github_owner_repo_path.return_value = (
         "test_owner",
         "test_repo",
+        "",
     )
 
     strategy = GitHubRepositoryMetadataCollectionStrategy(github_client=gh_mock)
@@ -132,7 +134,7 @@ def test_github_repository_collection_strategy_returns_uses_repo_owner_when_no_c
 
     assert updated_metadata == expected_metadata
 
-    purl_parser_object.get_github_owner_and_repo.assert_called_once_with("test_purl")
+    purl_parser_object.get_github_owner_repo_path.assert_called_once_with("test_purl")
     repo_info_mock.get.assert_called_once_with()
 
 
@@ -151,9 +153,10 @@ def test_github_repository_collection_strategy_do_not_override_license_on_noasse
         "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.PurlParser",
         return_value=purl_parser_object,
     )
-    purl_parser_object.get_github_owner_and_repo.return_value = (
+    purl_parser_object.get_github_owner_repo_path.return_value = (
         "test_owner",
         "test_repo",
+        "",
     )
 
     strategy = GitHubRepositoryMetadataCollectionStrategy(github_client=gh_mock)
@@ -179,7 +182,7 @@ def test_github_repository_collection_strategy_do_not_override_license_on_noasse
 
     assert updated_metadata == initial_metadata
 
-    purl_parser_object.get_github_owner_and_repo.assert_has_calls(
+    purl_parser_object.get_github_owner_repo_path.assert_has_calls(
         [call("test_purl_1"), call("test_purl_2")]
     )
 
@@ -201,9 +204,10 @@ def test_github_repository_collection_strategy_do_not_override_license_if_previo
         "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.PurlParser",
         return_value=purl_parser_object,
     )
-    purl_parser_object.get_github_owner_and_repo.return_value = (
+    purl_parser_object.get_github_owner_repo_path.return_value = (
         "test_owner",
         "test_repo",
+        "",
     )
 
     strategy = GitHubRepositoryMetadataCollectionStrategy(github_client=gh_mock)
@@ -232,7 +236,7 @@ def test_github_repository_collection_strategy_do_not_override_license_if_previo
 
     assert updated_metadata == expected_metadata
 
-    purl_parser_object.get_github_owner_and_repo.assert_called_once_with("test_purl")
+    purl_parser_object.get_github_owner_repo_path.assert_called_once_with("test_purl")
     repo_info_mock.get.assert_called_once_with()
 
 
@@ -251,9 +255,10 @@ def test_github_repository_collection_strategy_do_not_override_copyright_if_prev
         "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.PurlParser",
         return_value=purl_parser_object,
     )
-    purl_parser_object.get_github_owner_and_repo.return_value = (
+    purl_parser_object.get_github_owner_repo_path.return_value = (
         "test_owner",
         "test_repo",
+        "",
     )
 
     strategy = GitHubRepositoryMetadataCollectionStrategy(github_client=gh_mock)
@@ -282,5 +287,5 @@ def test_github_repository_collection_strategy_do_not_override_copyright_if_prev
 
     assert updated_metadata == expected_metadata
 
-    purl_parser_object.get_github_owner_and_repo.assert_called_once_with("test_purl")
+    purl_parser_object.get_github_owner_repo_path.assert_called_once_with("test_purl")
     repo_info_mock.get.assert_called_once_with()

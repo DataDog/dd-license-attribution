@@ -15,7 +15,7 @@ class GitHubRepositoryMetadataCollectionStrategy(MetadataCollectionStrategy):
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = []
         for package in metadata:
-            owner, repo = self.purl_parser.get_github_owner_and_repo(package.origin)
+            owner, repo, _ = self.purl_parser.get_github_owner_repo_path(package.origin)
             if owner is None or repo is None:
                 updated_metadata.append(package)
                 continue

@@ -13,16 +13,16 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 )
 
 
-def list_dir(dest_path: str) -> list[str]:
-    return os.listdir(dest_path)
+def list_dir(path: str) -> list[str]:
+    return os.listdir(path)
 
 
 def path_exists(file_path: str) -> bool:
     return os.path.exists(file_path)
 
 
-def walk_directory(dest_path: str) -> Iterator[tuple[str, list[str], list[str]]]:
-    return os.walk(dest_path)
+def walk_directory(path: str) -> Iterator[tuple[str, list[str], list[str]]]:
+    return os.walk(path)
 
 
 class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
@@ -60,7 +60,9 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
             # otherwise we make a shallow clone of the repository
             if not package.origin and package.name is not None:
                 package.origin = package.name
-            owner, repo = self.purl_parser.get_github_owner_and_repo(package.origin)
+            owner, repo, path = self.purl_parser.get_github_owner_repo_path(
+                package.origin
+            )
             # if not github repository available, we skip for now
             if owner is None or repo is None:
                 updated_metadata.append(package)
@@ -68,11 +70,11 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
             # make the shallow clone in a temporary directory
             repository_url = f"https://github.com/{owner}/{repo}"
             # some repositories provide more than one package, if already cloned, we skip
-            dest_path = f"{self.temp_dir_name}/{owner}-{repo}"
-            if not path_exists(dest_path):
+            clone_path = f"{self.temp_dir_name}/{owner}-{repo}"
+            if not path_exists(clone_path):
                 result = os.system(
                     "git clone --depth 1 {} {}".format(
-                        quote(repository_url), quote(dest_path)
+                        quote(repository_url), quote(clone_path)
                     )
                 )
                 if result != 0:
@@ -81,16 +83,35 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                 # get list of files at the base directory of the repository to attempt to find licenses
                 # filter files to be only the ones that are in the license source files list (non case sensitive)
                 if not self.license_source_files:
-                    files = list_dir(dest_path)
+                    files = list_dir(clone_path)
+                    if (
+                        path != ""
+                        and path is not None
+                        and os.path.isdir(clone_path + path)
+                    ):
+                        for file in list_dir(clone_path + path):
+                            files.append(path + "/" + file)
                 else:
-                    files = [
+                    files_root = [
                         file
-                        for file in list_dir(dest_path)
+                        for file in list_dir(clone_path)
                         if file.lower() in self.license_source_files
                     ]
+                    files_path = []
+                    if (
+                        path != ""
+                        and path is not None
+                        and os.path.isdir(clone_path + path)
+                    ):
+                        files_path = [
+                            path + "/" + file
+                            for file in list_dir(clone_path + path)
+                            if file.lower() in self.license_source_files
+                        ]
+                    files = files_root + files_path
                 licenses = []
                 for file in files:
-                    file_abs_path = f"{dest_path}/{file}"
+                    file_abs_path = f"{clone_path}/{file}"
                     license = scancode.api.get_licenses(file_abs_path)
                     if (
                         "detected_license_expression_spdx" in license
@@ -108,16 +129,33 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     "copyrights": [],
                 }
                 # get list of all files to attempt to find copyright information
-                for root, _, all_files in walk_directory(dest_path):
+                for root, _, all_files in walk_directory(clone_path):
                     # filter the files to be only the ones that are in the copyright source files
+                    files = []
                     if not self.copyright_source_files:
-                        files = all_files
+                        if path == "":
+                            files = all_files
+                        else:
+                            if path is not None and (
+                                (root == clone_path) or (root == clone_path + path)
+                            ):
+                                files = all_files
                     else:
-                        files = [
-                            file
-                            for file in all_files
-                            if file.lower() in self.copyright_source_files
-                        ]
+                        if path == "":
+                            files = [
+                                file
+                                for file in all_files
+                                if file.lower() in self.copyright_source_files
+                            ]
+                        else:
+                            if path is not None and (
+                                (root == clone_path) or (root == clone_path + path)
+                            ):
+                                files = [
+                                    file
+                                    for file in all_files
+                                    if file.lower() in self.copyright_source_files
+                                ]
                     for file in files:
                         file_abs_path = f"{root}/{file}"
                         copyright = scancode.api.get_copyrights(file_abs_path)
