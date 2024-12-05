@@ -84,8 +84,13 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                 # filter files to be only the ones that are in the license source files list (non case sensitive)
                 if not self.license_source_files:
                     files = list_dir(clone_path)
-                    if path != "" and os.path.isdir(clone_path + path):
-                        files.append(path + "/" + list_dir(clone_path + path))
+                    if (
+                        path != ""
+                        and path is not None
+                        and os.path.isdir(clone_path + path)
+                    ):
+                        for file in list_dir(clone_path + path):
+                            files.append(path + "/" + file)
                 else:
                     files_root = [
                         file
@@ -93,7 +98,11 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                         if file.lower() in self.license_source_files
                     ]
                     files_path = []
-                    if path != "" and os.path.isdir(clone_path + path):
+                    if (
+                        path != ""
+                        and path is not None
+                        and os.path.isdir(clone_path + path)
+                    ):
                         files_path = [
                             path + "/" + file
                             for file in list_dir(clone_path + path)
@@ -127,7 +136,9 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                         if path == "":
                             files = all_files
                         else:
-                            if (root == clone_path) or (root == clone_path + path):
+                            if path is not None and (
+                                (root == clone_path) or (root == clone_path + path)
+                            ):
                                 files = all_files
                     else:
                         if path == "":
@@ -137,7 +148,9 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                                 if file.lower() in self.copyright_source_files
                             ]
                         else:
-                            if root == clone_path or root == clone_path + path:
+                            if path is not None and (
+                                (root == clone_path) or (root == clone_path + path)
+                            ):
                                 files = [
                                     file
                                     for file in all_files
