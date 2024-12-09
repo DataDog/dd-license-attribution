@@ -1,22 +1,24 @@
 from ospo_tools.metadata_collector.metadata import Metadata
-from ospo_tools.metadata_collector.purl_parser import PurlParser
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
 from agithub.GitHub import GitHub
+from giturlparse import parse as parse_git_url
 
 
 class GitHubRepositoryMetadataCollectionStrategy(MetadataCollectionStrategy):
     def __init__(self, github_client: GitHub):
         self.client = github_client
-        self.purl_parser = PurlParser()
 
     # method to get the metadata
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = []
         for package in metadata:
-            owner, repo, _ = self.purl_parser.get_github_owner_repo_path(package.origin)
-            if owner is None or repo is None:
+            parsed_url = parse_git_url(package.origin)
+            if parsed_url.valid and parsed_url.platform == "github":
+                owner = parsed_url.owner
+                repo = parsed_url.repo
+            else:
                 updated_metadata.append(package)
                 continue
             if not package.copyright or not package.license:

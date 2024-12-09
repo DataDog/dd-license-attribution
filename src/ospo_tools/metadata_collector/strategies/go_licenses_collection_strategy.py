@@ -1,12 +1,8 @@
-import http.client
 from io import StringIO
 import os
-import re
-import sys
 import csv
 
 from ospo_tools.metadata_collector.metadata import Metadata
-from ospo_tools.metadata_collector.purl_parser import PurlParser
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )

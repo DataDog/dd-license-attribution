@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import tempfile
 import os
 from shlex import quote
@@ -7,10 +6,10 @@ import scancode.api
 
 
 from ospo_tools.metadata_collector.metadata import Metadata
-from ospo_tools.metadata_collector.purl_parser import PurlParser
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
+from giturlparse import parse as parse_git_url
 
 
 def list_dir(path: str) -> list[str]:
@@ -31,7 +30,6 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
         license_source_files: list[str] | None = None,
         copyright_source_files: list[str] | None = None,
     ) -> None:
-        self.purl_parser = PurlParser()
         # create a temporary directory for github shallow clones
         self.temp_dir = tempfile.TemporaryDirectory()
         # in the temporary directory make a shallow clone of the repository
@@ -60,15 +58,21 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
             # otherwise we make a shallow clone of the repository
             if not package.origin and package.name is not None:
                 package.origin = package.name
-            owner, repo, path = self.purl_parser.get_github_owner_repo_path(
-                package.origin
-            )
-            # if not github repository available, we skip for now
-            if owner is None or repo is None:
+            parsed_url = parse_git_url(package.origin)
+            if parsed_url.valid and parsed_url.platform == "github":
+                owner = parsed_url.owner
+                repo = parsed_url.repo
+                repository_url = parsed_url.url2https()
+                if parsed_url.branch and parsed_url.path:
+                    path = parsed_url.path.strip(parsed_url.branch)
+                elif parsed_url.path:
+                    path = parsed_url.path
+                else:
+                    path = ""
+
+            else:
                 updated_metadata.append(package)
                 continue
-            # make the shallow clone in a temporary directory
-            repository_url = f"https://github.com/{owner}/{repo}"
             # some repositories provide more than one package, if already cloned, we skip
             clone_path = f"{self.temp_dir_name}/{owner}-{repo}"
             if not path_exists(clone_path):

@@ -19,7 +19,8 @@ classifiers = [
 dependencies = [
     "agithub",
     "scancode-toolkit",
-    "typer"
+    "typer",
+    "giturlparse"
 ]
 
 [project.optional-dependencies]
@@ -64,4 +65,8 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "agithub.GitHub"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "giturlparse"
 ignore_missing_imports = true
