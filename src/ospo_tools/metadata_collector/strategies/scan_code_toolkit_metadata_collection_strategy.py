@@ -57,12 +57,12 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                 continue
             # otherwise we make a shallow clone of the repository
             if not package.origin and package.name is not None:
-                package.origin = package.name
+                package.origin = f"https://{package.name}"
             parsed_url = parse_git_url(package.origin)
             if parsed_url.valid and parsed_url.platform == "github":
                 owner = parsed_url.owner
                 repo = parsed_url.repo
-                repository_url = parsed_url.url2https()
+                repository_url = parsed_url.url2https
                 if parsed_url.branch and parsed_url.path:
                     path = parsed_url.path.strip(parsed_url.branch)
                 elif parsed_url.path:

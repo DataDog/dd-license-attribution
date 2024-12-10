@@ -45,9 +45,7 @@ def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos
             self.repo = repo
             self.path = None
             self.branch = None
-
-        def url2https(self):
-            return f"https://github.com/{self.owner}/{self.repo}"
+            self.url2https = f"https://github.com/{self.owner}/{self.repo}"
 
     giturlparse_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
@@ -146,9 +144,7 @@ def test_scancode_toolkit_collection_strategy_with_github_repository_failing_clo
             self.repo = repo
             self.path = None
             self.branch = None
-
-        def url2https(self):
-            return f"https://github.com/{self.owner}/{self.repo}"
+            self.url2https = f"https://github.com/{self.owner}/{self.repo}"
 
     git_url_parse_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
@@ -226,9 +222,7 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
             self.repo = repo
             self.path = None
             self.branch = None
-
-        def url2https(self):
-            return f"https://github.com/{self.owner}/{self.repo}"
+            self.url2https = f"https://github.com/{self.owner}/{self.repo}"
 
     git_url_parse_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
@@ -386,9 +380,7 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
             self.repo = repo
             self.path = None
             self.branch = None
-
-        def url2https(self):
-            return f"https://github.com/{self.owner}/{self.repo}"
+            self.url2https = f"https://github.com/{self.owner}/{self.repo}"
 
     git_url_parse_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
@@ -548,9 +540,7 @@ def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(moc
             self.repo = repo
             self.path = None
             self.branch = None
-
-        def url2https(self):
-            return f"https://github.com/{self.owner}/{self.repo}"
+            self.url2https = f"https://github.com/{self.owner}/{self.repo}"
 
     git_url_parse_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
@@ -685,9 +675,7 @@ def test_scancode_toolkit_collection_strategy_pathed_dependencies_are_not_scanne
             self.repo = repo
             self.path = path
             self.branch = None
-
-        def url2https(self):
-            return f"https://github.com/{self.owner}/{self.repo}"
+            self.url2https = f"https://github.com/{self.owner}/{self.repo}"
 
     git_url_parse_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
