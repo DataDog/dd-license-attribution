@@ -12,6 +12,20 @@ from ospo_tools.metadata_collector.strategies.abstract_collection_strategy impor
 from giturlparse import parse as parse_git_url
 
 
+def extract_ref(ref: str, url: str) -> str:
+    split_ref = ref.split("/")
+    for i in range(len(split_ref)):
+        ref_guess = "/".join(split_ref[: i + 1])
+        validated = os.system(f"git ls-remote {url} {ref_guess} | grep -q {ref_guess}")
+        if validated == 0:
+            return ref_guess
+    if len(split_ref) > 0:  # may be a hash
+        validated = os.system(f"git ls-remote {url} | grep -q {split_ref[0]}")
+        if validated == 0:
+            return split_ref[0]
+    return ""
+
+
 def list_dir(path: str) -> list[str]:
     return os.listdir(path)
 
@@ -62,11 +76,13 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
             if parsed_url.valid and parsed_url.platform == "github":
                 owner = parsed_url.owner
                 repo = parsed_url.repo
-                repository_url = parsed_url.url2https
-                if parsed_url.branch and parsed_url.path:
-                    path = parsed_url.path.strip(parsed_url.branch)
-                elif parsed_url.path:
-                    path = parsed_url.path
+                repository_url = f"{parsed_url.protocol}://{parsed_url.host}/{parsed_url.owner}/{parsed_url.repo}"
+                if parsed_url.branch and parsed_url.path_raw:
+                    # branches are guessed from url, and may fail to be correct specially on tags and branches with slashes
+                    validated_ref = extract_ref(parsed_url.branch, repository_url)
+                    path = parsed_url.path_raw.removeprefix(f"/tree/{validated_ref}")
+                elif parsed_url.path_raw:
+                    path = parsed_url.path_raw.removeprefix("/tree")
                 else:
                     path = ""
 

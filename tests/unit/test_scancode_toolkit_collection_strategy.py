@@ -43,8 +43,10 @@ def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos
             self.platform = platform
             self.owner = owner
             self.repo = repo
-            self.path = None
+            self.path_raw = None
             self.branch = None
+            self.protocol = "https"
+            self.host = "github.com"
             self.url2https = f"https://github.com/{self.owner}/{self.repo}"
 
     giturlparse_mock = mocker.patch(
@@ -142,8 +144,10 @@ def test_scancode_toolkit_collection_strategy_with_github_repository_failing_clo
             self.platform = platform
             self.owner = owner
             self.repo = repo
-            self.path = None
+            self.path_raw = None
             self.branch = None
+            self.protocol = "https"
+            self.host = "github.com"
             self.url2https = f"https://github.com/{self.owner}/{self.repo}"
 
     git_url_parse_mock = mocker.patch(
@@ -220,8 +224,10 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
             self.platform = platform
             self.owner = owner
             self.repo = repo
-            self.path = None
+            self.path_raw = None
             self.branch = None
+            self.protocol = "https"
+            self.host = "github.com"
             self.url2https = f"https://github.com/{self.owner}/{self.repo}"
 
     git_url_parse_mock = mocker.patch(
@@ -378,8 +384,10 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
             self.platform = platform
             self.owner = owner
             self.repo = repo
-            self.path = None
+            self.path_raw = None
             self.branch = None
+            self.protocol = "https"
+            self.host = "github.com"
             self.url2https = f"https://github.com/{self.owner}/{self.repo}"
 
     git_url_parse_mock = mocker.patch(
@@ -538,8 +546,10 @@ def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(moc
             self.platform = platform
             self.owner = owner
             self.repo = repo
-            self.path = None
+            self.path_raw = None
             self.branch = None
+            self.protocol = "https"
+            self.host = "github.com"
             self.url2https = f"https://github.com/{self.owner}/{self.repo}"
 
     git_url_parse_mock = mocker.patch(
@@ -673,8 +683,10 @@ def test_scancode_toolkit_collection_strategy_pathed_dependencies_are_not_scanne
             self.platform = platform
             self.owner = owner
             self.repo = repo
-            self.path = path
+            self.path_raw = path
             self.branch = None
+            self.host = "github.com"
+            self.protocol = "https"
             self.url2https = f"https://github.com/{self.owner}/{self.repo}"
 
     git_url_parse_mock = mocker.patch(

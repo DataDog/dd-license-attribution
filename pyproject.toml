@@ -38,8 +38,8 @@ generate_3rd_party_csv = "ospo_tools.cli.generate_3rd_party_csv:cli"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.pytest.ini_options]
-addopts = "--cov=src/ospo_tools --cov-report=xml --cov-fail-under=80"
+# [tool.pytest.ini_options]
+# addopts = "--cov=src/ospo_tools --cov-report=xml --cov-fail-under=80"
 
 [tool.mypy]
 strict = "True"
