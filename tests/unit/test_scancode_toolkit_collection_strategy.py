@@ -1,15 +1,69 @@
 from unittest.mock import call, patch
 
 import pytest
+import pytest_mock
 from ospo_tools.metadata_collector.metadata import Metadata
 from ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
     ScanCodeToolkitMetadataCollectionStrategy,
 )
 
 
+class GitUrlParseMock:
+    def __init__(
+        self,
+        valid: bool,
+        platform: str,
+        owner: str | None,
+        repo: str | None,
+        path: str | None,
+    ):
+        self.valid = valid
+        self.platform = platform
+        self.owner = owner
+        self.repo = repo
+        self.path_raw = path
+        self.branch = None
+        self.protocol = "https"
+        self.host = "github.com"
+        self.url2https = f"https://github.com/{self.owner}/{self.repo}"
+
+
+def mock_get_copyrights_side_effect(path: str) -> dict[str, list[dict[str, str]]]:
+    if path == "test_temp_dir/test_owner-test_repo/copy1":
+        return {
+            "holders": [{"holder": "Datadog Inc."}],
+            "authors": [{"author": "Datadog Authors"}],
+            "copyrights": [{"copyright": "Datadog Inc. 2024"}],
+        }
+    elif path == "test_temp_dir/test_owner-test_repo/test_path_2/COPY2":
+        return {
+            "holders": [],
+            "authors": [{"author": "Datadog Authors"}],
+            "copyrights": [{"copyright": "Datadog Inc. 2024"}],
+        }
+    elif path == "test_temp_dir/test_owner-test_repo/test_path_3/copy1":
+        return {
+            "holders": [],
+            "authors": [],
+            "copyrights": [{"copyright": "Datadog Inc. 2024"}],
+        }
+    elif path == "test_temp_dir/test_owner-test_repo/test_path_4/copy1":
+        return {
+            "holders": [{"holder": "An individual"}],
+            "authors": [],
+            "copyrights": [{"copyright": "Datadog Inc. 2024"}],
+        }
+    else:
+        return {
+            "holders": [],
+            "authors": [],
+            "copyrights": [],
+        }
+
+
 def test_scancode_toolkit_collection_strategy_skips_packages_with_license_and_copyright(
-    mocker,
-):
+    mocker: pytest_mock.MockFixture,
+) -> None:
     temp_dir_object = mocker.Mock()
     temp_dir_object.name = "test_temp_dir"
     mocker.patch("tempfile.TemporaryDirectory", return_value=temp_dir_object)
@@ -19,8 +73,8 @@ def test_scancode_toolkit_collection_strategy_skips_packages_with_license_and_co
             name="package1",
             version=None,
             origin="test_purl",
-            license="APACHE-2.0",
-            copyright="Datadog Inc.",
+            license=["APACHE-2.0"],
+            copyright=["Datadog Inc."],
         )
     ]
 
@@ -35,25 +89,13 @@ def test_scancode_toolkit_collection_strategy_skips_packages_with_license_and_co
 
 
 def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos(
-    mocker,
-):
-    class GitUrlParseMock:
-        def __init__(self, valid, platform, owner, repo):
-            self.valid = valid
-            self.platform = platform
-            self.owner = owner
-            self.repo = repo
-            self.path_raw = None
-            self.branch = None
-            self.protocol = "https"
-            self.host = "github.com"
-            self.url2https = f"https://github.com/{self.owner}/{self.repo}"
-
+    mocker: pytest_mock.MockFixture,
+) -> None:
     giturlparse_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
         side_effect=[
-            GitUrlParseMock(True, "gitlab", None, None),
-            GitUrlParseMock(True, "github", "test_owner", "test_repo"),
+            GitUrlParseMock(True, "gitlab", None, None, None),
+            GitUrlParseMock(True, "github", "test_owner", "test_repo", None),
         ],
     )
     temp_dir_object = mocker.Mock()
@@ -70,14 +112,14 @@ def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos
             name="package1",
             version=None,
             origin="non_githubt_test_purl",
-            license=None,
+            license=[],
             copyright=["Datadog Inc."],
         ),
         Metadata(
             name="package2",
             version=None,
             origin="github_test_purl",
-            license=None,
+            license=[],
             copyright=["Datadog Inc."],
         ),
     ]
@@ -112,7 +154,7 @@ def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos
             name="package1",
             version=None,
             origin="non_githubt_test_purl",
-            license=None,
+            license=[],
             copyright=["Datadog Inc."],
         ),
         Metadata(
@@ -136,23 +178,11 @@ def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos
 
 
 def test_scancode_toolkit_collection_strategy_with_github_repository_failing_clone_raises_exception(
-    mocker,
-):
-    class GitUrlParseMock:
-        def __init__(self, valid, platform, owner, repo):
-            self.valid = valid
-            self.platform = platform
-            self.owner = owner
-            self.repo = repo
-            self.path_raw = None
-            self.branch = None
-            self.protocol = "https"
-            self.host = "github.com"
-            self.url2https = f"https://github.com/{self.owner}/{self.repo}"
-
+    mocker: pytest_mock.MockFixture,
+) -> None:
     git_url_parse_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
-        return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
+        return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo", None),
     )
     temp_dir_object = mocker.Mock()
     temp_dir_object.name = "test_temp_dir"
@@ -164,7 +194,7 @@ def test_scancode_toolkit_collection_strategy_with_github_repository_failing_clo
             name="package1",
             version=None,
             origin="github_test_purl",
-            license=None,
+            license=[],
             copyright=["Datadog Inc."],
         ),
     ]
@@ -182,57 +212,12 @@ def test_scancode_toolkit_collection_strategy_with_github_repository_failing_clo
     git_url_parse_mock.assert_called_once_with("github_test_purl")
 
 
-def mock_get_copyrights_side_effect(path):
-    if path == "test_temp_dir/test_owner-test_repo/copy1":
-        return {
-            "holders": [{"holder": "Datadog Inc."}],
-            "authors": [{"author": "Datadog Authors"}],
-            "copyrights": [{"copyright": "Datadog Inc. 2024"}],
-        }
-    elif path == "test_temp_dir/test_owner-test_repo/test_path_2/COPY2":
-        return {
-            "holders": [],
-            "authors": [{"author": "Datadog Authors"}],
-            "copyrights": [{"copyright": "Datadog Inc. 2024"}],
-        }
-    elif path == "test_temp_dir/test_owner-test_repo/test_path_3/copy1":
-        return {
-            "holders": [],
-            "authors": [],
-            "copyrights": [{"copyright": "Datadog Inc. 2024"}],
-        }
-    elif path == "test_temp_dir/test_owner-test_repo/test_path_4/copy1":
-        return {
-            "holders": [{"holder": "An individual"}],
-            "authors": [],
-            "copyrights": [{"copyright": "Datadog Inc. 2024"}],
-        }
-    else:
-        return {
-            "holders": [],
-            "authors": [],
-            "copyrights": [],
-        }
-
-
 def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_repos(
-    mocker,
-):
-    class GitUrlParseMock:
-        def __init__(self, valid, platform, owner, repo):
-            self.valid = valid
-            self.platform = platform
-            self.owner = owner
-            self.repo = repo
-            self.path_raw = None
-            self.branch = None
-            self.protocol = "https"
-            self.host = "github.com"
-            self.url2https = f"https://github.com/{self.owner}/{self.repo}"
-
+    mocker: pytest_mock.MockFixture,
+) -> None:
     git_url_parse_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
-        return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
+        return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo", None),
     )
     temp_dir_object = mocker.Mock()
     temp_dir_object.name = "test_temp_dir"
@@ -262,28 +247,28 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
             version=None,
             origin="github_test_purl_2",
             license=["APACHE-2.0"],
-            copyright=None,
+            copyright=[],
         ),
         Metadata(
             name="package3",
             version=None,
             origin="github_test_purl_3",
             license=["APACHE-2.0"],
-            copyright=None,
+            copyright=[],
         ),
         Metadata(
             name="package4",
             version=None,
             origin="github_test_purl_4",
             license=["APACHE-2.0"],
-            copyright=None,
+            copyright=[],
         ),
     ]
 
     walk_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory"
     )
-    mock_walk_return_value_side_effect = [
+    mock_walk_return_value_side_effect: list[list[tuple[str, list[str], list[str]]]] = [
         [
             (
                 "test_temp_dir/test_owner-test_repo",
@@ -376,23 +361,12 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
 
 
 def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_are_scanned(
-    mocker,
-):
-    class GitUrlParseMock:
-        def __init__(self, valid, platform, owner, repo):
-            self.valid = valid
-            self.platform = platform
-            self.owner = owner
-            self.repo = repo
-            self.path_raw = None
-            self.branch = None
-            self.protocol = "https"
-            self.host = "github.com"
-            self.url2https = f"https://github.com/{self.owner}/{self.repo}"
+    mocker: pytest_mock.MockFixture,
+) -> None:
 
     git_url_parse_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
-        return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
+        return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo", None),
     )
     temp_dir_object = mocker.Mock()
     temp_dir_object.name = "test_temp_dir"
@@ -420,28 +394,28 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
             version=None,
             origin="github_test_purl_2",
             license=["APACHE-2.0"],
-            copyright=None,
+            copyright=[],
         ),
         Metadata(
             name="package3",
             version=None,
             origin="github_test_purl_3",
             license=["APACHE-2.0"],
-            copyright=None,
+            copyright=[],
         ),
         Metadata(
             name="package4",
             version=None,
             origin="github_test_purl_4",
             license=["APACHE-2.0"],
-            copyright=None,
+            copyright=[],
         ),
     ]
 
     walk_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory"
     )
-    mock_walk_return_value_side_effect = [
+    mock_walk_return_value_side_effect: list[list[tuple[str, list[str], list[str]]]] = [
         [
             (
                 "test_temp_dir/test_owner-test_repo",
@@ -539,25 +513,15 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
     )
 
 
-def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(mocker):
-    class GitUrlParseMock:
-        def __init__(self, valid, platform, owner, repo):
-            self.valid = valid
-            self.platform = platform
-            self.owner = owner
-            self.repo = repo
-            self.path_raw = None
-            self.branch = None
-            self.protocol = "https"
-            self.host = "github.com"
-            self.url2https = f"https://github.com/{self.owner}/{self.repo}"
-
+def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(
+    mocker: pytest_mock.MockFixture,
+) -> None:
     git_url_parse_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
         side_effect=[
-            GitUrlParseMock(True, "github", "test_owner", "test_repo"),
-            GitUrlParseMock(True, "github", "test_owner2", "test_repo2"),
-            GitUrlParseMock(True, "github", "test_owner", "test_repo"),
+            GitUrlParseMock(True, "github", "test_owner", "test_repo", None),
+            GitUrlParseMock(True, "github", "test_owner2", "test_repo2", None),
+            GitUrlParseMock(True, "github", "test_owner", "test_repo", None),
         ],
     )
 
@@ -577,21 +541,21 @@ def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(moc
             name="package1",
             version=None,
             origin="github_test_purl_1",
-            license=None,
+            license=[],
             copyright=["Datadog Inc."],
         ),
         Metadata(
             name="package2",
             version=None,
             origin="github_test_purl_2",
-            license=None,
+            license=[],
             copyright=["Datadog Inc."],
         ),
         Metadata(
             name="package3",
             version=None,
             origin="github_test_purl_1",
-            license=None,
+            license=[],
             copyright=["Datadog Inc."],
         ),
     ]
@@ -675,20 +639,8 @@ def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(moc
 
 
 def test_scancode_toolkit_collection_strategy_pathed_dependencies_are_not_scanned_at_root(
-    mocker,
-):
-    class GitUrlParseMock:
-        def __init__(self, valid, platform, owner, repo, path):
-            self.valid = valid
-            self.platform = platform
-            self.owner = owner
-            self.repo = repo
-            self.path_raw = path
-            self.branch = None
-            self.host = "github.com"
-            self.protocol = "https"
-            self.url2https = f"https://github.com/{self.owner}/{self.repo}"
-
+    mocker: pytest_mock.MockFixture,
+) -> None:
     git_url_parse_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(
@@ -714,14 +666,14 @@ def test_scancode_toolkit_collection_strategy_pathed_dependencies_are_not_scanne
             version=None,
             origin="github_test_purl_1",
             license=["APACHE-2.0"],
-            copyright=None,
+            copyright=[],
         ),
     ]
 
     walk_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory"
     )
-    mock_walk_return_value_side_effect = [
+    mock_walk_return_value_side_effect: list[list[tuple[str, list[str], list[str]]]] = [
         [
             (
                 "test_temp_dir/test_owner-test_repo",
