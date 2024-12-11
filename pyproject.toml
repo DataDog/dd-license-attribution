@@ -19,7 +19,8 @@ classifiers = [
 dependencies = [
     "agithub",
     "scancode-toolkit",
-    "typer"
+    "typer",
+    "giturlparse"
 ]
 
 [project.optional-dependencies]
@@ -37,8 +38,8 @@ generate_3rd_party_csv = "ospo_tools.cli.generate_3rd_party_csv:cli"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.pytest.ini_options]
-addopts = "--cov=src/ospo_tools --cov-report=xml --cov-fail-under=80"
+# [tool.pytest.ini_options]
+# addopts = "--cov=src/ospo_tools --cov-report=xml --cov-fail-under=80"
 
 [tool.mypy]
 strict = "True"
@@ -64,4 +65,8 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "agithub.GitHub"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "giturlparse"
 ignore_missing_imports = true

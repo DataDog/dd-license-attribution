@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import tempfile
 import os
 from shlex import quote
@@ -7,10 +6,24 @@ import scancode.api
 
 
 from ospo_tools.metadata_collector.metadata import Metadata
-from ospo_tools.metadata_collector.purl_parser import PurlParser
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
+from giturlparse import parse as parse_git_url
+
+
+def extract_ref(ref: str, url: str) -> str:
+    split_ref = ref.split("/")
+    for i in range(len(split_ref)):
+        ref_guess = "/".join(split_ref[: i + 1])
+        validated = os.system(f"git ls-remote {url} {ref_guess} | grep -q {ref_guess}")
+        if validated == 0:
+            return ref_guess
+    if len(split_ref) > 0:  # may be a hash
+        validated = os.system(f"git ls-remote {url} | grep -q {split_ref[0]}")
+        if validated == 0:
+            return split_ref[0]
+    return ""
 
 
 def list_dir(path: str) -> list[str]:
@@ -31,7 +44,6 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
         license_source_files: list[str] | None = None,
         copyright_source_files: list[str] | None = None,
     ) -> None:
-        self.purl_parser = PurlParser()
         # create a temporary directory for github shallow clones
         self.temp_dir = tempfile.TemporaryDirectory()
         # in the temporary directory make a shallow clone of the repository
@@ -59,16 +71,24 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                 continue
             # otherwise we make a shallow clone of the repository
             if not package.origin and package.name is not None:
-                package.origin = package.name
-            owner, repo, path = self.purl_parser.get_github_owner_repo_path(
-                package.origin
-            )
-            # if not github repository available, we skip for now
-            if owner is None or repo is None:
+                package.origin = f"https://{package.name}"
+            parsed_url = parse_git_url(package.origin)
+            if parsed_url.valid and parsed_url.platform == "github":
+                owner = parsed_url.owner
+                repo = parsed_url.repo
+                repository_url = f"{parsed_url.protocol}://{parsed_url.host}/{parsed_url.owner}/{parsed_url.repo}"
+                if parsed_url.branch and parsed_url.path_raw:
+                    # branches are guessed from url, and may fail to be correct specially on tags and branches with slashes
+                    validated_ref = extract_ref(parsed_url.branch, repository_url)
+                    path = parsed_url.path_raw.removeprefix(f"/tree/{validated_ref}")
+                elif parsed_url.path_raw:
+                    path = parsed_url.path_raw.removeprefix("/tree")
+                else:
+                    path = ""
+
+            else:
                 updated_metadata.append(package)
                 continue
-            # make the shallow clone in a temporary directory
-            repository_url = f"https://github.com/{owner}/{repo}"
             # some repositories provide more than one package, if already cloned, we skip
             clone_path = f"{self.temp_dir_name}/{owner}-{repo}"
             if not path_exists(clone_path):

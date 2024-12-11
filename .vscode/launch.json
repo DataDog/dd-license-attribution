@@ -12,8 +12,8 @@
             "console": "integratedTerminal",
             "args": [
                 // "--only-transitive-dependencies",
-                "--only-root-project",
-                //"--go-licenses-csv-file=../stratus-red-team/v2/test.lic",
+                // "--only-root-project",
+                "--go-licenses-csv-file=../stratus-red-team/v2/test.lic",
                 "https://github.com/DataDog/stratus-red-team",
             ],
             "env": {

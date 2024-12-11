@@ -1,11 +1,11 @@
 from ospo_tools.metadata_collector.metadata import Metadata
-from ospo_tools.metadata_collector.purl_parser import PurlParser
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
 from enum import Enum
 from agithub.GitHub import GitHub
 from typing import Any
+from giturlparse import parse as parse_git_url
 
 
 class ProjectScope(Enum):
@@ -18,7 +18,6 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
     # constructor
     def __init__(self, github_client: GitHub, project_scope: ProjectScope) -> None:
         self.client = github_client
-        self.purl_parser = PurlParser()
         if project_scope == ProjectScope.ONLY_ROOT_PROJECT:
             self.with_root_project = True
             self.with_transitive_dependencies = False
@@ -33,8 +32,11 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = []
         for package in metadata:
-            owner, repo, _ = self.purl_parser.get_github_owner_repo_path(package.origin)
-            if owner is None or repo is None:
+            parsed_url = parse_git_url(package.origin)
+            if parsed_url.valid and parsed_url.platform == "github":
+                owner = parsed_url.owner
+                repo = parsed_url.repo
+            else:
                 updated_metadata.append(package)
                 continue
             sbom = self.__get_github_generated_sbom(owner, repo)

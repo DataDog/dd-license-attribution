@@ -11,13 +11,16 @@ def test_github_repository_collection_strategy_returns_same_metadata_if_not_a_gi
     mocker,
 ):
     github_client_mock = mocker.Mock(spec_set=GitHub)
-    purl_parser_object = mocker.Mock()
 
-    mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.PurlParser",
-        return_value=purl_parser_object,
+    class GitUrlParseMock:
+        def __init__(self):
+            self.valid = False
+            self.platform = "not_github"
+
+    github_parse_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(),
     )
-    purl_parser_object.get_github_owner_repo_path.return_value = (None, None, None)
 
     strategy = GitHubRepositoryMetadataCollectionStrategy(
         github_client=github_client_mock
@@ -36,9 +39,7 @@ def test_github_repository_collection_strategy_returns_same_metadata_if_not_a_gi
     updated_metadata = strategy.augment_metadata(initial_metadata)
     assert updated_metadata == initial_metadata
 
-    purl_parser_object.get_github_owner_repo_path.assert_called_once_with(
-        "not_a_github_purl"
-    )
+    github_parse_mock.assert_called_once_with("not_a_github_purl")
 
 
 class GitHubClientMock:
@@ -54,15 +55,16 @@ def test_github_repository_collection_strategy_raise_exception_if_error_calling_
     repo_info_mock.get.return_value = (404, "Not Found")
     gh_mock = GitHubClientMock(repo_info_mock)
 
-    purl_parser_object = mocker.Mock()
-    mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.PurlParser",
-        return_value=purl_parser_object,
-    )
-    purl_parser_object.get_github_owner_repo_path.return_value = (
-        "test_owner",
-        "test_repo",
-        "",
+    class GitUrlParseMock:
+        def __init__(self):
+            self.valid = True
+            self.platform = "github"
+            self.owner = "test_owner"
+            self.repo = "test_repo"
+
+    github_parse_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(),
     )
 
     strategy = GitHubRepositoryMetadataCollectionStrategy(github_client=gh_mock)
@@ -83,7 +85,7 @@ def test_github_repository_collection_strategy_raise_exception_if_error_calling_
     ):
         strategy.augment_metadata(initial_metadata)
 
-    purl_parser_object.get_github_owner_repo_path.assert_called_once_with("test_purl")
+    github_parse_mock.assert_called_once_with("test_purl")
     repo_info_mock.get.assert_called_once_with()
 
 
@@ -97,15 +99,16 @@ def test_github_repository_collection_strategy_returns_uses_repo_owner_when_no_c
     )
     gh_mock = GitHubClientMock(repo_info_mock)
 
-    purl_parser_object = mocker.Mock()
-    mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.PurlParser",
-        return_value=purl_parser_object,
-    )
-    purl_parser_object.get_github_owner_repo_path.return_value = (
-        "test_owner",
-        "test_repo",
-        "",
+    class GitUrlParseMock:
+        def __init__(self):
+            self.valid = True
+            self.platform = "github"
+            self.owner = "test_owner"
+            self.repo = "test_repo"
+
+    github_parse_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(),
     )
 
     strategy = GitHubRepositoryMetadataCollectionStrategy(github_client=gh_mock)
@@ -134,7 +137,7 @@ def test_github_repository_collection_strategy_returns_uses_repo_owner_when_no_c
 
     assert updated_metadata == expected_metadata
 
-    purl_parser_object.get_github_owner_repo_path.assert_called_once_with("test_purl")
+    github_parse_mock.assert_called_once_with("test_purl")
     repo_info_mock.get.assert_called_once_with()
 
 
@@ -148,15 +151,16 @@ def test_github_repository_collection_strategy_do_not_override_license_on_noasse
     )
     gh_mock = GitHubClientMock(repo_info_mock)
 
-    purl_parser_object = mocker.Mock()
-    mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.PurlParser",
-        return_value=purl_parser_object,
-    )
-    purl_parser_object.get_github_owner_repo_path.return_value = (
-        "test_owner",
-        "test_repo",
-        "",
+    class GitUrlParseMock:
+        def __init__(self):
+            self.valid = True
+            self.platform = "github"
+            self.owner = "test_owner"
+            self.repo = "test_repo"
+
+    github_parse_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(),
     )
 
     strategy = GitHubRepositoryMetadataCollectionStrategy(github_client=gh_mock)
@@ -182,9 +186,7 @@ def test_github_repository_collection_strategy_do_not_override_license_on_noasse
 
     assert updated_metadata == initial_metadata
 
-    purl_parser_object.get_github_owner_repo_path.assert_has_calls(
-        [call("test_purl_1"), call("test_purl_2")]
-    )
+    github_parse_mock.assert_has_calls([call("test_purl_1"), call("test_purl_2")])
 
     assert repo_info_mock.get.call_count == 2
 
@@ -199,15 +201,16 @@ def test_github_repository_collection_strategy_do_not_override_license_if_previo
     )
     gh_mock = GitHubClientMock(repo_info_mock)
 
-    purl_parser_object = mocker.Mock()
-    mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.PurlParser",
-        return_value=purl_parser_object,
-    )
-    purl_parser_object.get_github_owner_repo_path.return_value = (
-        "test_owner",
-        "test_repo",
-        "",
+    class GitUrlParseMock:
+        def __init__(self):
+            self.valid = True
+            self.platform = "github"
+            self.owner = "test_owner"
+            self.repo = "test_repo"
+
+    github_parse_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(),
     )
 
     strategy = GitHubRepositoryMetadataCollectionStrategy(github_client=gh_mock)
@@ -236,7 +239,7 @@ def test_github_repository_collection_strategy_do_not_override_license_if_previo
 
     assert updated_metadata == expected_metadata
 
-    purl_parser_object.get_github_owner_repo_path.assert_called_once_with("test_purl")
+    github_parse_mock.assert_called_once_with("test_purl")
     repo_info_mock.get.assert_called_once_with()
 
 
@@ -250,15 +253,16 @@ def test_github_repository_collection_strategy_do_not_override_copyright_if_prev
     )
     gh_mock = GitHubClientMock(repo_info_mock)
 
-    purl_parser_object = mocker.Mock()
-    mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.PurlParser",
-        return_value=purl_parser_object,
-    )
-    purl_parser_object.get_github_owner_repo_path.return_value = (
-        "test_owner",
-        "test_repo",
-        "",
+    class GitUrlParseMock:
+        def __init__(self):
+            self.valid = True
+            self.platform = "github"
+            self.owner = "test_owner"
+            self.repo = "test_repo"
+
+    github_parse_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(),
     )
 
     strategy = GitHubRepositoryMetadataCollectionStrategy(github_client=gh_mock)
@@ -287,5 +291,5 @@ def test_github_repository_collection_strategy_do_not_override_copyright_if_prev
 
     assert updated_metadata == expected_metadata
 
-    purl_parser_object.get_github_owner_repo_path.assert_called_once_with("test_purl")
+    github_parse_mock.assert_called_once_with("test_purl")
     repo_info_mock.get.assert_called_once_with()
