@@ -8,19 +8,45 @@ import io
 
 class CSVReportingWritter(ReportingWritter):
     def write(self, metadata: list[Metadata]) -> str:
+        class RowOfData:
+            def __init__(
+                self,
+                component: str | None,
+                origin: str | None,
+                license: set[str],
+                copyright: set[str],
+            ):
+                self.component = component
+                self.origin = origin
+                self.license = license
+                self.copyright = copyright
+
         field_names = ["component", "origin", "license", "copyright"]
         output = io.StringIO()
         writer = csv.DictWriter(output, fieldnames=field_names, quoting=csv.QUOTE_ALL)
 
         writer.writeheader()
-        for row in metadata:
-            row_data = {
-                "component": row.name,
-                "origin": row.origin,
-                "license": row.license,
-                "copyright": row.copyright,
+        combined_metadata: dict[tuple[str | None, str | None], RowOfData] = {}
+        for md in metadata:
+            key = (md.name, md.origin)
+            if key not in combined_metadata:
+                combined_metadata[key] = RowOfData(
+                    md.name, md.origin, set(md.license), set(md.copyright)
+                )
+            else:
+                combined_metadata[key].license.update(md.license)
+                combined_metadata[key].copyright.update(md.copyright)
+
+        for row_data in sorted(
+            combined_metadata.values(), key=lambda x: (x.component, x.origin)
+        ):
+            prepared_row = {
+                "component": row_data.component,
+                "origin": row_data.origin,
+                "license": str(sorted(row_data.license)),
+                "copyright": str(sorted(row_data.copyright)),
             }
-            writer.writerow(row_data)
+            writer.writerow(prepared_row)
         csv_string = output.getvalue()
         output.close()
         return csv_string
