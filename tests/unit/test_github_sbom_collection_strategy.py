@@ -6,15 +6,26 @@ from ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy im
     ProjectScope,
 )
 from agithub.GitHub import GitHub
+import pytest_mock
+
+
+class GitUrlParseMock:
+    def __init__(
+        self, valid: bool, platform: str, owner: str | None, repo: str | None
+    ) -> None:
+        self.valid = valid
+        self.platform = platform
+        self.owner = owner
+        self.repo = repo
 
 
 def test_github_sbom_collection_strategy_returns_same_metadata_if_not_a_github_repo(
-    mocker,
-):
+    mocker: pytest_mock.MockFixture,
+) -> None:
     github_client_mock = mocker.Mock(spec_set=GitHub)
 
     class GitUrlParseMock:
-        def __init__(self):
+        def __init__(self) -> None:
             self.valid = True
             self.platform = "gitlab"
 
@@ -33,8 +44,8 @@ def test_github_sbom_collection_strategy_returns_same_metadata_if_not_a_github_r
             name="",
             version="",
             origin="not_a_github_purl",
-            license="",
-            copyright="",
+            license=[],
+            copyright=[],
         )
     ]
 
@@ -45,25 +56,25 @@ def test_github_sbom_collection_strategy_returns_same_metadata_if_not_a_github_r
 
 
 class SbomMockWrapper:
-    def __init__(self, sbom_input):
+    def __init__(self, sbom_input: str) -> None:
         self.sbom = sbom_input
 
 
 class GitHubClientMock:
-    def __init__(self, sbom_input):
+    def __init__(self, sbom_input: SbomMockWrapper) -> None:
         # this needs to be accessed: self.repos[owner][repo].sbom and return sbom_input
         self.repos = {"test_owner": {"test_repo": {"dependency-graph": sbom_input}}}
 
 
 def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github_sbom_api(
-    mocker,
-):
+    mocker: pytest_mock.MockFixture,
+) -> None:
     sbom_mock = mocker.Mock()
     sbom_mock.get.return_value = (404, "Not Found")
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
     class GitUrlParseMock:
-        def __init__(self):
+        def __init__(self) -> None:
             self.valid = True
             self.platform = "github"
             self.owner = "test_owner"
@@ -84,8 +95,8 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
             name="",
             version="",
             origin="test_purl",
-            license="",
-            copyright="",
+            license=[],
+            copyright=[],
         )
     ]
 
@@ -97,8 +108,8 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
 
 
 def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_returns_original_info(
-    mocker,
-):
+    mocker: pytest_mock.MockFixture,
+) -> None:
     sbom_mock = mocker.Mock()
     sbom_mock.get.return_value = (
         200,
@@ -116,7 +127,7 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
     class GitUrlParseMock:
-        def __init__(self):
+        def __init__(self) -> None:
             self.valid = True
             self.platform = "github"
             self.owner = "test_owner"
@@ -137,8 +148,8 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
             name="package1",
             version="1.0",
             origin="test_purl",
-            license="APACHE-2.0",
-            copyright="Datadog Inc.",
+            license=["APACHE-2.0"],
+            copyright=["Datadog Inc."],
         )
     ]
 
@@ -150,8 +161,8 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
 
 
 def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_package(
-    mocker,
-):
+    mocker: pytest_mock.MockFixture,
+) -> None:
     sbom_mock = mocker.Mock()
     sbom_mock.get.return_value = (
         200,
@@ -179,13 +190,6 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
         },
     )
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
-
-    class GitUrlParseMock:
-        def __init__(self, valid, platform, owner, repo):
-            self.valid = valid
-            self.platform = platform
-            self.owner = owner
-            self.repo = repo
 
     giturlparse_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
@@ -255,8 +259,8 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
 
 
 def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_false(
-    mocker,
-):
+    mocker: pytest_mock.MockFixture,
+) -> None:
     sbom_mock = mocker.Mock()
     sbom_mock.get.return_value = (
         200,
@@ -282,7 +286,7 @@ def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_fals
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
     class GitUrlParseMock:
-        def __init__(self):
+        def __init__(self) -> None:
             self.valid = True
             self.platform = "github"
             self.owner = "test_owner"
@@ -327,8 +331,8 @@ def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_fals
 
 
 def test_strategy_does_not_keep_root_when_with_root_project_is_false(
-    mocker,
-):
+    mocker: pytest_mock.MockFixture,
+) -> None:
     sbom_mock = mocker.Mock()
     sbom_mock.get.return_value = (
         200,
@@ -353,16 +357,9 @@ def test_strategy_does_not_keep_root_when_with_root_project_is_false(
     )
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
-    class GitUrlParseMock:
-        def __init__(self):
-            self.valid = True
-            self.platform = "github"
-            self.owner = "test_owner"
-            self.repo = "test_repo"
-
     github_parse_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
-        return_value=GitUrlParseMock(),
+        return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
     )
 
     strategy = GitHubSbomMetadataCollectionStrategy(

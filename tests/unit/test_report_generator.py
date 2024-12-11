@@ -1,4 +1,4 @@
-import pytest
+import pytest_mock
 from ospo_tools.metadata_collector.metadata import Metadata
 from ospo_tools.report_generator.report_generator import ReportGenerator
 from ospo_tools.report_generator.writters.abstract_reporting_writter import (
@@ -6,15 +6,17 @@ from ospo_tools.report_generator.writters.abstract_reporting_writter import (
 )
 
 
-def test_report_generator_saves_reporter_and_calls_it_when_metadata_is_passed(mocker):
+def test_report_generator_saves_reporter_and_calls_it_when_metadata_is_passed(
+    mocker: pytest_mock.MockFixture,
+) -> None:
     reporting_writer_mock = mocker.Mock(spec_set=ReportingWritter)
     metadata = [
         Metadata(
             name="test",
             version="1.0.0",
             origin="test_origin",
-            license="MIT",
-            copyright="test",
+            license=["MIT"],
+            copyright=["test"],
         )
     ]
 
