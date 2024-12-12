@@ -33,7 +33,7 @@ dev = [
 ]
 
 [project.scripts]
-generate_3rd_party_csv = "ospo_tools.cli.generate_3rd_party_csv:cli"
+get-licenses-copyrights = "ospo_tools.cli.get_licenses_copyrights:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -38,12 +38,12 @@ jobs:
       - name: Run the generate_third_party_cli.py script with the --help flag
         run: |
           source venv/bin/activate
-          venv/bin/generate_3rd_party_csv --help
+          venv/bin/get-licenses-copyrights --help
 
       - name: Run the generate_third_party_cli.py script against the Stratus Red Team repository only for root (quick fail)
         run: |
           source venv/bin/activate 
-          venv/bin/generate_3rd_party_csv --only-root-project https://github.com/DataDog/stratus-red-team
+          venv/bin/get-licenses-copyrights --only-root-project https://github.com/DataDog/stratus-red-team
 
       - name: Run the generate_third_party_cli.py script against the Stratus Red Team repository only for root
         run: |
@@ -52,4 +52,4 @@ jobs:
           $(go env GOPATH)/bin/go-licenses report ./... > /tmp/srt.licenses
           cd -
           source venv/bin/activate 
-          venv/bin/generate_3rd_party_csv --go-licenses-csv-file=/tmp/srt.licenses https://github.com/DataDog/stratus-red-team
+          venv/bin/get-licenses-copyrights --go-licenses-csv-file=/tmp/srt.licenses https://github.com/DataDog/stratus-red-team
