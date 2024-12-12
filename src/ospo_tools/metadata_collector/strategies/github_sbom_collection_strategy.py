@@ -58,8 +58,10 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                 ]
                 packages_in_sbom = filtered_packages
             for sbom_package in packages_in_sbom:
-                # skipping CI dependencies declared as actoin:
-                if sbom_package["name"].startswith("action"):
+                # skipping CI dependencies declared as action
+                if "SPDXID" in sbom_package and sbom_package["SPDXID"].startswith(
+                    "SPDXRef-githubactions-"
+                ):
                     continue
 
                 # search if there is a package with the same name in the metadata and set it in old_package_metadata variable

@@ -116,7 +116,9 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
         {
             "sbom": {
                 "packages": [
-                    {"name": "action_github_checkout"},  # this should be skipped
+                    {
+                        "SPDXID": "SPDXRef-githubactions-somthing-that-acts"
+                    },  # this should be skipped
                     {
                         "name": "package1"
                     },  # this was already in the metadata, we keep the old information since there is none new
@@ -169,7 +171,9 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
         {
             "sbom": {
                 "packages": [
-                    {"name": "action_github_checkout"},  # this should be skipped
+                    {
+                        "SPDXID": "SPDXRef-githubactions-somthing-that-acts"
+                    },  # this should be skipped
                     {  # this is the package from the original metadata with new information
                         "name": "package1",
                         "versionInfo": "2.0",
