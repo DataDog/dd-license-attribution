@@ -37,7 +37,7 @@ pip install .
 
 # Optionally you can define a GITHUB_TOKEN, if used it will raise the throttling threashold and maspeed up your generation calls to github APIs.
 export GITHUB_TOKEN=YOUR_TOKEN
-venv/bin/generate_3rd_party_csv https://github.com/owner/repo > LICENSE-3rdparty.csv
+venv/bin/get-licenses-copyrights https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
 
 ### Development
@@ -79,4 +79,4 @@ venv/bin/black src/ tests/
 - Initial set of dependencies is collected via github-sbom api.
 - Action packages are ignored.
 - Go packages use multiple heuristics to enrich information by scrapping websites until reaching a source-code repository in GitHub if available.
-- All package that are traced back to github (go or not) will try to nerich information for license and copyright, for copyright when nothing else is available, the github-owner is assigned.
+- All package that are traced back to github (go or not) will try to enrich information for license and copyright, for copyright when nothing else is available, the github-owner is assigned.
