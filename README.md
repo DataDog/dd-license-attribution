@@ -2,7 +2,7 @@
 
 A set of tools mantained by ospo to work with open source projects
 
-## generate_3rdparty-csv
+## get-licenses-copyrights
 
 This is a tool to generate 3party-license csv files used to track dependencies licenses.
 
