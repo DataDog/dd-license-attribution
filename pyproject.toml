@@ -40,7 +40,7 @@ get-licenses-copyrights = "ospo_tools.cli.get_licenses_copyrights:cli"
 where = ["src"]
 
 [tool.pytest.ini_options]
-addopts = "--cov=src/ospo_tools --cov-report=xml --cov-fail-under=80"
+addopts = "--cov=src/ospo_tools --cov-report=xml --cov-fail-under=90"
 
 [tool.mypy]
 strict = "True"
