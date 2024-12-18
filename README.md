@@ -14,7 +14,7 @@ Because, these tools require calls to public APIs, and the APIs may trottle down
 
 ### requirements
 
-- python3 - [Python install instructions](https://www.python.org/downloads/)
+- python3.9+ (in MacOS 15+ comes preinstalled) - [Python install instructions](https://www.python.org/downloads/)
 - gopkg - [GoLang and GoPkg install instructions](https://go.dev/doc/install)
 - go-licenses - [GoLicenses install instructions](https://github.com/google/go-licenses?tab=readme-ov-file#installation)
 - libmagic (only on mac):
