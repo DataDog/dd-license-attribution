@@ -7,7 +7,7 @@ name = "ospo-tools"
 version = "0.1.0"
 description = "A set of tools to help with the OSPO activities and reporting"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 authors = [
     { name = "Damian Vicino", email = "damian.vicino@datadoghq.com" },
     { name = "Ara Pulido", email = "ara.pulido@datadoghq.com" }
