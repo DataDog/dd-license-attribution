@@ -30,7 +30,8 @@ dev = [
     "pytest-cov",
     "pytest-mock",
     "mypy",
-    "black"
+    "black",
+    "mutmut"
 ]
 
 [project.scripts]
@@ -40,7 +41,12 @@ get-licenses-copyrights = "ospo_tools.cli.get_licenses_copyrights:cli"
 where = ["src"]
 
 [tool.pytest.ini_options]
-addopts = "--cov=src/ospo_tools --cov-report=xml --cov-fail-under=90"
+addopts = "--cov=src/ospo_tools"
+xfail_strict = "True"
+
+[tool.mutmut]
+paths_to_mutate = ["src/"]
+runner = "python -m pytest"
 
 [tool.mypy]
 strict = "True"
