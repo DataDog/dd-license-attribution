@@ -30,7 +30,7 @@ jobs:
         run: mypy src tests
 
       - name: Run tests with coverage
-        run: pytest tests/unit # simplified command; options are in pytest.ini
+        run: pytest --cov-report=xml --cov-fail-under=90 tests/unit
 
       - name: Upload coverage report
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 #v4.4.3

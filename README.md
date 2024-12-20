@@ -51,7 +51,7 @@ To generate test coverage reports locally the following lines need to be run in 
 
 ```bash
 # for unit tests
-pytest tests/unit
+pytest --cov-report=xml --cov-fail-under=90 tests/unit
 # for integration tests
 pytest tests/integration
 ```

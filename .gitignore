@@ -55,6 +55,9 @@ cover/
 *.mo
 *.pot
 
+# mutmut
+mutants/
+
 # Django stuff:
 *.log
 local_settings.py
