@@ -1,4 +1,3 @@
-import tempfile
 import os
 from shlex import quote
 from typing import Iterator
@@ -41,13 +40,12 @@ def walk_directory(path: str) -> Iterator[tuple[str, list[str], list[str]]]:
 class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
     def __init__(
         self,
+        cache_dir: str,
         license_source_files: list[str] | None = None,
         copyright_source_files: list[str] | None = None,
     ) -> None:
-        # create a temporary directory for github shallow clones
-        self.temp_dir = tempfile.TemporaryDirectory()
         # in the temporary directory make a shallow clone of the repository
-        self.temp_dir_name = self.temp_dir.name
+        self.cache_dir = cache_dir
         # save the source files lists
         self.license_source_files: list[str] | None = None
         if license_source_files is not None:
@@ -57,9 +55,6 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
             self.copyright_source_files = [
                 file.lower() for file in copyright_source_files
             ]
-
-    def __del__(self) -> None:
-        self.temp_dir.cleanup()
 
     # method to get the metadata
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
@@ -90,7 +85,7 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                 updated_metadata.append(package)
                 continue
             # some repositories provide more than one package, if already cloned, we skip
-            clone_path = f"{self.temp_dir_name}/{owner}-{repo}"
+            clone_path = f"{self.cache_dir}/{owner}-{repo}"
             if not path_exists(clone_path):
                 result = os.system(
                     "git clone --depth 1 {} {}".format(
