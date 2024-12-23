@@ -3,6 +3,7 @@
 
 import os
 import sys
+import tempfile
 import typer
 from agithub.GitHub import GitHub
 from typing import Annotated
@@ -51,6 +52,13 @@ def main(
         bool,
         typer.Option("--only-root-project", help="Only report on the root project."),
     ] = False,
+    cache_dir: Annotated[
+        str,
+        typer.Option(
+            "--cache-dir",
+            help="A directory to save artifacts, as cloned repositories, to reuse between runs. By default, nothing is reused and a new temp directory is created per run.",
+        ),
+    ] = "",
     go_licenses_csv_file: Annotated[
         str,
         typer.Option(
@@ -85,6 +93,12 @@ def main(
         "ScanCodeToolkitMetadataCollectionStrategy": True,
         "GitHubRepositoryMetadataCollectionStrategy": True,
     }
+
+    if cache_dir == "":
+        temp_dir = tempfile.TemporaryDirectory()
+        cache_dir = temp_dir.name
+    else:
+        temp_dir = None
 
     if debug:
         debug_info = json.loads(debug)
@@ -129,10 +143,11 @@ def main(
 
     if enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"]:
         if deep_scanning:
-            strategies.append(ScanCodeToolkitMetadataCollectionStrategy())
+            strategies.append(ScanCodeToolkitMetadataCollectionStrategy(cache_dir))
         else:
             strategies.append(
                 ScanCodeToolkitMetadataCollectionStrategy(
+                    cache_dir,
                     cli_config.default_config.preset_license_file_locations,
                     cli_config.default_config.preset_copyright_file_locations,
                 )
@@ -147,6 +162,8 @@ def main(
     csv_reporter = ReportGenerator(CSVReportingWritter())
 
     output = csv_reporter.generate_report(metadata)
+    if temp_dir is not None:
+        temp_dir.cleanup()
     print(output)
 
 
