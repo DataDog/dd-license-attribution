@@ -8,6 +8,7 @@ import typer
 from agithub.GitHub import GitHub
 from typing import Annotated
 
+from ospo_tools.artifact_management.source_code_manager import SourceCodeManager
 from ospo_tools.metadata_collector import MetadataCollector
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
@@ -53,12 +54,19 @@ def main(
         typer.Option("--only-root-project", help="Only report on the root project."),
     ] = False,
     cache_dir: Annotated[
-        str,
+        str | None,
         typer.Option(
             "--cache-dir",
             help="A directory to save artifacts, as cloned repositories, to reuse between runs. By default, nothing is reused and a new temp directory is created per run.",
         ),
-    ] = "",
+    ] = None,
+    cache_ttl: Annotated[
+        int | None,
+        typer.Option(
+            "--cache-ttl",
+            help="The time in seconds to keep the cache. Default is 86400 seconds (1 day).",
+        ),
+    ] = 86400,
     go_licenses_csv_file: Annotated[
         str,
         typer.Option(
@@ -94,7 +102,15 @@ def main(
         "GitHubRepositoryMetadataCollectionStrategy": True,
     }
 
-    if cache_dir == "":
+    if cache_dir is None and cache_ttl is not None:
+        print(
+            "\033[91mCannot specify --cache-ttl without --cache-dir\033[0m",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    if cache_ttl is None:
+        cache_ttl = 86400
+    if cache_dir is None:
         temp_dir = tempfile.TemporaryDirectory()
         cache_dir = temp_dir.name
     else:
@@ -141,13 +157,17 @@ def main(
             go_licenses_report_hint = f.read()
         strategies.append(GoLicensesMetadataCollectionStrategy(go_licenses_report_hint))
 
+    source_code_manager = SourceCodeManager(cache_dir, cache_ttl)
+
     if enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"]:
         if deep_scanning:
-            strategies.append(ScanCodeToolkitMetadataCollectionStrategy(cache_dir))
+            strategies.append(
+                ScanCodeToolkitMetadataCollectionStrategy(source_code_manager)
+            )
         else:
             strategies.append(
                 ScanCodeToolkitMetadataCollectionStrategy(
-                    cache_dir,
+                    source_code_manager,
                     cli_config.default_config.preset_license_file_locations,
                     cli_config.default_config.preset_copyright_file_locations,
                 )

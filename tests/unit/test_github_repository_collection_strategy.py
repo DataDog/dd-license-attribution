@@ -16,6 +16,7 @@ class GitUrlParseMock:
         self.platform = platform
         self.owner = owner
         self.repo = repo
+        self.github = platform == "github"
 
 
 def test_github_repository_collection_strategy_returns_same_metadata_if_not_a_github_repo(
