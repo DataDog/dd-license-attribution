@@ -21,6 +21,7 @@ dependencies = [
     "agithub",
     "scancode-toolkit",
     "typer",
+    "pytz",
     "giturlparse"
 ]
 
@@ -31,7 +32,8 @@ dev = [
     "pytest-mock",
     "mypy",
     "black",
-    "mutmut"
+    "mutmut",
+    "types-pytz"
 ]
 
 [project.scripts]
