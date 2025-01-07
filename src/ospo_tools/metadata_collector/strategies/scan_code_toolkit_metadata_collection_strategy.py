@@ -1,36 +1,17 @@
 import os
-from shlex import quote
 from typing import Iterator
 import scancode.api
 
 
+from ospo_tools.artifact_management.source_code_manager import SourceCodeManager
 from ospo_tools.metadata_collector.metadata import Metadata
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
-from giturlparse import parse as parse_git_url
-
-
-def extract_ref(ref: str, url: str) -> str:
-    split_ref = ref.split("/")
-    for i in range(len(split_ref)):
-        ref_guess = "/".join(split_ref[: i + 1])
-        validated = os.system(f"git ls-remote {url} {ref_guess} | grep -q {ref_guess}")
-        if validated == 0:
-            return ref_guess
-    if len(split_ref) > 0:  # may be a hash
-        validated = os.system(f"git ls-remote {url} | grep -q {split_ref[0]}")
-        if validated == 0:
-            return split_ref[0]
-    return ""
 
 
 def list_dir(path: str) -> list[str]:
     return os.listdir(path)
-
-
-def path_exists(file_path: str) -> bool:
-    return os.path.exists(file_path)
 
 
 def walk_directory(path: str) -> Iterator[tuple[str, list[str], list[str]]]:
@@ -40,12 +21,11 @@ def walk_directory(path: str) -> Iterator[tuple[str, list[str], list[str]]]:
 class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
     def __init__(
         self,
-        cache_dir: str,
+        source_code_manager: SourceCodeManager,
         license_source_files: list[str] | None = None,
         copyright_source_files: list[str] | None = None,
     ) -> None:
-        # in the temporary directory make a shallow clone of the repository
-        self.cache_dir = cache_dir
+        self.source_code_manager = source_code_manager
         # save the source files lists
         self.license_source_files: list[str] | None = None
         if license_source_files is not None:
@@ -61,72 +41,51 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
         updated_metadata = []
         for package in metadata:
             # if the package has a license and a copyright
-            if package.license and package.copyright:
+            if not package.origin or (package.license and package.copyright):
                 updated_metadata.append(package)
                 continue
-            # otherwise we make a shallow clone of the repository
-            if not package.origin and package.name is not None:
-                package.origin = f"https://{package.name}"
-            parsed_url = parse_git_url(package.origin)
-            if parsed_url.valid and parsed_url.platform == "github":
-                owner = parsed_url.owner
-                repo = parsed_url.repo
-                repository_url = f"{parsed_url.protocol}://{parsed_url.host}/{parsed_url.owner}/{parsed_url.repo}"
-                if parsed_url.branch and parsed_url.path_raw:
-                    # branches are guessed from url, and may fail to be correct specially on tags and branches with slashes
-                    validated_ref = extract_ref(parsed_url.branch, repository_url)
-                    path = parsed_url.path_raw.removeprefix(f"/tree/{validated_ref}")
-                elif parsed_url.path_raw:
-                    path = parsed_url.path_raw.removeprefix("/tree")
-                else:
-                    path = ""
+            # otherwise we make a shallow clone of the repository or read a cache of it
+            source_code_reference = self.source_code_manager.get_code(
+                package.origin, force_update=False
+            )
+            if not source_code_reference:
+                updated_metadata.append(package)
+                continue
 
-            else:
-                updated_metadata.append(package)
-                continue
-            # some repositories provide more than one package, if already cloned, we skip
-            clone_path = f"{self.cache_dir}/{owner}-{repo}"
-            if not path_exists(clone_path):
-                result = os.system(
-                    "git clone --depth 1 {} {}".format(
-                        quote(repository_url), quote(clone_path)
-                    )
-                )
-                if result != 0:
-                    raise ValueError(f"Failed to clone repository: {repository_url}")
             if not package.license:
                 # get list of files at the base directory of the repository to attempt to find licenses
                 # filter files to be only the ones that are in the license source files list (non case sensitive)
                 if not self.license_source_files:
-                    files = list_dir(clone_path)
+                    files = list_dir(source_code_reference.local_root_path)
                     if (
-                        path != ""
-                        and path is not None
-                        and os.path.isdir(clone_path + path)
+                        source_code_reference.local_full_path
+                        != source_code_reference.local_root_path
                     ):
-                        for file in list_dir(clone_path + path):
-                            files.append(path + "/" + file)
+                        for file in list_dir(
+                            source_code_reference.local_full_path
+                        ):  # for projects in subdirectories
+                            files.append(
+                                source_code_reference.local_full_path + "/" + file
+                            )
                 else:
-                    files_root = [
-                        file
-                        for file in list_dir(clone_path)
+                    files = [
+                        source_code_reference.local_root_path + "/" + file
+                        for file in list_dir(source_code_reference.local_root_path)
                         if file.lower() in self.license_source_files
                     ]
-                    files_path = []
                     if (
-                        path != ""
-                        and path is not None
-                        and os.path.isdir(clone_path + path)
+                        source_code_reference.local_full_path
+                        != source_code_reference.local_root_path
                     ):
-                        files_path = [
-                            path + "/" + file
-                            for file in list_dir(clone_path + path)
+                        files_subdirectory = [
+                            source_code_reference.local_full_path + "/" + file
+                            for file in list_dir(source_code_reference.local_full_path)
                             if file.lower() in self.license_source_files
                         ]
-                    files = files_root + files_path
+                        files.extend(files_subdirectory)
+                # get the license for each file
                 licenses = []
-                for file in files:
-                    file_abs_path = f"{clone_path}/{file}"
+                for file_abs_path in files:
                     license = scancode.api.get_licenses(file_abs_path)
                     if (
                         "detected_license_expression_spdx" in license
@@ -144,33 +103,22 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     "copyrights": [],
                 }
                 # get list of all files to attempt to find copyright information
-                for root, _, all_files in walk_directory(clone_path):
+                for root, _, all_files in walk_directory(
+                    source_code_reference.local_root_path
+                ):
                     # filter the files to be only the ones that are in the copyright source files
                     files = []
-                    if not self.copyright_source_files:
-                        if path == "":
+                    if (
+                        root == source_code_reference.local_root_path
+                    ) or root.startswith(source_code_reference.local_full_path):
+                        if not self.copyright_source_files:
                             files = all_files
                         else:
-                            if path is not None and (
-                                (root == clone_path) or (root == clone_path + path)
-                            ):
-                                files = all_files
-                    else:
-                        if path == "":
                             files = [
                                 file
                                 for file in all_files
                                 if file.lower() in self.copyright_source_files
                             ]
-                        else:
-                            if path is not None and (
-                                (root == clone_path) or (root == clone_path + path)
-                            ):
-                                files = [
-                                    file
-                                    for file in all_files
-                                    if file.lower() in self.copyright_source_files
-                                ]
                     for file in files:
                         file_abs_path = f"{root}/{file}"
                         copyright = scancode.api.get_copyrights(file_abs_path)
@@ -200,14 +148,15 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
             updated_metadata.append(package)
         return updated_metadata
 
-    def cleanup_licenses(self, licenses: list[str]) -> list[str]:
+    @staticmethod
+    def cleanup_licenses(licenses: list[str]) -> list[str]:
         # split the licenses by 'AND'
         ret_licenses = []
         for license in licenses:
             ret_licenses.extend(license.split(" AND "))
         # remove duplicates
         ret_licenses = list(set(ret_licenses))
-        # remove thoase unknown licenses
+        # remove the unknown licenses
         unknown_license = "LicenseRef-scancode-unknown-license-reference"
         ret_licenses = [
             license for license in ret_licenses if license != unknown_license

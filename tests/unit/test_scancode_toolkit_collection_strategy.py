@@ -1,8 +1,7 @@
-import tempfile
-from unittest.mock import call, patch
+from unittest.mock import call
 
-import pytest
 import pytest_mock
+from ospo_tools.artifact_management.source_code_manager import SourceCodeReference
 from ospo_tools.metadata_collector.metadata import Metadata
 from functools import partial
 from ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
@@ -31,27 +30,27 @@ class GitUrlParseMock:
 
 
 def mock_get_copyrights_side_effect(
-    path: str, cache_dir: str
+    path: str, prefix_dir: str
 ) -> dict[str, list[dict[str, str]]]:
-    if path == f"{cache_dir}/test_owner-test_repo/copy1":
+    if path == f"{prefix_dir}/copy1":
         return {
             "holders": [{"holder": "Datadog Inc."}],
             "authors": [{"author": "Datadog Authors"}],
             "copyrights": [{"copyright": "Datadog Inc. 2024"}],
         }
-    elif path == f"{cache_dir}/test_owner-test_repo/test_path_2/COPY2":
+    elif path == f"{prefix_dir}/test_path_2/COPY2":
         return {
             "holders": [],
             "authors": [{"author": "Datadog Authors"}],
             "copyrights": [{"copyright": "Datadog Inc. 2024"}],
         }
-    elif path == f"{cache_dir}/test_owner-test_repo/test_path_3/copy1":
+    elif path == f"{prefix_dir}/test_path_3/copy1":
         return {
             "holders": [],
             "authors": [],
             "copyrights": [{"copyright": "Datadog Inc. 2024"}],
         }
-    elif path == f"{cache_dir}/test_owner-test_repo/test_path_4/copy1":
+    elif path == f"{prefix_dir}/test_path_4/copy1":
         return {
             "holders": [{"holder": "An individual"}],
             "authors": [],
@@ -65,9 +64,9 @@ def mock_get_copyrights_side_effect(
         }
 
 
-def test_scancode_toolkit_collection_strategy_skips_packages_with_license_and_copyright() -> (
-    None
-):
+def test_scancode_toolkit_collection_strategy_skips_packages_with_license_and_copyright(
+    mocker: pytest_mock.MockFixture,
+) -> None:
     initial_metadata = [
         Metadata(
             name="package1",
@@ -80,13 +79,15 @@ def test_scancode_toolkit_collection_strategy_skips_packages_with_license_and_co
 
     license_files = ["license1", "license2"]
     copyright_files = ["copy1", "copy2"]
-    with tempfile.TemporaryDirectory() as cache_dir:
-        strategy = ScanCodeToolkitMetadataCollectionStrategy(
-            cache_dir,
-            license_source_files=license_files,
-            copyright_source_files=copyright_files,
-        )
-        updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    mock_source_code_manager = mocker.Mock()
+
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        mock_source_code_manager,
+        license_source_files=license_files,
+        copyright_source_files=copyright_files,
+    )
+    updated_metadata = strategy.augment_metadata(initial_metadata)
 
     assert updated_metadata == initial_metadata
 
@@ -94,14 +95,6 @@ def test_scancode_toolkit_collection_strategy_skips_packages_with_license_and_co
 def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    giturlparse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
-        side_effect=[
-            GitUrlParseMock(True, "gitlab", None, None, None),
-            GitUrlParseMock(True, "github", "test_owner", "test_repo", None),
-        ],
-    )
-    system_mock = mocker.patch("os.system", return_value=0)
     listdir_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
         return_value=["License1", "license2", "file1", "file2"],
@@ -132,26 +125,28 @@ def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos
     license_files = ["license1", "LICENSE2", "license3"]
     copyright_files = ["copy1", "copy2"]
 
-    with tempfile.TemporaryDirectory() as cache_dir:
-        strategy = ScanCodeToolkitMetadataCollectionStrategy(
-            cache_dir,
-            license_source_files=license_files,
-            copyright_source_files=copyright_files,
-        )
-        with patch(
-            "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
-            return_value=False,
-        ) as mock_exists:
-            updated_metadata = strategy.augment_metadata(initial_metadata)
-            mock_exists.assert_called_once_with(f"{cache_dir}/test_owner-test_repo")
-            system_mock.assert_called_once_with(
-                f"git clone --depth 1 https://github.com/test_owner/test_repo {cache_dir}/test_owner-test_repo"
-            )
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_code.side_effect = [
+        None,
+        SourceCodeReference(
+            repo_url="https://github.com/test_owner/test_repo",
+            branch="main",
+            local_root_path="cache_test/test_owner-test_repo/main/20220101-000000Z",
+            local_full_path="cache_test/test_owner-test_repo/main/20220101-000000Z",
+        ),
+    ]
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        source_code_manager_mock,
+        license_source_files=license_files,
+        copyright_source_files=copyright_files,
+    )
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
 
     scancode_api_mock.get_licenses.assert_has_calls(
         [
-            call(f"{cache_dir}/test_owner-test_repo/License1"),
-            call(f"{cache_dir}/test_owner-test_repo/license2"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/License1"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/license2"),
         ]
     )
 
@@ -174,59 +169,38 @@ def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos
 
     assert expected_metadata == updated_metadata
 
-    giturlparse_mock.assert_has_calls(
-        [mocker.call("non_github_test_purl"), mocker.call("github_test_purl")]
+    listdir_mock.assert_called_once_with(
+        "cache_test/test_owner-test_repo/main/20220101-000000Z"
     )
-    listdir_mock.assert_called_once_with(f"{cache_dir}/test_owner-test_repo")
-
-
-def test_scancode_toolkit_collection_strategy_with_github_repository_failing_clone_raises_exception(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    git_url_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
-        return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo", None),
-    )
-    mocker.patch("os.system", return_value=1)
-
-    initial_metadata = [
-        Metadata(
-            name="package1",
-            version=None,
-            origin="github_test_purl",
-            license=[],
-            copyright=["Datadog Inc."],
-        ),
-    ]
-
-    license_files = ["license1", "license2"]
-    copyright_files = ["copy1", "copy2"]
-    with tempfile.TemporaryDirectory() as cache_dir:
-        strategy = ScanCodeToolkitMetadataCollectionStrategy(
-            cache_dir,
-            license_source_files=license_files,
-            copyright_source_files=copyright_files,
-        )
-        with pytest.raises(
-            ValueError,
-            match="Failed to clone repository: https://github.com/test_owner/test_repo",
-        ):
-            strategy.augment_metadata(initial_metadata)
-        git_url_parse_mock.assert_called_once_with("github_test_purl")
 
 
 def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_repos(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    git_url_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
-        return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo", None),
-    )
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_code.side_effect = [
+        SourceCodeReference(
+            repo_url="https://github.com/test_owner/test_repo",
+            branch="main",
+            local_root_path="cache_test/test_owner-test_repo/main/20220101-000000Z",
+            local_full_path="cache_test/test_owner-test_repo/main/20220101-000000Z",
+        ),
+        SourceCodeReference(
+            repo_url="https://github.com/test_owner/test_repo",
+            branch="main",
+            local_root_path="cache_test/test_owner-test_repo/main/20220101-000000Z",
+            local_full_path="cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2",
+        ),
+        SourceCodeReference(
+            repo_url="https://github.com/test_owner/test_repo",
+            branch="main",
+            local_root_path="cache_test/test_owner-test_repo/main/20220101-000000Z",
+            local_full_path="cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3",
+        ),
+    ]
 
     license_files = ["license1", "LICENSE2"]
     copyright_files = ["Copy1", "copy2", "copy3"]
-
-    system_mock = mocker.patch("os.system", return_value=0)
 
     initial_metadata = [
         Metadata(
@@ -262,55 +236,49 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
     walk_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory"
     )
-    with tempfile.TemporaryDirectory() as cache_dir:
-        scancode_api_mock = mocker.patch("scancode.api")
-        mock_get_copyrights_side_effect_with_cache = partial(
-            mock_get_copyrights_side_effect, cache_dir=cache_dir
-        )
-        scancode_api_mock.get_copyrights.side_effect = (
-            mock_get_copyrights_side_effect_with_cache
-        )
 
-        mock_walk_return_value_side_effect: list[
-            list[tuple[str, list[str], list[str]]]
-        ] = [
-            [
-                (
-                    f"{cache_dir}/test_owner-test_repo",
-                    [],
-                    ["test_1", "test_2", "copy1", "COPY2"],
-                ),
-            ],
-            [
-                (
-                    f"{cache_dir}/test_owner-test_repo/test_path_2",
-                    [],
-                    ["test_3", "test_4", "copy1", "COPY2"],
-                ),
-            ],
-            [
-                (
-                    f"{cache_dir}/test_owner-test_repo/test_path_3",
-                    [],
-                    ["test_5", "test_6", "copy1", "COPY2"],
-                ),
-            ],
-        ]
+    scancode_api_mock = mocker.patch("scancode.api")
+    mock_get_copyrights_side_effect_with_cache = partial(
+        mock_get_copyrights_side_effect,
+        prefix_dir="cache_test/test_owner-test_repo/main/20220101-000000Z",
+    )
+    scancode_api_mock.get_copyrights.side_effect = (
+        mock_get_copyrights_side_effect_with_cache
+    )
 
-        walk_mock.side_effect = mock_walk_return_value_side_effect
+    mock_walk_return_value_side_effect: list[list[tuple[str, list[str], list[str]]]] = [
+        [
+            (
+                "cache_test/test_owner-test_repo/main/20220101-000000Z",
+                [],
+                ["test_1", "test_2", "copy1", "COPY2"],
+            ),
+        ],
+        [
+            (
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2",
+                [],
+                ["test_3", "test_4", "copy1", "COPY2"],
+            ),
+        ],
+        [
+            (
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3",
+                [],
+                ["test_5", "test_6", "copy1", "COPY2"],
+            ),
+        ],
+    ]
 
-        strategy = ScanCodeToolkitMetadataCollectionStrategy(
-            cache_dir,
-            license_source_files=license_files,
-            copyright_source_files=copyright_files,
-        )
+    walk_mock.side_effect = mock_walk_return_value_side_effect
 
-        with patch(
-            "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
-            return_value=False,
-        ) as mock_exists:
-            updated_metadata = strategy.augment_metadata(initial_metadata)
-            assert mock_exists.call_count == 3
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        source_code_manager_mock,
+        license_source_files=license_files,
+        copyright_source_files=copyright_files,
+    )
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
 
     expected_metadata = [
         Metadata(
@@ -343,28 +311,34 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
         ),
     ]
 
-    git_url_parse_mock.assert_has_calls(
+    source_code_manager_mock.assert_has_calls(
         [
-            mocker.call("github_test_purl_2"),
-            mocker.call("github_test_purl_3"),
-            mocker.call("github_test_purl_4"),
+            mocker.call.get_code("github_test_purl_2", force_update=False),
+            mocker.call.get_code("github_test_purl_3", force_update=False),
+            mocker.call.get_code("github_test_purl_4", force_update=False),
         ]
     )
-    system_mock.assert_called_with(
-        f"git clone --depth 1 https://github.com/test_owner/test_repo {cache_dir}/test_owner-test_repo"
-    )
-    assert system_mock.call_count == 3
 
-    walk_mock.assert_called_with(f"{cache_dir}/test_owner-test_repo")
+    walk_mock.assert_called_with(
+        "cache_test/test_owner-test_repo/main/20220101-000000Z"
+    )
 
     scancode_api_mock.get_copyrights.assert_has_calls(
         [
-            call(f"{cache_dir}/test_owner-test_repo/copy1"),
-            call(f"{cache_dir}/test_owner-test_repo/COPY2"),
-            call(f"{cache_dir}/test_owner-test_repo/test_path_2/copy1"),
-            call(f"{cache_dir}/test_owner-test_repo/test_path_2/COPY2"),
-            call(f"{cache_dir}/test_owner-test_repo/test_path_3/copy1"),
-            call(f"{cache_dir}/test_owner-test_repo/test_path_3/COPY2"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/copy1"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/COPY2"),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2/copy1"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2/COPY2"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3/copy1"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3/COPY2"
+            ),
         ]
     )
 
@@ -375,12 +349,13 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
     mocker: pytest_mock.MockFixture,
 ) -> None:
 
-    git_url_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
-        return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo", None),
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/test_owner/test_repo",
+        branch="main",
+        local_root_path="cache_test/test_owner-test_repo/main/20220101-000000Z",
+        local_full_path="cache_test/test_owner-test_repo/main/20220101-000000Z",
     )
-
-    system_mock = mocker.patch("os.system", return_value=0)
 
     initial_metadata = [
         Metadata(
@@ -413,79 +388,88 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
         ),
     ]
 
-    with tempfile.TemporaryDirectory() as cache_dir:
-        scancode_api_mock = mocker.patch("scancode.api")
-        mock_get_copyrights_side_effect_with_cache = partial(
-            mock_get_copyrights_side_effect, cache_dir=cache_dir
-        )
-        scancode_api_mock.get_copyrights.side_effect = (
-            mock_get_copyrights_side_effect_with_cache
-        )
+    scancode_api_mock = mocker.patch("scancode.api")
+    mock_get_copyrights_side_effect_with_cache = partial(
+        mock_get_copyrights_side_effect,
+        prefix_dir="cache_test/test_owner-test_repo/main/20220101-000000Z",
+    )
+    scancode_api_mock.get_copyrights.side_effect = (
+        mock_get_copyrights_side_effect_with_cache
+    )
 
-        walk_mock = mocker.patch(
-            "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory"
-        )
-        mock_walk_return_value_side_effect: list[
-            list[tuple[str, list[str], list[str]]]
-        ] = [
-            [
-                (
-                    f"{cache_dir}/test_owner-test_repo",
-                    [],
-                    ["test_1", "test_2", "copy1", "COPY2"],
-                ),
-            ],
-            [
-                (
-                    f"{cache_dir}/test_owner-test_repo/test_path_2",
-                    [],
-                    ["test_3", "test_4", "copy1", "COPY2"],
-                ),
-            ],
-            [
-                (
-                    f"{cache_dir}/test_owner-test_repo/test_path_3",
-                    [],
-                    ["test_5", "test_6", "copy1", "COPY2"],
-                ),
-            ],
+    walk_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory"
+    )
+    mock_walk_return_value_side_effect: list[list[tuple[str, list[str], list[str]]]] = [
+        [
+            (
+                "cache_test/test_owner-test_repo/main/20220101-000000Z",
+                [],
+                ["test_1", "test_2", "copy1", "COPY2"],
+            ),
+        ],
+        [
+            (
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2",
+                [],
+                ["test_3", "test_4", "copy1", "COPY2"],
+            ),
+        ],
+        [
+            (
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3",
+                [],
+                ["test_5", "test_6", "copy1", "COPY2"],
+            ),
+        ],
+    ]
+
+    walk_mock.side_effect = mock_walk_return_value_side_effect
+
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        source_code_manager_mock,
+        license_source_files=None,
+        copyright_source_files=None,
+    )
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    walk_mock.assert_called_with(
+        "cache_test/test_owner-test_repo/main/20220101-000000Z"
+    )
+
+    scancode_api_mock.get_copyrights.assert_has_calls(
+        [
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/test_1"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/test_2"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/copy1"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/COPY2"),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2/test_3"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2/test_4"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2/copy1"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2/COPY2"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3/test_5"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3/test_6"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3/copy1"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3/COPY2"
+            ),
         ]
-
-        walk_mock.side_effect = mock_walk_return_value_side_effect
-
-        strategy = ScanCodeToolkitMetadataCollectionStrategy(
-            cache_dir, license_source_files=None, copyright_source_files=None
-        )
-
-        with patch(
-            "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
-            return_value=False,
-        ) as mock_exists:
-            updated_metadata = strategy.augment_metadata(initial_metadata)
-            assert mock_exists.call_count == 3
-        system_mock.assert_called_with(
-            f"git clone --depth 1 https://github.com/test_owner/test_repo {cache_dir}/test_owner-test_repo"
-        )
-        assert system_mock.call_count == 3
-
-        walk_mock.assert_called_with(f"{cache_dir}/test_owner-test_repo")
-
-        scancode_api_mock.get_copyrights.assert_has_calls(
-            [
-                call(f"{cache_dir}/test_owner-test_repo/test_1"),
-                call(f"{cache_dir}/test_owner-test_repo/test_2"),
-                call(f"{cache_dir}/test_owner-test_repo/copy1"),
-                call(f"{cache_dir}/test_owner-test_repo/COPY2"),
-                call(f"{cache_dir}/test_owner-test_repo/test_path_2/test_3"),
-                call(f"{cache_dir}/test_owner-test_repo/test_path_2/test_4"),
-                call(f"{cache_dir}/test_owner-test_repo/test_path_2/copy1"),
-                call(f"{cache_dir}/test_owner-test_repo/test_path_2/COPY2"),
-                call(f"{cache_dir}/test_owner-test_repo/test_path_3/test_5"),
-                call(f"{cache_dir}/test_owner-test_repo/test_path_3/test_6"),
-                call(f"{cache_dir}/test_owner-test_repo/test_path_3/copy1"),
-                call(f"{cache_dir}/test_owner-test_repo/test_path_3/COPY2"),
-            ]
-        )
+    )
 
     expected_metadata = [
         Metadata(
@@ -520,11 +504,11 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
 
     assert expected_metadata == updated_metadata
 
-    git_url_parse_mock.assert_has_calls(
+    source_code_manager_mock.assert_has_calls(
         [
-            mocker.call("github_test_purl_2"),
-            mocker.call("github_test_purl_3"),
-            mocker.call("github_test_purl_4"),
+            mocker.call.get_code("github_test_purl_2", force_update=False),
+            mocker.call.get_code("github_test_purl_3", force_update=False),
+            mocker.call.get_code("github_test_purl_4", force_update=False),
         ]
     )
 
@@ -532,16 +516,27 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
 def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    git_url_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
-        side_effect=[
-            GitUrlParseMock(True, "github", "test_owner", "test_repo", None),
-            GitUrlParseMock(True, "github", "test_owner2", "test_repo2", None),
-            GitUrlParseMock(True, "github", "test_owner", "test_repo", None),
-        ],
-    )
-
-    system_mock = mocker.patch("os.system", return_value=0)
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_code.side_effect = [
+        SourceCodeReference(
+            repo_url="https://github.com/test_owner/test_repo",
+            branch="main",
+            local_root_path="cache_test/test_owner-test_repo/main/20220101-000000Z",
+            local_full_path="cache_test/test_owner-test_repo/main/20220101-000000Z",
+        ),
+        SourceCodeReference(
+            repo_url="https://github.com/test_owner2/test_repo2",
+            branch="main",
+            local_root_path="cache_test/test_owner2-test_repo2/main/20220101-000000Z",
+            local_full_path="cache_test/test_owner2-test_repo2/main/20220101-000000Z",
+        ),
+        SourceCodeReference(
+            repo_url="https://github.com/test_owner/test_repo",
+            branch="main",
+            local_root_path="cache_test/test_owner-test_repo/main/20220101-000000Z",
+            local_full_path="cache_test/test_owner-test_repo/main/20220101-000000Z",
+        ),
+    ]
 
     listdir_mock = mocker.patch(
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
@@ -580,43 +575,27 @@ def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(
     license_files = ["license1", "LICENSE2"]
     copyright_files = ["Copy1", "copy2", "copy3"]
 
-    with tempfile.TemporaryDirectory() as cache_dir:
-        strategy = ScanCodeToolkitMetadataCollectionStrategy(
-            cache_dir,
-            license_source_files=license_files,
-            copyright_source_files=copyright_files,
-        )
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        source_code_manager_mock,
+        license_source_files=license_files,
+        copyright_source_files=copyright_files,
+    )
 
-        with patch(
-            "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
-            side_effect=[False, False, True],
-        ) as mock_exists:
-            updated_metadata = strategy.augment_metadata(initial_metadata)
-            assert mock_exists.call_count == 3
+    updated_metadata = strategy.augment_metadata(initial_metadata)
 
-        scancode_api_mock.get_licenses.assert_has_calls(
-            [
-                call(f"{cache_dir}/test_owner-test_repo/License1"),
-                call(f"{cache_dir}/test_owner2-test_repo2/license2"),
-                call(f"{cache_dir}/test_owner-test_repo/License1"),
-            ]
-        )
+    scancode_api_mock.get_licenses.assert_has_calls(
+        [
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/License1"),
+            call("cache_test/test_owner2-test_repo2/main/20220101-000000Z/license2"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/License1"),
+        ]
+    )
 
-        system_mock.assert_has_calls(
-            [
-                call(
-                    f"git clone --depth 1 https://github.com/test_owner/test_repo {cache_dir}/test_owner-test_repo"
-                ),
-                call(
-                    f"git clone --depth 1 https://github.com/test_owner2/test_repo2 {cache_dir}/test_owner2-test_repo2"
-                ),
-            ]
-        )
     listdir_mock.assert_has_calls(
         [
-            call(f"{cache_dir}/test_owner-test_repo"),
-            call(f"{cache_dir}/test_owner2-test_repo2"),
-            call(f"{cache_dir}/test_owner-test_repo"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner2-test_repo2/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
         ]
     )
 
@@ -646,116 +625,10 @@ def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(
 
     assert expected_metadata == updated_metadata
 
-    git_url_parse_mock.assert_has_calls(
+    source_code_manager_mock.assert_has_calls(
         [
-            mocker.call("github_test_purl_1"),
-            mocker.call("github_test_purl_2"),
-            mocker.call("github_test_purl_1"),
-        ]
-    )
-
-
-def test_scancode_toolkit_collection_strategy_pathed_dependencies_are_not_scanned_at_root(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    git_url_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.parse_git_url",
-        return_value=GitUrlParseMock(
-            True, "github", "test_owner", "test_repo", "/test_path_4"
-        ),
-    )
-
-    initial_metadata = [
-        Metadata(
-            name="package1",
-            version=None,
-            origin="github_test_purl_1",
-            license=["APACHE-2.0"],
-            copyright=[],
-        ),
-    ]
-
-    with tempfile.TemporaryDirectory() as cache_dir:
-        strategy = ScanCodeToolkitMetadataCollectionStrategy(
-            cache_dir, license_source_files=None, copyright_source_files=None
-        )
-
-        system_mock = mocker.patch("os.system", return_value=0)
-
-        scancode_api_mock = mocker.patch("scancode.api")
-        mock_get_copyrights_side_effect_with_cache = partial(
-            mock_get_copyrights_side_effect, cache_dir=cache_dir
-        )
-        scancode_api_mock.get_copyrights.side_effect = (
-            mock_get_copyrights_side_effect_with_cache
-        )
-
-        walk_mock = mocker.patch(
-            "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory"
-        )
-        mock_walk_return_value_side_effect: list[
-            list[tuple[str, list[str], list[str]]]
-        ] = [
-            [
-                (
-                    f"{cache_dir}/test_owner-test_repo",
-                    [],
-                    ["test_1", "test_2", "COPY2"],
-                ),
-                (
-                    f"{cache_dir}/test_owner-test_repo/test_path_2",
-                    [],
-                    ["test_3", "test_4", "COPY2"],
-                ),
-                (
-                    f"{cache_dir}/test_owner-test_repo/test_path_3",
-                    [],
-                    ["test_5", "test_6", "COPY2"],
-                ),
-                (
-                    f"{cache_dir}/test_owner-test_repo/test_path_4",
-                    [],
-                    ["test_7", "test_8", "copy1"],
-                ),
-            ],
-        ]
-
-        walk_mock.side_effect = mock_walk_return_value_side_effect
-
-        with patch(
-            "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
-            side_effect=[False, False, True],
-        ) as mock_exists:
-            updated_metadata = strategy.augment_metadata(initial_metadata)
-            assert mock_exists.call_count == 1
-
-    expected_metadata = [
-        Metadata(
-            name="package1",
-            version=None,
-            origin="github_test_purl_1",
-            license=["APACHE-2.0"],
-            copyright=["An individual"],
-        ),
-    ]
-
-    assert expected_metadata == updated_metadata
-
-    git_url_parse_mock.assert_called_once_with("github_test_purl_1")
-    system_mock.assert_called_with(
-        f"git clone --depth 1 https://github.com/test_owner/test_repo {cache_dir}/test_owner-test_repo"
-    )
-    assert system_mock.call_count == 1
-
-    walk_mock.assert_called_with(f"{cache_dir}/test_owner-test_repo")
-
-    scancode_api_mock.get_copyrights.assert_has_calls(
-        [
-            call(f"{cache_dir}/test_owner-test_repo/test_1"),
-            call(f"{cache_dir}/test_owner-test_repo/test_2"),
-            call(f"{cache_dir}/test_owner-test_repo/COPY2"),
-            call(f"{cache_dir}/test_owner-test_repo/test_path_4/test_7"),
-            call(f"{cache_dir}/test_owner-test_repo/test_path_4/test_8"),
-            call(f"{cache_dir}/test_owner-test_repo/test_path_4/copy1"),
+            mocker.call.get_code("github_test_purl_1", force_update=False),
+            mocker.call.get_code("github_test_purl_2", force_update=False),
+            mocker.call.get_code("github_test_purl_1", force_update=False),
         ]
     )

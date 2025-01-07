@@ -33,7 +33,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
         updated_metadata = []
         for package in metadata:
             parsed_url = parse_git_url(package.origin)
-            if parsed_url.valid and parsed_url.platform == "github":
+            if parsed_url.valid and parsed_url.github:
                 owner = parsed_url.owner
                 repo = parsed_url.repo
             else:
