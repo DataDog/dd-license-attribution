@@ -33,6 +33,16 @@ export GITHUB_TOKEN=YOUR_TOKEN
 get-licenses-copyrights https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
 
+The following optional parameters are available:
+
+- `--deep-scanning`: it will attemp to parse license and copyright information from full package sourcecode using codescan, this is a intensive task, that depending in the package size, may take hours or even days to process.
+- `--only-transitive-dependencies`: it will not attempt to extract license and copyright from the passed package, only its dependencies.
+- `--only-root-project`: it will only extract information from the licenses and copyright of the passed package, not its dependencies.
+- `--cache-dir`: if a directory is passed to this parameter all the dependencies source code downloaded for analysis is kept in the directory and can be reused between runs. By default, nothing is reused between runs.                                 │
+- `--go-licenses-csv-file`: The path to the Go licenses CSV output file to be used as hint. If your package is a Go project, passing the hint helps identifying the origin of the dependencies.
+
+For more details about optional parameters pass `--help` to the command.
+
 ### Development
 
 To develop install the development dependencies in a virtual environment:
