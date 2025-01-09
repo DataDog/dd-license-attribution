@@ -41,7 +41,7 @@ jobs:
         run: |
           get-licenses-copyrights --only-root-project https://github.com/DataDog/stratus-red-team
 
-      - name: Run the generate_third_party_cli.py script against the Stratus Red Team repository only for root
+      - name: Run the generate_third_party_cli.py script against the Stratus Red Team repository with dependencies
         run: |
           git clone https://github.com/DataDog/stratus-red-team /tmp/stratus-red-team
           cd /tmp/stratus-red-team/v2
