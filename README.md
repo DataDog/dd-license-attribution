@@ -100,7 +100,7 @@ To read the results of mutation test in more detail than the initial output, we 
 The CI step in PRs and merge to main runs all tests and a few end to end tests defined as github workflows in the .github directory.
 Mutation tests are not evaluated for CI.
 
-Contract test is available to validate assumptions of external tools/libraries usages that are mocked in unit tests.
+Contract tests are available to validate assumptions of external tools/libraries usages that are mocked in unit tests.
 These tests do not run by default to run them execute `pytest tests/contract`.
 CI runs the contract tests before attempting to run the unit tests.
 
