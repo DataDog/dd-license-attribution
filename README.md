@@ -91,7 +91,7 @@ We are using pytest and mutmut and configuring them via `pyproject.toml`.
 Unit tests are located in `tests/unit`.
 
 Running `pytest` without parameters in the root of the project runs all unit tests.
-By default, a coverage report is created from the run. 
+By default, a coverage report is created from the run.
 A less than 90% coverage fails the pytest run.
 
 For generating and running mutation tests, we run `mutmut run`.
@@ -99,6 +99,10 @@ To read the results of mutation test in more detail than the initial output, we 
 
 The CI step in PRs and merge to main runs all tests and a few end to end tests defined as github workflows in the .github directory.
 Mutation tests are not evaluated for CI.
+
+Contract test is available to validate assumptions of external tools/libraries usages that are mocked in unit tests.
+These tests do not run by default to run them execute `pytest tests/contract`.
+CI runs the contract tests before attempting to run the unit tests.
 
 ### current development state
 
