@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - development
   pull_request:
     branches:
       - "*"
@@ -19,7 +20,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@0b93645e9fea7318ecaed2b359559ac225c90a2b #v5.3.0
         with:
-          python-version: "3.13"
+          python-version: "3.10"
 
       - name: Install dependencies
         run: |
@@ -28,6 +29,9 @@ jobs:
 
       - name: Run mypy type checks
         run: mypy src tests
+
+      - name: Run contract tests
+        run: pytest tests/contract
 
       - name: Run tests with coverage
         run: pytest --cov-report=xml --cov-fail-under=90 tests/unit
