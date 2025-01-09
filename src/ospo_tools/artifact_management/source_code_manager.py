@@ -113,7 +113,6 @@ class SourceCodeManager:
         create_dirs(local_branch_path)
         # we need to clone
         current_time = get_datetime_now()
-        print(dir(current_time))
         current_time_str = current_time.strftime("%Y%m%d_%H%M%SZ")
         run_command(
             f"git clone --depth 1 --branch={branch} {repository_url} {local_branch_path}/{current_time_str}"
