@@ -66,7 +66,7 @@ def main(
             "--cache-ttl",
             help="The time in seconds to keep the cache. Default is 86400 seconds (1 day).",
         ),
-    ] = 86400,
+    ] = None,
     go_licenses_csv_file: Annotated[
         str,
         typer.Option(
