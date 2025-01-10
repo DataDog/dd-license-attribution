@@ -14,8 +14,6 @@ class GitHubRepositoryMetadataCollectionStrategy(MetadataCollectionStrategy):
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = []
         for package in metadata:
-            if not package.origin and package.name is not None:
-                package.origin = f"https://{package.name}"
             parsed_url = parse_git_url(package.origin)
             if parsed_url.valid and parsed_url.github:
                 owner = parsed_url.owner

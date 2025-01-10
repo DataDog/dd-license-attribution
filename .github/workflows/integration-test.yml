@@ -28,23 +28,17 @@ jobs:
 
       - name: Install dependencies
         run: |
-          go install github.com/google/go-licenses@latest
-          echo "$(go env GOPATH)/bin" >> $GITHUB_PATH
           python -m pip install --upgrade pip
           python -m pip install .
 
-      - name: Run the generate_third_party_cli.py script with the --help flag
+      - name: Run the get-licenses-copyrights script with the --help flag
         run: |
           get-licenses-copyrights --help
 
-      - name: Run the generate_third_party_cli.py script against the Stratus Red Team repository only for root (quick fail)
+      - name: Run the get-licenses-copyrights script against the Stratus Red Team repository only for root (quick fail)
         run: |
           get-licenses-copyrights --only-root-project https://github.com/DataDog/stratus-red-team
 
-      - name: Run the generate_third_party_cli.py script against the Stratus Red Team repository with dependencies
+      - name: Run the get-licenses-copyrights script against the dd-trace-py repository with dependencies
         run: |
-          git clone https://github.com/DataDog/stratus-red-team /tmp/stratus-red-team
-          cd /tmp/stratus-red-team/v2
-          $(go env GOPATH)/bin/go-licenses report ./... > /tmp/srt.licenses
-          cd -
-          get-licenses-copyrights --go-licenses-csv-file=/tmp/srt.licenses https://github.com/DataDog/stratus-red-team
+          get-licenses-copyrights  https://github.com/DataDog/dd-trace-py

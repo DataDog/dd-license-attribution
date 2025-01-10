@@ -392,3 +392,92 @@ def test_strategy_does_not_keep_root_when_with_root_project_is_false(
 
     github_parse_mock.assert_called_once_with("test_purl")
     sbom_mock.get.assert_called_once_with()
+
+
+def test_github_sbom_collection_strategy_uses_name_as_origin_if_download_location_is_empty_or_noassertion(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    sbom_data = (
+        200,
+        {
+            "sbom": {
+                "packages": [
+                    {
+                        "name": "package0",
+                        "versionInfo": "4.0",
+                        "licenseDeclared": "MIT",
+                        "copyrightText": "Copyright 1",
+                        "downloadLocation": "test_purl",
+                    },
+                    {
+                        "name": "github.com/package1",
+                        "versionInfo": "2.0",
+                        "licenseConcluded": "MIT",
+                        "copyrightText": "Copyright 2",
+                        "downloadLocation": "",
+                    },
+                    {
+                        "name": "github.com/package2",
+                        "versionInfo": "3.0",
+                        "licenseConcluded": "MIT",
+                        "copyrightText": "Copyright 3",
+                        "downloadLocation": "NOASSERTION",
+                    },
+                ]
+            }
+        },
+    )
+    sbom_mock = mocker.Mock()
+    sbom_mock.get.return_value = sbom_data
+
+    github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+
+    giturlparse_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
+    )
+
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        project_scope=ProjectScope.ALL,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package0",
+            version=None,
+            origin="test_purl",
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+    expected_metadata = [
+        Metadata(
+            name="package0",
+            version="4.0",
+            origin="test_purl",
+            license=["MIT"],
+            copyright=["Copyright 1"],
+        ),
+        Metadata(
+            name="github.com/package1",
+            version="2.0",
+            origin="https://github.com/package1",
+            license=["MIT"],
+            copyright=["Copyright 2"],
+        ),
+        Metadata(
+            name="github.com/package2",
+            version="3.0",
+            origin="https://github.com/package2",
+            license=["MIT"],
+            copyright=["Copyright 3"],
+        ),
+    ]
+
+    assert updated_metadata == expected_metadata
+
+    giturlparse_mock.assert_called_once_with("test_purl")
+    sbom_mock.get.assert_called_once_with()
