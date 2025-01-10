@@ -103,20 +103,38 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     and sbom_package["versionInfo"] != "NOASSERTION"
                 ):
                     version = sbom_package["versionInfo"]
-                if (
-                    not origin
-                    and "downloadLocation" in sbom_package
-                    and sbom_package["downloadLocation"] != "NOASSERTION"
-                ):
-                    origin = sbom_package["downloadLocation"]
-                if (
-                    not license
-                    and "licenseDeclared" in sbom_package
-                    and sbom_package["licenseDeclared"] != "NOASSERTION"
-                ):
-                    license = [sbom_package["licenseDeclared"]]
+                if not origin:
+                    if (
+                        "downloadLocation" in sbom_package
+                        and sbom_package["downloadLocation"] != "NOASSERTION"
+                        and sbom_package["downloadLocation"] != ""
+                    ):
+                        origin = sbom_package["downloadLocation"]
+                    elif sbom_package["name"].startswith("github.com"):
+                        origin = f"https://{sbom_package["name"]}"
+                    else:  # fallback guess
+                        origin = sbom_package["name"]
+                if not license:
+                    if (
+                        "licenseDeclared" in sbom_package
+                        and sbom_package["licenseDeclared"] != "NOASSERTION"
+                    ):
+                        license = [sbom_package["licenseDeclared"]]
+                    elif (
+                        "licenseConcluded" in sbom_package
+                        and sbom_package["licenseConcluded"] != "NOASSERTION"
+                    ):
+                        license = [sbom_package["licenseConcluded"]]
+                    else:
+                        license = []
                 if not copyright:
-                    copyright = []
+                    if (
+                        "copyrightText" in sbom_package
+                        and sbom_package["copyrightText"] != "NOASSERTION"
+                    ):
+                        copyright = sbom_package["copyrightText"].split(",")
+                    else:
+                        copyright = []
 
                 if new_package_metadata:  # update with new information
                     new_package_metadata.version = version
