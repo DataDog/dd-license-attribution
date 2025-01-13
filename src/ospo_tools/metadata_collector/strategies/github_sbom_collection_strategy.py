@@ -111,7 +111,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     ):
                         origin = sbom_package["downloadLocation"]
                     elif sbom_package["name"].startswith("github.com"):
-                        origin = f"https://{sbom_package["name"]}"
+                        origin = "https://{sbom_name}".format(sbom_name=sbom_package["name"])
                     else:  # fallback guess
                         origin = sbom_package["name"]
                 if not license:
