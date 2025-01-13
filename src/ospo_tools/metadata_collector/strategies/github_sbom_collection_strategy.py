@@ -132,7 +132,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                         "copyrightText" in sbom_package
                         and sbom_package["copyrightText"] != "NOASSERTION"
                     ):
-                        copyright = sbom_package["copyrightText"].split(",")
+                        copyright = list(set(sbom_package["copyrightText"].split(",")))
                     else:
                         copyright = []
 
