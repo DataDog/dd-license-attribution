@@ -101,7 +101,7 @@ The CI step in PRs and merge to main runs all tests and a few end to end tests d
 Mutation tests are not evaluated for CI.
 
 Contract tests are available to validate assumptions of external tools/libraries usages that are mocked in unit tests.
-These tests do not run by default to run them execute `pytest tests/contract`.
+These tests do not run by default. To execute them, run `pytest tests/contract`.
 CI runs the contract tests before attempting to run the unit tests.
 
 ### current development state
