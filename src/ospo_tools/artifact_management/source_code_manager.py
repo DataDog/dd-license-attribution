@@ -104,35 +104,41 @@ class SourceCodeManager:
                 .split()[1]
                 .removeprefix("refs/heads/")
             )
-        local_branch_path = f"{self.local_cache_dir}/{owner}-{repo}/{branch}"
-        if path_exists(local_branch_path) and not force_update:
-            # check if there is a cache hit
-            cached_timestamps = list_dir(local_branch_path)
-            if len(cached_timestamps) > 0:
-                # we have a potential cache hit
-                time_copy_str = max(cached_timestamps)
+        cached_timestamps = list_dir(self.local_cache_dir)
+        cached_timestamps.sort(reverse=True)
+        if not force_update:
+            # check if there is a cache
+            for time_copy_str in cached_timestamps:
                 time_copy = datetime.strptime(time_copy_str, "%Y%m%d_%H%M%SZ").replace(
                     tzinfo=pytz.UTC
                 )
-                # is in the ttl?
-                if (self.setup_time - time_copy).total_seconds() < self.local_cache_ttl:
+                if (self.setup_time - time_copy).total_seconds() > self.local_cache_ttl:
+                    break
+                local_branch_path = (
+                    f"{self.local_cache_dir}/{time_copy_str}/{owner}-{repo}/{branch}"
+                )
+                if path_exists(local_branch_path):
                     return SourceCodeReference(
                         repo_url=repository_url,
                         branch=branch,
-                        local_root_path=f"{local_branch_path}/{time_copy_str}",
-                        local_full_path=f"{local_branch_path}/{time_copy_str}{path}",
+                        local_root_path=f"{local_branch_path}",
+                        local_full_path=f"{local_branch_path}{path}",
                     )
-        create_dirs(local_branch_path)
         # we need to clone
         current_time = get_datetime_now()
         current_time_str = current_time.strftime("%Y%m%d_%H%M%SZ")
+        local_branch_path = (
+            f"{self.local_cache_dir}/{current_time_str}/{owner}-{repo}/{branch}"
+        )
+
+        create_dirs(local_branch_path)
         run_command(
-            f"git clone --depth 1 --branch={branch} {repository_url} {local_branch_path}/{current_time_str}"
+            f"git clone --depth 1 --branch={branch} {repository_url} {local_branch_path}"
         )
 
         return SourceCodeReference(
             repo_url=repository_url,
             branch=branch,
-            local_root_path=f"{local_branch_path}/{current_time_str}",
-            local_full_path=f"{local_branch_path}/{current_time_str}{path}",
+            local_root_path=f"{local_branch_path}",
+            local_full_path=f"{local_branch_path}{path}",
         )

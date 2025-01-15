@@ -7,7 +7,6 @@ import pytest_mock
 from ospo_tools.artifact_management.source_code_manager import (
     SourceCodeManager,
     SourceCodeReference,
-    run_command,
 )
 
 
@@ -41,7 +40,7 @@ class GitUrlParseMock:
                 "https://github.com/test_owner/test_repo",
                 "test_branch",
                 "/dir",
-                "cache_dir/test_owner-test_repo/test_branch/20220101_000005Z",
+                "cache_dir/20220101_000005Z/test_owner-test_repo/test_branch",
             ),
             GitUrlParseMock(
                 valid=True,
@@ -58,7 +57,7 @@ class GitUrlParseMock:
                 "https://github.com/test_owner/test_repo",
                 "test_branch",
                 "/dir",
-                "cache_dir/test_owner-test_repo/test_branch/20220101_000005Z",
+                "cache_dir/20220101_000005Z/test_owner-test_repo/test_branch",
             ),
             GitUrlParseMock(
                 valid=True,
@@ -75,7 +74,7 @@ class GitUrlParseMock:
                 "https://github.com/test_owner/test_repo",
                 "test_branch",
                 "",
-                "cache_dir/test_owner-test_repo/test_branch/20220101_000005Z",
+                "cache_dir/20220101_000005Z/test_owner-test_repo/test_branch",
             ),
             GitUrlParseMock(
                 valid=True,
@@ -92,7 +91,7 @@ class GitUrlParseMock:
                 "https://github.com/test_owner/test_repo",
                 "test_tag",
                 "",
-                "cache_dir/test_owner-test_repo/test_tag/20220101_000005Z",
+                "cache_dir/20220101_000005Z/test_owner-test_repo/test_tag",
             ),
             GitUrlParseMock(
                 valid=True,
@@ -109,7 +108,7 @@ class GitUrlParseMock:
                 "https://github.com/test_owner/test_repo",
                 "main",
                 "",
-                "cache_dir/test_owner-test_repo/main/20220101_000005Z",
+                "cache_dir/20220101_000005Z/test_owner-test_repo/main",
             ),
             GitUrlParseMock(
                 valid=True,
@@ -199,10 +198,8 @@ def test_source_code_manager_get_non_cached_code(
         )
     assert get_datetime_now_mock.call_count == 2
     git_url_parse_mock.assert_called_once_with(resource_url)
-    file_exists_mock.assert_has_calls(
-        [call("cache_dir"), call("/".join(expected_local_path_root.split("/")[:-1]))]
-    )
-    mock_list_dir.assert_called_once_with("cache_dir")
+    file_exists_mock.assert_called_once_with("cache_dir")
+    mock_list_dir.assert_has_calls([call("cache_dir"), call("cache_dir")])
 
 
 def test_source_code_manager_get_cached_code(mocker: pytest_mock.MockFixture) -> None:
@@ -240,19 +237,20 @@ def test_source_code_manager_get_cached_code(mocker: pytest_mock.MockFixture) ->
     expected_source_code_reference = SourceCodeReference(
         repo_url="https://github.com/test_owner/test_repo",
         branch="test_branch",
-        local_root_path="cache_dir/test_owner-test_repo/test_branch/20211231_001000Z",
-        local_full_path="cache_dir/test_owner-test_repo/test_branch/20211231_001000Z/test_dir",
+        local_root_path="cache_dir/20211231_001000Z/test_owner-test_repo/test_branch",
+        local_full_path="cache_dir/20211231_001000Z/test_owner-test_repo/test_branch/test_dir",
     )
 
     assert code_ref == expected_source_code_reference
     assert get_datetime_now_mock.call_count == 1
     git_url_parse_mock.assert_called_once_with(request_url)
     path_exists_mock.assert_has_calls(
-        [call("cache_dir"), call("cache_dir/test_owner-test_repo/test_branch")]
+        [
+            call("cache_dir"),
+            call("cache_dir/20211231_001000Z/test_owner-test_repo/test_branch"),
+        ]
     )
-    list_dir_mock.assert_has_calls(
-        [call("cache_dir"), call("cache_dir/test_owner-test_repo/test_branch")]
-    )
+    list_dir_mock.assert_has_calls([call("cache_dir"), call("cache_dir")])
     run_command_mock.assert_called_once_with(
         f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
     )
@@ -269,6 +267,10 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
         ],
     )
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
+
+    mock_create_dirs = mocker.patch(
+        "ospo_tools.artifact_management.source_code_manager.create_dirs"
+    )
 
     git_url_parse_mock = mocker.patch(
         "ospo_tools.artifact_management.source_code_manager.parse_git_url",
@@ -299,20 +301,16 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
     expected_source_code_reference = SourceCodeReference(
         repo_url="https://github.com/test_owner/test_repo",
         branch="test_branch",
-        local_root_path="cache_dir/test_owner-test_repo/test_branch/20220101_000005Z",
-        local_full_path="cache_dir/test_owner-test_repo/test_branch/20220101_000005Z/test_dir",
+        local_root_path="cache_dir/20220101_000005Z/test_owner-test_repo/test_branch",
+        local_full_path="cache_dir/20220101_000005Z/test_owner-test_repo/test_branch/test_dir",
     )
-    expected_cache_dir = "cache_dir/test_owner-test_repo/test_branch/20220101_000005Z"
+    expected_cache_dir = "cache_dir/20220101_000005Z/test_owner-test_repo/test_branch"
 
     assert code_ref == expected_source_code_reference
     assert get_datetime_now_mock.call_count == 2
     git_url_parse_mock.assert_called_once_with(request_url)
-    path_exists_mock.assert_has_calls(
-        [call("cache_dir"), call("cache_dir/test_owner-test_repo/test_branch")]
-    )
-    list_dir_mock.assert_has_calls(
-        [call("cache_dir"), call("cache_dir/test_owner-test_repo/test_branch")]
-    )
+    path_exists_mock.assert_called_once_with("cache_dir")
+    list_dir_mock.assert_has_calls([call("cache_dir"), call("cache_dir")])
 
     run_command_mock.assert_has_calls(
         [
@@ -324,6 +322,7 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
             ),
         ]
     )
+    mock_create_dirs.assert_called_once_with(expected_cache_dir)
 
 
 def test_source_code_manager_get_non_cached_code_because_force_update(
@@ -360,24 +359,27 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
         "ospo_tools.artifact_management.source_code_manager.list_dir",
         return_value=[],
     )
+    mock_create_dirs = mocker.patch(
+        "ospo_tools.artifact_management.source_code_manager.create_dirs"
+    )
     source_code_manager = SourceCodeManager("cache_dir", 86400)
     code_ref = source_code_manager.get_code(request_url, force_update=True)
 
     expected_source_code_reference = SourceCodeReference(
         repo_url="https://github.com/test_owner/test_repo",
         branch="test_branch",
-        local_root_path="cache_dir/test_owner-test_repo/test_branch/20220101_000005Z",
-        local_full_path="cache_dir/test_owner-test_repo/test_branch/20220101_000005Z/test_dir",
+        local_root_path="cache_dir/20220101_000005Z/test_owner-test_repo/test_branch",
+        local_full_path="cache_dir/20220101_000005Z/test_owner-test_repo/test_branch/test_dir",
     )
-    expected_cache_dir = "cache_dir/test_owner-test_repo/test_branch/20220101_000005Z"
+    expected_cache_dir = "cache_dir/20220101_000005Z/test_owner-test_repo/test_branch"
 
     assert code_ref == expected_source_code_reference
     assert get_datetime_now_mock.call_count == 2
     git_url_parse_mock.assert_called_once_with(request_url)
-    path_exists_mock.assert_has_calls(
-        [call("cache_dir"), call("cache_dir/test_owner-test_repo/test_branch")]
-    )
-    mock_list_dir.assert_called_once_with("cache_dir")
+    path_exists_mock.assert_called_once_with("cache_dir")
+    mock_list_dir.assert_has_calls([call("cache_dir"), call("cache_dir")])
+
+    mock_create_dirs.assert_called_once_with(expected_cache_dir)
 
     run_command_mock.assert_has_calls(
         [
@@ -463,19 +465,15 @@ def test_source_code_manager_get_non_cached_code_for_ambiguous_branch_names(
     expected_source_code_reference = SourceCodeReference(
         repo_url="https://github.com/test_owner/test_repo",
         branch="test_branch",
-        local_root_path="cache_dir/test_owner-test_repo/test_branch/20220101_000000Z",
-        local_full_path="cache_dir/test_owner-test_repo/test_branch/20220101_000000Z/test_dir",
+        local_root_path="cache_dir/20220101_000000Z/test_owner-test_repo/test_branch",
+        local_full_path="cache_dir/20220101_000000Z/test_owner-test_repo/test_branch/test_dir",
     )
 
     assert code_ref == expected_source_code_reference
     assert get_datetime_now_mock.call_count == 2
     git_url_parse_mock.assert_called_once_with(request_url)
-    path_exists_mock.assert_has_calls(
-        [call("cache_dir"), call("cache_dir/test_owner-test_repo/test_branch")]
-    )
-    list_dir_mock.assert_has_calls(
-        [call("cache_dir"), call("cache_dir/test_owner-test_repo/test_branch")]
-    )
+    path_exists_mock.assert_called_once_with("cache_dir")
+    list_dir_mock.assert_has_calls([call("cache_dir"), call("cache_dir")])
 
     assert run_command_mock.call_count == 2
     run_command_mock.assert_has_calls(
