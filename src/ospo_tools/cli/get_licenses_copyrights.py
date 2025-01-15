@@ -157,7 +157,11 @@ def main(
             go_licenses_report_hint = f.read()
         strategies.append(GoLicensesMetadataCollectionStrategy(go_licenses_report_hint))
 
-    source_code_manager = SourceCodeManager(cache_dir, cache_ttl)
+    try:
+        source_code_manager = SourceCodeManager(cache_dir, cache_ttl)
+    except ValueError as e:
+        print(f"\033[91m{e}\033[0m", file=sys.stderr)
+        sys.exit(1)
 
     if enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"]:
         if deep_scanning:
