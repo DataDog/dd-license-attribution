@@ -31,8 +31,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install .
           # silence the detached head warning to make logs more readable
-          git config --global advice.detachedHead false 
-
+          git config --global advice.detachedHead false
 
       - name: Run the get-licenses-copyrights script with the --help flag
         run: |
@@ -40,8 +39,8 @@ jobs:
 
       - name: Run the get-licenses-copyrights script against the Stratus Red Team repository only for root (quick fail)
         run: |
-          get-licenses-copyrights --only-root-project https://github.com/DataDog/stratus-red-team
+          get-licenses-copyrights --no-gh-auth --only-root-project https://github.com/DataDog/stratus-red-team
 
       - name: Run the get-licenses-copyrights script against the dd-trace-py repository with dependencies
         run: |
-          get-licenses-copyrights  https://github.com/DataDog/dd-trace-py
+          get-licenses-copyrights --no-gh-auth https://github.com/DataDog/dd-trace-py

@@ -149,7 +149,7 @@ def main(
             github_client = GitHub()
         else:
             print(
-                f"\033[91mNo github token available in GITHUB_TOKEN envirment variable. If this is intentional pass --no-gh-auth flag to the command run. Throttling limits will be lower and access will be limited to public resources only.\033[0m",
+                f"\033[91mNo github token available in GITHUB_TOKEN environment variable. If this is intentional pass --no-gh-auth flag to the command run. Throttling limits will be lower and access will be limited to public resources only.\033[0m",
                 file=sys.stderr,
             )
             sys.exit(1)
