@@ -166,10 +166,16 @@ def test_source_code_manager_get_non_cached_code(
     )
     file_exists_mock = mocker.patch(
         "ospo_tools.artifact_management.source_code_manager.path_exists",
-        return_value=False,
+        side_effect=[True, False],
+    )
+
+    mock_list_dir = mocker.patch(
+        "ospo_tools.artifact_management.source_code_manager.list_dir",
+        return_value=[],
     )
 
     source_code_manager = SourceCodeManager("cache_dir", 86400)
+
     code_ref = source_code_manager.get_code(resource_url)
 
     assert code_ref == expected_source_code_reference
@@ -193,9 +199,10 @@ def test_source_code_manager_get_non_cached_code(
         )
     assert get_datetime_now_mock.call_count == 2
     git_url_parse_mock.assert_called_once_with(resource_url)
-    file_exists_mock.assert_called_once_with(
-        "/".join(expected_local_path_root.split("/")[:-1])
+    file_exists_mock.assert_has_calls(
+        [call("cache_dir"), call("/".join(expected_local_path_root.split("/")[:-1]))]
     )
+    mock_list_dir.assert_called_once_with("cache_dir")
 
 
 def test_source_code_manager_get_cached_code(mocker: pytest_mock.MockFixture) -> None:
@@ -221,7 +228,7 @@ def test_source_code_manager_get_cached_code(mocker: pytest_mock.MockFixture) ->
     )
     list_dir_mock = mocker.patch(
         "ospo_tools.artifact_management.source_code_manager.list_dir",
-        return_value=["20211231_001000Z"],
+        side_effect=[[], ["20211231_001000Z"]],
     )
     run_command_mock = mocker.patch(
         "ospo_tools.artifact_management.source_code_manager.run_command", return_value=0
@@ -240,10 +247,12 @@ def test_source_code_manager_get_cached_code(mocker: pytest_mock.MockFixture) ->
     assert code_ref == expected_source_code_reference
     assert get_datetime_now_mock.call_count == 1
     git_url_parse_mock.assert_called_once_with(request_url)
-    path_exists_mock.assert_called_once_with(
-        "cache_dir/test_owner-test_repo/test_branch"
+    path_exists_mock.assert_has_calls(
+        [call("cache_dir"), call("cache_dir/test_owner-test_repo/test_branch")]
     )
-    list_dir_mock.assert_called_once_with("cache_dir/test_owner-test_repo/test_branch")
+    list_dir_mock.assert_has_calls(
+        [call("cache_dir"), call("cache_dir/test_owner-test_repo/test_branch")]
+    )
     run_command_mock.assert_called_once_with(
         f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
     )
@@ -298,10 +307,12 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
     assert code_ref == expected_source_code_reference
     assert get_datetime_now_mock.call_count == 2
     git_url_parse_mock.assert_called_once_with(request_url)
-    path_exists_mock.assert_called_once_with(
-        "cache_dir/test_owner-test_repo/test_branch"
+    path_exists_mock.assert_has_calls(
+        [call("cache_dir"), call("cache_dir/test_owner-test_repo/test_branch")]
     )
-    list_dir_mock.assert_called_once_with("cache_dir/test_owner-test_repo/test_branch")
+    list_dir_mock.assert_has_calls(
+        [call("cache_dir"), call("cache_dir/test_owner-test_repo/test_branch")]
+    )
 
     run_command_mock.assert_has_calls(
         [
@@ -345,6 +356,10 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
         "ospo_tools.artifact_management.source_code_manager.run_command", return_value=0
     )
 
+    mock_list_dir = mocker.patch(
+        "ospo_tools.artifact_management.source_code_manager.list_dir",
+        return_value=[],
+    )
     source_code_manager = SourceCodeManager("cache_dir", 86400)
     code_ref = source_code_manager.get_code(request_url, force_update=True)
 
@@ -359,9 +374,10 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
     assert code_ref == expected_source_code_reference
     assert get_datetime_now_mock.call_count == 2
     git_url_parse_mock.assert_called_once_with(request_url)
-    path_exists_mock.assert_called_once_with(
-        "cache_dir/test_owner-test_repo/test_branch"
+    path_exists_mock.assert_has_calls(
+        [call("cache_dir"), call("cache_dir/test_owner-test_repo/test_branch")]
     )
+    mock_list_dir.assert_called_once_with("cache_dir")
 
     run_command_mock.assert_has_calls(
         [
@@ -388,6 +404,15 @@ def test_non_github_returns_none(mocker: pytest_mock.MockFixture) -> None:
         ),
     )
 
+    mock_path_exists = mocker.patch(
+        "ospo_tools.artifact_management.source_code_manager.path_exists",
+        return_value=True,
+    )
+    mock_list_dir = mocker.patch(
+        "ospo_tools.artifact_management.source_code_manager.list_dir",
+        return_value=[],
+    )
+
     source_code_manager = SourceCodeManager("cache_dir", 86400)
     request_url = (
         "https://non_github.com/test_owner/test_repo/tree/test_branch/test_dir"
@@ -396,6 +421,8 @@ def test_non_github_returns_none(mocker: pytest_mock.MockFixture) -> None:
 
     assert code_ref is None
     git_url_parse_mock.assert_called_once_with(request_url)
+    mock_path_exists.assert_called_once_with("cache_dir")
+    mock_list_dir.assert_called_once_with("cache_dir")
 
 
 def test_source_code_manager_get_non_cached_code_for_ambiguous_branch_names(
@@ -443,10 +470,12 @@ def test_source_code_manager_get_non_cached_code_for_ambiguous_branch_names(
     assert code_ref == expected_source_code_reference
     assert get_datetime_now_mock.call_count == 2
     git_url_parse_mock.assert_called_once_with(request_url)
-    path_exists_mock.assert_called_once_with(
-        "cache_dir/test_owner-test_repo/test_branch"
+    path_exists_mock.assert_has_calls(
+        [call("cache_dir"), call("cache_dir/test_owner-test_repo/test_branch")]
     )
-    list_dir_mock.assert_called_once_with("cache_dir/test_owner-test_repo/test_branch")
+    list_dir_mock.assert_has_calls(
+        [call("cache_dir"), call("cache_dir/test_owner-test_repo/test_branch")]
+    )
 
     assert run_command_mock.call_count == 2
     run_command_mock.assert_has_calls(
@@ -459,3 +488,41 @@ def test_source_code_manager_get_non_cached_code_for_ambiguous_branch_names(
             ),
         ]
     )
+
+
+def test_source_code_manager_fails_init_if_cache_dir_is_not_a_directory(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    path_exists_mock = mocker.patch(
+        "ospo_tools.artifact_management.source_code_manager.path_exists",
+        return_value=False,
+    )
+
+    with pytest.raises(ValueError) as e:
+        SourceCodeManager("cache_dir", 86400)
+
+    assert str(e.value) == "Local cache directory cache_dir does not exist"
+    path_exists_mock.assert_called_once_with("cache_dir")
+
+
+def test_source_code_manager_fails_init_if_cache_dir_contains_unexpected_files(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    path_exists_mock = mocker.patch(
+        "ospo_tools.artifact_management.source_code_manager.path_exists",
+        return_value=True,
+    )
+    list_dir_mock = mocker.patch(
+        "ospo_tools.artifact_management.source_code_manager.list_dir",
+        return_value=["unexpected_file"],
+    )
+
+    with pytest.raises(ValueError) as e:
+        SourceCodeManager("cache_dir", 86400)
+
+    assert (
+        str(e.value)
+        == "Local cache directory cache_dir has invalid subdirectory unexpected_file, are you sure it is a cache directory?"
+    )
+    path_exists_mock.assert_called_once_with("cache_dir")
+    list_dir_mock.assert_called_once_with("cache_dir")
