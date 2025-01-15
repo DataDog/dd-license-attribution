@@ -73,6 +73,13 @@ def main(
             help="The path to the Go licenses CSV output file to be used as hint."
         ),
     ] = "",
+    no_gh_auth: Annotated[
+        bool,
+        typer.Option(
+            "--no-gh-auth",
+            help="Do not use github auth token. Throttling limits are going to be lower and access to non public resources will be blocked.",
+        ),
+    ] = False,
     debug: Annotated[
         str,
         typer.Option(
@@ -138,7 +145,14 @@ def main(
     github_token = os.environ.get("GITHUB_TOKEN")
 
     if not github_token:
-        github_client = GitHub()
+        if no_gh_auth:
+            github_client = GitHub()
+        else:
+            print(
+                f"\033[91mNo github token available in GITHUB_TOKEN envirment variable. If this is intentional pass --no-gh-auth flag to the command run. Throttling limits will be lower and access will be limited to public resources only.\033[0m",
+                file=sys.stderr,
+            )
+            sys.exit(1)
     else:
         github_client = GitHub(token=github_token)
 
