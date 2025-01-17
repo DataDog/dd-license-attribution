@@ -8,6 +8,7 @@ import typer
 from agithub.GitHub import GitHub
 from typing import Annotated
 
+from collections.abc import Callable
 from ospo_tools.artifact_management.source_code_manager import SourceCodeManager
 from ospo_tools.metadata_collector import MetadataCollector
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
@@ -35,29 +36,91 @@ from ospo_tools.report_generator.writters.csv_reporting_writter import (
 import ospo_tools.config.cli_configs as cli_config
 
 
+def MutuallyExclusiveGroup() -> (
+    Callable[[typer.Context, typer.CallbackParam, bool], bool]
+):
+    group = set()
+
+    def callback(ctx: typer.Context, param: typer.CallbackParam, value: bool) -> bool:
+        # Add cli option to group if it was called with a value
+        if (
+            value is True
+            and param.name not in group
+            and (
+                param.name == "only_root_project"
+                or param.name == "only_transitive_dependencies"
+            )
+        ):
+            group.add(param.name)
+
+        if len(group) == 2:
+            raise typer.BadParameter(
+                "Cannot specify both only-root-project and only-transitive-dependencies"
+            )
+        return value
+
+    return callback
+
+
+only_root_project_or_transitive_callback = MutuallyExclusiveGroup()
+
+
+def ConditionalGroup() -> (
+    Callable[[typer.Context, typer.CallbackParam, str | None], str | None]
+):
+    group = {}
+
+    def callback(
+        ctx: typer.Context, param: typer.CallbackParam, value: str | None
+    ) -> str | None:
+        if param.name == "cache_dir" or param.name == "cache_ttl":
+            group[param.name] = value
+        if len(group) == 2:
+            if group["cache_dir"] is None and group["cache_ttl"] is not None:
+                raise typer.BadParameter(
+                    "Cannot specify --cache-ttl without --cache-dir"
+                )
+        return value
+
+    return callback
+
+
+cache_dir_and_cache_ttl_validation_callback = ConditionalGroup()
+
+
 def main(
     package: Annotated[
         str, typer.Argument(help="The package to generate the report for.")
     ],
     deep_scanning: Annotated[
-        bool, typer.Option("--deep-scanning", help="Enable deep scanning.")
+        bool,
+        typer.Option(
+            "--deep-scanning",
+            help="Enable deep scanning.",
+        ),
     ] = False,
     only_transitive_dependencies: Annotated[
         bool,
         typer.Option(
             "--only-transitive-dependencies",
             help="Only report on transitive dependencies.",
+            callback=only_root_project_or_transitive_callback,
         ),
     ] = False,
     only_root_project: Annotated[
         bool,
-        typer.Option("--only-root-project", help="Only report on the root project."),
+        typer.Option(
+            "--only-root-project",
+            help="Only report on the root project.",
+            callback=only_root_project_or_transitive_callback,
+        ),
     ] = False,
     cache_dir: Annotated[
         str | None,
         typer.Option(
             "--cache-dir",
             help="A directory to save artifacts, as cloned repositories, to reuse between runs. By default, nothing is reused and a new temp directory is created per run.",
+            callback=cache_dir_and_cache_ttl_validation_callback,
         ),
     ] = None,
     cache_ttl: Annotated[
@@ -65,6 +128,7 @@ def main(
         typer.Option(
             "--cache-ttl",
             help="The time in seconds to keep the cache. Default is 86400 seconds (1 day).",
+            callback=cache_dir_and_cache_ttl_validation_callback,
         ),
     ] = None,
     go_licenses_csv_file: Annotated[
@@ -90,12 +154,7 @@ def main(
     """
     Generate a CSV report of third party dependencies for a given open source repository.
     """
-    if only_root_project and only_transitive_dependencies:
-        print(
-            "\033[91mCannot specify both --only-root-project and --only-transitive-dependencies\033[0m",
-            file=sys.stderr,
-        )
-        sys.exit(1)
+
     if not only_root_project and not only_transitive_dependencies:
         project_scope = ProjectScope.ALL
     elif only_root_project:
@@ -109,12 +168,6 @@ def main(
         "GitHubRepositoryMetadataCollectionStrategy": True,
     }
 
-    if cache_dir is None and cache_ttl is not None:
-        print(
-            "\033[91mCannot specify --cache-ttl without --cache-dir\033[0m",
-            file=sys.stderr,
-        )
-        sys.exit(1)
     if cache_ttl is None:
         cache_ttl = 86400
     if cache_dir is None:
