@@ -1,0 +1,6 @@
+here
+{'only_root_project'}
+1
+here
+{'only_transitive_dependencies', 'only_root_project'}
+2
