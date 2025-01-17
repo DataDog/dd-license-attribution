@@ -88,6 +88,33 @@ def ConditionalGroup() -> (
 cache_dir_and_cache_ttl_validation_callback = ConditionalGroup()
 
 
+def GitHubTokenConditionalGroup() -> (
+    Callable[[typer.Context, typer.CallbackParam, str | None], str | None]
+):
+    group = {}
+    param_token = set()
+
+    def callback(
+        ctx: typer.Context, param: typer.CallbackParam, value: str | None
+    ) -> str | None:
+        if param.name == "github_token":
+            param_token.add(param)
+        if param.name == "github_token" or param.name == "no_gh_auth":
+            group[param.name] = value
+        if len(group) == 2:
+            if group["github_token"] is None and group["no_gh_auth"] is False:
+                raise typer.BadParameter(
+                    message="No Github token available. If this is intentional, pass --no-gh-auth flag to the command. Throttling limits will be lower and access will be limited to public resources only.",
+                    param=param_token.pop(),
+                )
+        return value
+
+    return callback
+
+
+github_token_callback = GitHubTokenConditionalGroup()
+
+
 def main(
     package: Annotated[
         str, typer.Argument(help="The package to generate the report for.")
@@ -137,11 +164,21 @@ def main(
             help="The path to the Go licenses CSV output file to be used as hint."
         ),
     ] = "",
+    github_token: Annotated[
+        str | None,
+        typer.Option(
+            "--github-token",
+            help="The GitHub token to use for authentication. If not provided, the GITHUB_TOKEN environment variable will be used.",
+            envvar="GITHUB_TOKEN",
+            callback=github_token_callback,
+        ),
+    ] = None,
     no_gh_auth: Annotated[
         bool,
         typer.Option(
             "--no-gh-auth",
             help="Do not use github auth token. Throttling limits are going to be lower and access to non public resources will be blocked.",
+            callback=github_token_callback,
         ),
     ] = False,
     debug: Annotated[
@@ -195,17 +232,8 @@ def main(
                 "DEBUG: Available strategies: GitHubSbomMetadataCollectionStrategy, GoLicensesMetadataCollectionStrategy, ScanCodeToolkitMetadataCollectionStrategy, GitHubRepositoryMetadataCollectionStrategy"
             )
 
-    github_token = os.environ.get("GITHUB_TOKEN")
-
     if not github_token:
-        if no_gh_auth:
-            github_client = GitHub()
-        else:
-            print(
-                f"\033[91mNo github token available in GITHUB_TOKEN environment variable. If this is intentional pass --no-gh-auth flag to the command run. Throttling limits will be lower and access will be limited to public resources only.\033[0m",
-                file=sys.stderr,
-            )
-            sys.exit(1)
+        github_client = GitHub()
     else:
         github_client = GitHub(token=github_token)
 
