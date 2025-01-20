@@ -520,7 +520,7 @@ def test_source_code_manager_fails_init_if_cache_dir_contains_unexpected_files(
 
     assert (
         str(e.value)
-        == "Local cache directory cache_dir has invalid subdirectory unexpected_file, are you sure it is a cache directory?"
+        == "Local cache directory cache_dir has invalid subdirectory, are you sure it is a cache directory?"
     )
     path_exists_mock.assert_called_once_with("cache_dir")
     list_dir_mock.assert_called_once_with("cache_dir")
