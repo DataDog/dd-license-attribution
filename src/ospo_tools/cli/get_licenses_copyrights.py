@@ -42,11 +42,11 @@ import ospo_tools.config.cli_configs as cli_config
 
 
 def MutuallyExclusiveGroup() -> (
-    Callable[[typer.Context, typer.CallbackParam, bool], bool]
+    Callable[[typer.Context, typer.CallbackParam, bool], None]
 ):
     group = set()
 
-    def callback(ctx: typer.Context, param: typer.CallbackParam, value: bool) -> bool:
+    def callback(ctx: typer.Context, param: typer.CallbackParam, value: bool) -> None:
         # Add cli option to group if it was called with a value
         if (
             value is True
@@ -62,7 +62,6 @@ def MutuallyExclusiveGroup() -> (
             raise typer.BadParameter(
                 "Cannot specify both only-root-project and only-transitive-dependencies"
             )
-        return value
 
     return callback
 
@@ -71,7 +70,7 @@ only_root_project_or_transitive_callback = MutuallyExclusiveGroup()
 
 
 def CacheValidation() -> (
-    Callable[[typer.Context, typer.CallbackParam, str | None], str | None]
+    Callable[[typer.Context, typer.CallbackParam, str | None], None]
 ):
     group = {}
     param_dir = set()
@@ -79,7 +78,7 @@ def CacheValidation() -> (
 
     def callback(
         ctx: typer.Context, param: typer.CallbackParam, value: str | None
-    ) -> str | None:
+    ) -> None:
         if (
             param.name == "cache_dir"
             or param.name == "cache_ttl"
@@ -115,8 +114,6 @@ def CacheValidation() -> (
                         param=param_dir.pop(),
                     )
 
-        return value
-
     return callback
 
 
@@ -124,14 +121,14 @@ cache_validation_callback = CacheValidation()
 
 
 def GitHubTokenConditionalGroup() -> (
-    Callable[[typer.Context, typer.CallbackParam, str | None], str | None]
+    Callable[[typer.Context, typer.CallbackParam, str | bool | None], None]
 ):
     group = {}
     param_token = set()
 
     def callback(
-        ctx: typer.Context, param: typer.CallbackParam, value: str | None
-    ) -> str | None:
+        ctx: typer.Context, param: typer.CallbackParam, value: str | bool | None
+    ) -> None:
         if param.name == "github_token":
             param_token.add(param)
         if param.name == "github_token" or param.name == "no_gh_auth":
@@ -142,7 +139,6 @@ def GitHubTokenConditionalGroup() -> (
                     message="No Github token available. If this is intentional, pass --no-gh-auth flag to the command. Throttling limits will be lower and access will be limited to public resources only.",
                     param=param_token.pop(),
                 )
-        return value
 
     return callback
 
