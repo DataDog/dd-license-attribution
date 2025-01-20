@@ -185,7 +185,7 @@ def test_source_code_manager_get_non_cached_code(
                     f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
                 ),
                 call(
-                    f"git clone --depth 1 --branch={expected_branch} {expected_clone_url} {expected_local_path_root}"
+                    f"git clone -c advice.detachedHead=False --depth 1 --branch={expected_branch} {expected_clone_url} {expected_local_path_root}"
                 ),
             ]
         )
@@ -318,7 +318,7 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
                 f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
             ),
             call(
-                f"git clone --depth 1 --branch={expected_source_code_reference.branch} {expected_source_code_reference.repo_url} {expected_cache_dir}"
+                f"git clone -c advice.detachedHead=False --depth 1 --branch={expected_source_code_reference.branch} {expected_source_code_reference.repo_url} {expected_cache_dir}"
             ),
         ]
     )
@@ -387,7 +387,7 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
                 f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
             ),
             call(
-                f"git clone --depth 1 --branch={expected_source_code_reference.branch} {expected_source_code_reference.repo_url} {expected_cache_dir}"
+                f"git clone -c advice.detachedHead=False --depth 1 --branch={expected_source_code_reference.branch} {expected_source_code_reference.repo_url} {expected_cache_dir}"
             ),
         ]
     )
@@ -482,7 +482,7 @@ def test_source_code_manager_get_non_cached_code_for_ambiguous_branch_names(
                 f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
             ),
             call(
-                f"git clone --depth 1 --branch={expected_source_code_reference.branch} {expected_source_code_reference.repo_url} {expected_source_code_reference.local_root_path}"
+                f"git clone -c advice.detachedHead=False --depth 1 --branch={expected_source_code_reference.branch} {expected_source_code_reference.repo_url} {expected_source_code_reference.local_root_path}"
             ),
         ]
     )

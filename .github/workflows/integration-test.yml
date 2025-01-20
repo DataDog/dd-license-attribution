@@ -30,8 +30,6 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install .
-          # silence the detached head warning to make logs more readable
-          git config --global advice.detachedHead false
 
       - name: Run the get-licenses-copyrights script with the --help flag
         run: |

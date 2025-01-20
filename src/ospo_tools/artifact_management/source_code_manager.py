@@ -133,7 +133,7 @@ class SourceCodeManager:
 
         create_dirs(local_branch_path)
         run_command(
-            f"git clone --depth 1 --branch={branch} {repository_url} {local_branch_path}"
+            f"git clone -c advice.detachedHead=False --depth 1 --branch={branch} {repository_url} {local_branch_path}"
         )
 
         return SourceCodeReference(
