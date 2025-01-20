@@ -39,6 +39,8 @@ from ospo_tools.report_generator.writters.csv_reporting_writter import (
 
 import ospo_tools.config.cli_configs as cli_config
 
+app = typer.Typer()
+
 
 def MutuallyExclusiveGroup() -> (
     Callable[[typer.Context, typer.CallbackParam, bool], None]
@@ -145,6 +147,7 @@ def GitHubTokenConditionalGroup() -> (
 github_token_callback = GitHubTokenConditionalGroup()
 
 
+@app.command()
 def main(
     package: Annotated[
         str, typer.Argument(help="The package to generate the report for.")
@@ -324,7 +327,5 @@ def main(
     print(output)
 
 
-typer.run(main)
-
 if __name__ == "__main__":
-    typer.run(main)
+    app()

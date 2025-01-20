@@ -37,7 +37,7 @@ dev = [
 ]
 
 [project.scripts]
-get-licenses-copyrights = "ospo_tools.cli.get_licenses_copyrights:cli"
+get-licenses-copyrights = "ospo_tools.cli.get_licenses_copyrights:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
