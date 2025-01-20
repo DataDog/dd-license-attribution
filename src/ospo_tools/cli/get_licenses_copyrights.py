@@ -9,7 +9,11 @@ from agithub.GitHub import GitHub
 from typing import Annotated
 
 from collections.abc import Callable
-from ospo_tools.artifact_management.source_code_manager import SourceCodeManager
+from ospo_tools.artifact_management.source_code_manager import (
+    SourceCodeManager,
+    path_exists,
+    create_dirs,
+)
 from ospo_tools.metadata_collector import MetadataCollector
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
@@ -65,27 +69,52 @@ def MutuallyExclusiveGroup() -> (
 only_root_project_or_transitive_callback = MutuallyExclusiveGroup()
 
 
-def ConditionalGroup() -> (
+def CacheValidation() -> (
     Callable[[typer.Context, typer.CallbackParam, str | None], str | None]
 ):
     group = {}
+    param_dir = set()
+    param_ttl = set()
 
     def callback(
         ctx: typer.Context, param: typer.CallbackParam, value: str | None
     ) -> str | None:
-        if param.name == "cache_dir" or param.name == "cache_ttl":
+        if (
+            param.name == "cache_dir"
+            or param.name == "cache_ttl"
+            or param.name == "force_cache_creation"
+        ):
             group[param.name] = value
-        if len(group) == 2:
+        if param.name == "cache_dir":
+            param_dir.add(param)
+        if param.name == "cache_ttl":
+            param_ttl.add(param)
+        if len(group) == 3:
             if group["cache_dir"] is None and group["cache_ttl"] is not None:
                 raise typer.BadParameter(
-                    "Cannot specify --cache-ttl without --cache-dir"
+                    "Cannot specify --cache-ttl without --cache-dir",
+                    param=param_ttl.pop(),
                 )
+            if group["cache_dir"] is not None:
+                if path_exists(group["cache_dir"]) is False:
+                    if group["force_cache_creation"]:
+                        create_dirs(group["cache_dir"])
+                    else:
+                        create = typer.confirm("The folder doesn't exist. Create?")
+                        if create:
+                            create_dirs(group["cache_dir"])
+                        else:
+                            raise typer.BadParameter(
+                                "Cache directory doesn't exist.",
+                                param=param_dir.pop(),
+                            )
+
         return value
 
     return callback
 
 
-cache_dir_and_cache_ttl_validation_callback = ConditionalGroup()
+cache_validation_callback = CacheValidation()
 
 
 def GitHubTokenConditionalGroup() -> (
@@ -147,7 +176,15 @@ def main(
         typer.Option(
             "--cache-dir",
             help="A directory to save artifacts, as cloned repositories, to reuse between runs. By default, nothing is reused and a new temp directory is created per run.",
-            callback=cache_dir_and_cache_ttl_validation_callback,
+            callback=cache_validation_callback,
+        ),
+    ] = None,
+    force_cache_creation: Annotated[
+        bool | None,
+        typer.Option(
+            "--force-cache-creation",
+            help="Force the creation of a new cache directory, if it doesn't exist.",
+            callback=cache_validation_callback,
         ),
     ] = None,
     cache_ttl: Annotated[
@@ -155,7 +192,7 @@ def main(
         typer.Option(
             "--cache-ttl",
             help="The time in seconds to keep the cache. Default is 86400 seconds (1 day).",
-            callback=cache_dir_and_cache_ttl_validation_callback,
+            callback=cache_validation_callback,
         ),
     ] = None,
     go_licenses_csv_file: Annotated[
