@@ -33,6 +33,15 @@ def create_dirs(path: str) -> None:
     os.makedirs(path, exist_ok=True)
 
 
+def validate_cache_dir(local_cache_dir: str) -> bool:
+    for time_copy_str in list_dir(local_cache_dir):
+        try:
+            datetime.strptime(time_copy_str, "%Y%m%d_%H%M%SZ").replace(tzinfo=pytz.UTC)
+        except ValueError:
+            return False
+    return True
+
+
 def extract_ref(ref: str, url: str) -> str:
     split_ref = ref.split("/")
     for i in range(len(split_ref)):
@@ -58,18 +67,6 @@ class SourceCodeManager:
         self.local_cache_dir = local_cache_dir
         self.local_cache_ttl = local_cache_ttl
         self.setup_time = get_datetime_now()
-        # validate the cache dir is a directory with only expected subdirectories
-        if not path_exists(local_cache_dir):
-            raise ValueError(f"Local cache directory {local_cache_dir} does not exist")
-        for time_copy_str in list_dir(local_cache_dir):
-            try:
-                datetime.strptime(time_copy_str, "%Y%m%d_%H%M%SZ").replace(
-                    tzinfo=pytz.UTC
-                )
-            except ValueError:
-                raise ValueError(
-                    f"Local cache directory {local_cache_dir} has invalid subdirectory {time_copy_str}, are you sure it is a cache directory?"
-                )
 
     def get_code(
         self, resource_url: str, force_update: bool = False
