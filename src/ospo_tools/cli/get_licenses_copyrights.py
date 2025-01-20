@@ -13,6 +13,7 @@ from ospo_tools.artifact_management.source_code_manager import (
     SourceCodeManager,
     path_exists,
     create_dirs,
+    validate_cache_dir,
 )
 from ospo_tools.metadata_collector import MetadataCollector
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
@@ -108,6 +109,11 @@ def CacheValidation() -> (
                                 "Cache directory doesn't exist.",
                                 param=param_dir.pop(),
                             )
+                if validate_cache_dir(group["cache_dir"]) is False:
+                    raise typer.BadParameter(
+                        "Cache directory is not in the expected format.",
+                        param=param_dir.pop(),
+                    )
 
         return value
 
