@@ -42,7 +42,7 @@ import ospo_tools.config.cli_configs as cli_config
 app = typer.Typer()
 
 
-def MutuallyExclusiveGroup() -> (
+def mutually_exclusive_group() -> (
     Callable[[typer.Context, typer.CallbackParam, bool], None]
 ):
     group = set()
@@ -67,10 +67,10 @@ def MutuallyExclusiveGroup() -> (
     return callback
 
 
-only_root_project_or_transitive_callback = MutuallyExclusiveGroup()
+only_root_project_or_transitive_callback = mutually_exclusive_group()
 
 
-def CacheValidation() -> (
+def cache_validation() -> (
     Callable[[typer.Context, typer.CallbackParam, str | None], None]
 ):
     group = {}
@@ -118,10 +118,10 @@ def CacheValidation() -> (
     return callback
 
 
-cache_validation_callback = CacheValidation()
+cache_validation_callback = cache_validation()
 
 
-def GitHubTokenConditionalGroup() -> (
+def github_token_conditional_group() -> (
     Callable[[typer.Context, typer.CallbackParam, str | bool | None], None]
 ):
     group = {}
@@ -144,7 +144,7 @@ def GitHubTokenConditionalGroup() -> (
     return callback
 
 
-github_token_callback = GitHubTokenConditionalGroup()
+github_token_callback = github_token_conditional_group()
 
 
 @app.command()
