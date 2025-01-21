@@ -1,5 +1,3 @@
-import re
-
 from typer.testing import CliRunner
 
 from ospo_tools.cli.get_licenses_copyrights import app
