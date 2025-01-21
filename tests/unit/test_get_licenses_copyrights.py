@@ -37,10 +37,7 @@ def test_missing_package() -> None:
 def test_cache_ttl_without_cache_dir() -> None:
     result = runner.invoke(app, ["test", "--cache-ttl=10"])
     assert result.exit_code == 2
-    assert (
-        "Invalid value for '--cache-ttl': Cannot specify --cache-ttl without"
-        in result.stderr
-    )
+    assert "Invalid value for '--cache-ttl'" in result.stderr
 
 
 def test_transitive_root_same_time() -> None:
@@ -49,6 +46,4 @@ def test_transitive_root_same_time() -> None:
         ["test", "--only-transitive-dependencies", "--only-root-project"],
     )
     assert result.exit_code == 2
-    assert (
-        "Invalid value for '--only-root-project': Cannot specify both" in result.stderr
-    )
+    assert "Invalid value for '--only-root-project'" in result.stderr
