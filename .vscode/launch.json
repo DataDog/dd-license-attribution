@@ -8,7 +8,7 @@
             "name": "Python Debugger: Current File",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
+            "program": "${workspaceFolder}/src/ospo_tools/cli/get_licenses_copyrights.py",
             "console": "integratedTerminal",
             "args": [
                 // "--only-transitive-dependencies",
