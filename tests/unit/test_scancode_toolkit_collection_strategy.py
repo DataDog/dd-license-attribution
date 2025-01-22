@@ -237,6 +237,11 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
         "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory"
     )
 
+    listdir_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        return_value=["ignore"],
+    )
+
     scancode_api_mock = mocker.patch("scancode.api")
     mock_get_copyrights_side_effect_with_cache = partial(
         mock_get_copyrights_side_effect,
@@ -320,7 +325,7 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
     )
 
     walk_mock.assert_called_with(
-        "cache_test/test_owner-test_repo/main/20220101-000000Z"
+        "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3"
     )
 
     scancode_api_mock.get_copyrights.assert_has_calls(
@@ -339,6 +344,12 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
             call(
                 "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3/COPY2"
             ),
+        ]
+    )
+    listdir_mock.assert_has_calls(
+        [
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
         ]
     )
 

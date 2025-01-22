@@ -1,7 +1,10 @@
 import scancode.api
 from ospo_tools.adaptors.os import list_dir, walk_directory
 
-from ospo_tools.artifact_management.source_code_manager import SourceCodeManager
+from ospo_tools.artifact_management.source_code_manager import (
+    SourceCodeManager,
+    SourceCodeReference,
+)
 from ospo_tools.metadata_collector.metadata import Metadata
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
@@ -45,34 +48,9 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
             if not package.license:
                 # get list of files at the base directory of the repository to attempt to find licenses
                 # filter files to be only the ones that are in the license source files list (non case sensitive)
-                if not self.license_source_files:
-                    files = list_dir(source_code_reference.local_root_path)
-                    if (
-                        source_code_reference.local_full_path
-                        != source_code_reference.local_root_path
-                    ):
-                        for file in list_dir(
-                            source_code_reference.local_full_path
-                        ):  # for projects in subdirectories
-                            files.append(
-                                source_code_reference.local_full_path + "/" + file
-                            )
-                else:
-                    files = [
-                        source_code_reference.local_root_path + "/" + file
-                        for file in list_dir(source_code_reference.local_root_path)
-                        if file.lower() in self.license_source_files
-                    ]
-                    if (
-                        source_code_reference.local_full_path
-                        != source_code_reference.local_root_path
-                    ):
-                        files_subdirectory = [
-                            source_code_reference.local_full_path + "/" + file
-                            for file in list_dir(source_code_reference.local_full_path)
-                            if file.lower() in self.license_source_files
-                        ]
-                        files.extend(files_subdirectory)
+                files = self._get_candidate_files(
+                    source_code_reference, self.license_source_files, False
+                )
                 # get the license for each file
                 licenses = []
                 for file_abs_path in files:
@@ -92,35 +70,20 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     "authors": [],
                     "copyrights": [],
                 }
-                # get list of all files to attempt to find copyright information
-                for root, _, all_files in walk_directory(
-                    source_code_reference.local_root_path
-                ):
-                    # filter the files to be only the ones that are in the copyright source files
-                    files = []
-                    if (
-                        root == source_code_reference.local_root_path
-                    ) or root.startswith(source_code_reference.local_full_path):
-                        if not self.copyright_source_files:
-                            files = all_files
-                        else:
-                            files = [
-                                file
-                                for file in all_files
-                                if file.lower() in self.copyright_source_files
-                            ]
-                    for file in files:
-                        file_abs_path = f"{root}/{file}"
-                        copyright = scancode.api.get_copyrights(file_abs_path)
-                        if copyright["holders"]:
-                            for c in copyright["holders"]:
-                                copyrights["holders"].append(c["holder"])
-                        elif copyright["authors"]:
-                            for c in copyright["authors"]:
-                                copyrights["authors"].append(c["author"])
-                        elif copyright["copyrights"]:
-                            for c in copyright["copyrights"]:
-                                copyrights["copyrights"].append(c["copyright"])
+                files = self._get_candidate_files(
+                    source_code_reference, self.copyright_source_files, True
+                )
+                for file in files:
+                    copyright = scancode.api.get_copyrights(file)
+                    if copyright["holders"]:
+                        for c in copyright["holders"]:
+                            copyrights["holders"].append(c["holder"])
+                    elif copyright["authors"]:
+                        for c in copyright["authors"]:
+                            copyrights["authors"].append(c["author"])
+                    elif copyright["copyrights"]:
+                        for c in copyright["copyrights"]:
+                            copyrights["copyrights"].append(c["copyright"])
                 # If we find a declaration of copyright holders, we use that.
                 if copyrights["holders"]:
                     # remove duplicates
@@ -137,6 +100,50 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     package.copyright = []
             updated_metadata.append(package)
         return updated_metadata
+
+    def _filter_candidate_files(
+        self, root: str, all_files: list[str], filter_files: list[str] | None
+    ) -> list[str]:
+        return [
+            f"{root}/{file}"
+            for file in all_files
+            if filter_files is None or file.lower() in filter_files
+        ]
+
+    def _get_candidate_files(
+        self,
+        source_code_reference: SourceCodeReference,
+        filter_files: list[str] | None,
+        recurse: bool,
+    ) -> list[str]:
+        # we always explore non recursively the root, and may take the full_path recursively if enabled
+        candidates = []
+        if recurse:
+            for root, _, all_files in walk_directory(
+                source_code_reference.local_full_path
+            ):
+                candidates.extend(
+                    self._filter_candidate_files(root, all_files, filter_files)
+                )
+        else:
+            candidates = self._filter_candidate_files(
+                source_code_reference.local_full_path,
+                list_dir(source_code_reference.local_full_path),
+                filter_files,
+            )
+        if (
+            source_code_reference.local_root_path
+            != source_code_reference.local_full_path
+        ):
+            # we need to add the root, non recursive, list of files to the candidates
+            candidates.extend(
+                self._filter_candidate_files(
+                    source_code_reference.local_root_path,
+                    list_dir(source_code_reference.local_root_path),
+                    filter_files,
+                )
+            )
+        return candidates
 
     @staticmethod
     def cleanup_licenses(licenses: list[str]) -> list[str]:
