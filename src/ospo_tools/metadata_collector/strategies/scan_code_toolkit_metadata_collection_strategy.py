@@ -1,21 +1,11 @@
-import os
-from typing import Iterator
 import scancode.api
-
+from ospo_tools.adaptors.os import list_dir, walk_directory
 
 from ospo_tools.artifact_management.source_code_manager import SourceCodeManager
 from ospo_tools.metadata_collector.metadata import Metadata
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
-
-
-def list_dir(path: str) -> list[str]:
-    return os.listdir(path)
-
-
-def walk_directory(path: str) -> Iterator[tuple[str, list[str], list[str]]]:
-    return os.walk(path)
 
 
 class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):

@@ -1,8 +1,15 @@
 from dataclasses import dataclass
-import os
-from datetime import datetime
 from giturlparse import parse as parse_git_url
+from ospo_tools.adaptors.os import (
+    list_dir,
+    run_command,
+    path_exists,
+    create_dirs,
+    output_from_command,
+)
+from datetime import datetime
 import pytz
+from ospo_tools.adaptors.datetime import get_datetime_now
 
 
 @dataclass
@@ -11,26 +18,6 @@ class SourceCodeReference:
     branch: str
     local_root_path: str
     local_full_path: str
-
-
-def list_dir(path: str) -> list[str]:
-    return os.listdir(path)
-
-
-def run_command(command: str) -> int:
-    return os.system(command)
-
-
-def get_datetime_now() -> datetime:
-    return datetime.now(pytz.UTC)
-
-
-def path_exists(file_path: str) -> bool:
-    return os.path.exists(file_path)
-
-
-def create_dirs(path: str) -> None:
-    os.makedirs(path, exist_ok=True)
 
 
 def validate_cache_dir(local_cache_dir: str) -> bool:
@@ -56,10 +43,6 @@ def extract_ref(ref: str, url: str) -> str:
         if validated == 0:
             return split_ref[0]
     return ""
-
-
-def output_from_command(command: str) -> str:
-    return os.popen(command).read()
 
 
 class SourceCodeManager:
