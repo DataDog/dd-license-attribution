@@ -1,5 +1,4 @@
 from io import StringIO
-import os
 import csv
 
 from giturlparse import parse as giturlparse
@@ -19,14 +18,6 @@ def blob_to_tree_url(blob_url: str) -> str:
         new_url = f"{parsed.protocol}://{parsed.resource}/{parsed.owner}/{parsed.repo}/tree/{directory_path}"
         return new_url
     return blob_url
-
-
-def change_directory(dir_name: str) -> None:
-    os.chdir(dir_name)
-
-
-def get_current_working_directory() -> str:
-    return os.getcwd()
 
 
 class GoLicensesMetadataCollectionStrategy(MetadataCollectionStrategy):
