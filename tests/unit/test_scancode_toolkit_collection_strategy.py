@@ -643,3 +643,105 @@ def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(
             mocker.call.get_code("github_test_purl_1", force_update=False),
         ]
     )
+
+
+def test_dotgit_directory_is_not_inspected_for_license_and_copyright_files(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_code.return_value = SourceCodeReference(
+        repo_url="package1",
+        branch="main",
+        local_root_path="cache_test/package1/main/20220101-000000Z",
+        local_full_path="cache_test/package1/main/20220101-000000Z/test_path_1",
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            version=None,
+            origin="package1",
+            license=[],
+            copyright=[],
+        )
+    ]
+    listdir_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        return_value=["LICENSE", "COPYRIGHT"],
+    )
+
+    walk_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory",
+        return_value=[
+            (
+                "cache_test/package1/main/20220101-000000Z/test_path_1",
+                [".git"],
+                ["LICENSE", "COPYRIGHT"],
+            ),
+            (
+                "cache_test/package1/main/20220101-000000Z/test_path/.git",
+                [],
+                ["License", "Copyright"],
+            ),
+            (
+                "cache_test/package1/main/20220101-000000Z/test_path_1/.git/path",
+                [],
+                ["LICENSE", "COPYRIGHT"],
+            ),
+        ],
+    )
+
+    scancode_api_mock = mocker.patch("scancode.api")
+    scancode_api_mock.get_licenses.return_value = {
+        "detected_license_expression_spdx": "APACHE-2.0"
+    }
+    scancode_api_mock.get_copyrights.return_value = {
+        "holders": [{"holder": "Datadog Inc."}],
+        "authors": [{"author": "Datadog Authors"}],
+        "copyrights": [{"copyright": "Datadog Inc. 2024"}],
+    }
+
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        source_code_manager_mock,
+        license_source_files=["LICENSE"],
+        copyright_source_files=["COPYRIGHT"],
+    )
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    expected_metadata = [
+        Metadata(
+            name="package1",
+            version=None,
+            origin="package1",
+            license=["APACHE-2.0"],
+            copyright=["Datadog Inc."],
+        )
+    ]
+
+    assert expected_metadata == updated_metadata
+
+    walk_mock.assert_has_calls(
+        [
+            call("cache_test/package1/main/20220101-000000Z/test_path_1"),
+        ]
+    )
+    listdir_mock.assert_has_calls(
+        [
+            call("cache_test/package1/main/20220101-000000Z/test_path_1"),
+            call("cache_test/package1/main/20220101-000000Z"),
+            call("cache_test/package1/main/20220101-000000Z"),
+        ]
+    )
+    scancode_api_mock.get_licenses.assert_has_calls(
+        [
+            call("cache_test/package1/main/20220101-000000Z/test_path_1/LICENSE"),
+            call("cache_test/package1/main/20220101-000000Z/LICENSE"),
+        ]
+    )
+    scancode_api_mock.get_copyrights.assert_has_calls(
+        [
+            call("cache_test/package1/main/20220101-000000Z/test_path_1/COPYRIGHT"),
+            call("cache_test/package1/main/20220101-000000Z/COPYRIGHT"),
+        ]
+    )

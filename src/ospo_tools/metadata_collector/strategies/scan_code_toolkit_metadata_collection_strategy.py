@@ -122,6 +122,8 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
             for root, _, all_files in walk_directory(
                 source_code_reference.local_full_path
             ):
+                if ".git" in root.split("/"):
+                    continue
                 candidates.extend(
                     self._filter_candidate_files(root, all_files, filter_files)
                 )

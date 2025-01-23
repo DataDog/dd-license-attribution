@@ -70,7 +70,7 @@ only_root_project_or_transitive_callback = mutually_exclusive_group()
 
 
 def cache_validation() -> (
-    Callable[[typer.Context, typer.CallbackParam, str | None], None]
+    Callable[[typer.Context, typer.CallbackParam, str | None], str | None]
 ):
     group = {}
     param_dir = set()
@@ -78,7 +78,7 @@ def cache_validation() -> (
 
     def callback(
         ctx: typer.Context, param: typer.CallbackParam, value: str | None
-    ) -> None:
+    ) -> str | None:
         if (
             param.name == "cache_dir"
             or param.name == "cache_ttl"
@@ -113,6 +113,7 @@ def cache_validation() -> (
                         "Cache directory is not in the expected format.",
                         param=param_dir.pop(),
                     )
+        return value
 
     return callback
 
