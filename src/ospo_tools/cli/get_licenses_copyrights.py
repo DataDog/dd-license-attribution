@@ -42,11 +42,13 @@ app = typer.Typer()
 
 
 def mutually_exclusive_group() -> (
-    Callable[[typer.Context, typer.CallbackParam, bool], None]
+    Callable[[typer.Context, typer.CallbackParam, bool], bool | None]
 ):
     group = set()
 
-    def callback(ctx: typer.Context, param: typer.CallbackParam, value: bool) -> None:
+    def callback(
+        ctx: typer.Context, param: typer.CallbackParam, value: bool
+    ) -> bool | None:
         # Add cli option to group if it was called with a value
         if (
             value is True
@@ -62,6 +64,8 @@ def mutually_exclusive_group() -> (
             raise typer.BadParameter(
                 "Cannot specify both only-root-project and only-transitive-dependencies"
             )
+
+        return value
 
     return callback
 
@@ -122,14 +126,14 @@ cache_validation_callback = cache_validation()
 
 
 def github_token_conditional_group() -> (
-    Callable[[typer.Context, typer.CallbackParam, str | bool | None], None]
+    Callable[[typer.Context, typer.CallbackParam, str | bool | None], str | bool | None]
 ):
     group = {}
     param_token = set()
 
     def callback(
         ctx: typer.Context, param: typer.CallbackParam, value: str | bool | None
-    ) -> None:
+    ) -> str | bool | None:
         if param.name == "github_token":
             param_token.add(param)
         if param.name == "github_token" or param.name == "no_gh_auth":
@@ -140,6 +144,8 @@ def github_token_conditional_group() -> (
                     message="No Github token available. If this is intentional, pass --no-gh-auth flag to the command. Throttling limits will be lower and access will be limited to public resources only.",
                     param=param_token.pop(),
                 )
+
+        return value
 
     return callback
 
