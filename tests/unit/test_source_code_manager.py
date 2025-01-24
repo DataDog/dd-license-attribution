@@ -40,7 +40,7 @@ class GitUrlParseMock:
                 "https://github.com/test_owner/test_repo",
                 "test_branch",
                 "/dir",
-                "cache_dir/20220101_000005Z/test_owner-test_repo/test_branch",
+                "cache_dir/20220101_000000Z/test_owner-test_repo/test_branch",
             ),
             GitUrlParseMock(
                 valid=True,
@@ -57,7 +57,7 @@ class GitUrlParseMock:
                 "https://github.com/test_owner/test_repo",
                 "test_branch",
                 "/dir",
-                "cache_dir/20220101_000005Z/test_owner-test_repo/test_branch",
+                "cache_dir/20220101_000000Z/test_owner-test_repo/test_branch",
             ),
             GitUrlParseMock(
                 valid=True,
@@ -74,7 +74,7 @@ class GitUrlParseMock:
                 "https://github.com/test_owner/test_repo",
                 "test_branch",
                 "",
-                "cache_dir/20220101_000005Z/test_owner-test_repo/test_branch",
+                "cache_dir/20220101_000000Z/test_owner-test_repo/test_branch",
             ),
             GitUrlParseMock(
                 valid=True,
@@ -91,7 +91,7 @@ class GitUrlParseMock:
                 "https://github.com/test_owner/test_repo",
                 "test_tag",
                 "",
-                "cache_dir/20220101_000005Z/test_owner-test_repo/test_tag",
+                "cache_dir/20220101_000000Z/test_owner-test_repo/test_tag",
             ),
             GitUrlParseMock(
                 valid=True,
@@ -108,7 +108,7 @@ class GitUrlParseMock:
                 "https://github.com/test_owner/test_repo",
                 "main",
                 "",
-                "cache_dir/20220101_000005Z/test_owner-test_repo/main",
+                "cache_dir/20220101_000000Z/test_owner-test_repo/main",
             ),
             GitUrlParseMock(
                 valid=True,
@@ -156,7 +156,6 @@ def test_source_code_manager_get_non_cached_code(
         "ospo_tools.artifact_management.source_code_manager.get_datetime_now",
         side_effect=[
             datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
-            datetime.fromisoformat("2022-01-01T00:00:05+00:00"),
         ],
     )
     git_url_parse_mock = mocker.patch(
@@ -196,7 +195,7 @@ def test_source_code_manager_get_non_cached_code(
         output_from_command_mock.assert_called_once_with(
             f"git ls-remote --symref {expected_source_code_reference.repo_url} HEAD"
         )
-    assert get_datetime_now_mock.call_count == 2
+    assert get_datetime_now_mock.call_count == 1
     git_url_parse_mock.assert_called_once_with(resource_url)
     file_exists_mock.assert_called_once_with("cache_dir")
     mock_list_dir.assert_has_calls([call("cache_dir"), call("cache_dir")])
@@ -263,7 +262,6 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
         "ospo_tools.artifact_management.source_code_manager.get_datetime_now",
         side_effect=[
             datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
-            datetime.fromisoformat("2022-01-01T00:00:05+00:00"),
         ],
     )
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
@@ -301,13 +299,13 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
     expected_source_code_reference = SourceCodeReference(
         repo_url="https://github.com/test_owner/test_repo",
         branch="test_branch",
-        local_root_path="cache_dir/20220101_000005Z/test_owner-test_repo/test_branch",
-        local_full_path="cache_dir/20220101_000005Z/test_owner-test_repo/test_branch/test_dir",
+        local_root_path="cache_dir/20220101_000000Z/test_owner-test_repo/test_branch",
+        local_full_path="cache_dir/20220101_000000Z/test_owner-test_repo/test_branch/test_dir",
     )
-    expected_cache_dir = "cache_dir/20220101_000005Z/test_owner-test_repo/test_branch"
+    expected_cache_dir = "cache_dir/20220101_000000Z/test_owner-test_repo/test_branch"
 
     assert code_ref == expected_source_code_reference
-    assert get_datetime_now_mock.call_count == 2
+    assert get_datetime_now_mock.call_count == 1
     git_url_parse_mock.assert_called_once_with(request_url)
     path_exists_mock.assert_called_once_with("cache_dir")
     list_dir_mock.assert_has_calls([call("cache_dir"), call("cache_dir")])
@@ -331,7 +329,6 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
     get_datetime_now_mock = mocker.patch(
         "ospo_tools.artifact_management.source_code_manager.get_datetime_now",
         side_effect=[
-            datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
             datetime.fromisoformat("2022-01-01T00:00:05+00:00"),
         ],
     )
@@ -357,7 +354,7 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
 
     mock_list_dir = mocker.patch(
         "ospo_tools.artifact_management.source_code_manager.list_dir",
-        return_value=[],
+        return_value=["20210101_000000Z"],
     )
     mock_create_dirs = mocker.patch(
         "ospo_tools.artifact_management.source_code_manager.create_dirs"
@@ -374,7 +371,7 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
     expected_cache_dir = "cache_dir/20220101_000005Z/test_owner-test_repo/test_branch"
 
     assert code_ref == expected_source_code_reference
-    assert get_datetime_now_mock.call_count == 2
+    assert get_datetime_now_mock.call_count == 1
     git_url_parse_mock.assert_called_once_with(request_url)
     path_exists_mock.assert_called_once_with("cache_dir")
     mock_list_dir.assert_has_calls([call("cache_dir"), call("cache_dir")])
@@ -470,7 +467,7 @@ def test_source_code_manager_get_non_cached_code_for_ambiguous_branch_names(
     )
 
     assert code_ref == expected_source_code_reference
-    assert get_datetime_now_mock.call_count == 2
+    assert get_datetime_now_mock.call_count == 1
     git_url_parse_mock.assert_called_once_with(request_url)
     path_exists_mock.assert_called_once_with("cache_dir")
     list_dir_mock.assert_has_calls([call("cache_dir"), call("cache_dir")])

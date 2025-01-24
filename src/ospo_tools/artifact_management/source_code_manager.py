@@ -50,6 +50,7 @@ class SourceCodeManager:
         self.local_cache_dir = local_cache_dir
         self.local_cache_ttl = local_cache_ttl
         self.setup_time = get_datetime_now()
+        self.timestamped_dir = self.setup_time.strftime("%Y%m%d_%H%M%SZ")
         # validate the cache dir is a directory with only expected subdirectories
         if not path_exists(local_cache_dir):
             raise ValueError(f"Local cache directory {local_cache_dir} does not exist")
@@ -112,10 +113,8 @@ class SourceCodeManager:
                         local_full_path=f"{local_branch_path}{path}",
                     )
         # we need to clone
-        current_time = get_datetime_now()
-        current_time_str = current_time.strftime("%Y%m%d_%H%M%SZ")
         local_branch_path = (
-            f"{self.local_cache_dir}/{current_time_str}/{owner}-{repo}/{branch}"
+            f"{self.local_cache_dir}/{self.timestamped_dir}/{owner}-{repo}/{branch}"
         )
 
         create_dirs(local_branch_path)
