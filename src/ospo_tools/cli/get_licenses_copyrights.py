@@ -104,7 +104,9 @@ def cache_validation() -> (
                     if group["force_cache_creation"]:
                         create_dirs(group["cache_dir"])
                     else:
-                        create = typer.confirm("The folder doesn't exist. Create?")
+                        create = typer.confirm(
+                            "The folder doesn't exist. Create?", err=True
+                        )
                         if create:
                             create_dirs(group["cache_dir"])
                         else:
