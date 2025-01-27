@@ -24,8 +24,8 @@ from ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy im
     GitHubSbomMetadataCollectionStrategy,
     ProjectScope,
 )
-from ospo_tools.metadata_collector.strategies.go_licenses_collection_strategy import (
-    GoLicensesMetadataCollectionStrategy,
+from ospo_tools.metadata_collector.strategies.gopkg_collection_strategy import (
+    GoPkgMetadataCollectionStrategy,
 )
 from ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
     ScanCodeToolkitMetadataCollectionStrategy,
@@ -207,12 +207,6 @@ def main(
             callback=cache_validation_callback,
         ),
     ] = None,
-    go_licenses_csv_file: Annotated[
-        str,
-        typer.Option(
-            help="The path to the Go licenses CSV output file to be used as hint."
-        ),
-    ] = "",
     github_token: Annotated[
         str | None,
         typer.Option(
@@ -249,7 +243,7 @@ def main(
         project_scope = ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
     enabled_strategies = {
         "GitHubSbomMetadataCollectionStrategy": True,
-        "GoLicensesMetadataCollectionStrategy": True,
+        "GoPkgsMetadataCollectionStrategy": True,
         "ScanCodeToolkitMetadataCollectionStrategy": True,
         "GitHubRepositoryMetadataCollectionStrategy": True,
     }
@@ -275,10 +269,10 @@ def main(
                 "DEBUG: No strategies enabled - if you wanted to enable strategies, please provide a debug object with a list of them in the 'enabled_strategies' key."
             )
             print(
-                'DEBUG: Example: --debug \'{"enabled_strategies": ["GitHubSbomMetadataCollectionStrategy", "GoLicensesMetadataCollectionStrategy"]}\''
+                'DEBUG: Example: --debug \'{"enabled_strategies": ["GitHubSbomMetadataCollectionStrategy", "GoPkgMetadataCollectionStrategy"]}\''
             )
             print(
-                "DEBUG: Available strategies: GitHubSbomMetadataCollectionStrategy, GoLicensesMetadataCollectionStrategy, ScanCodeToolkitMetadataCollectionStrategy, GitHubRepositoryMetadataCollectionStrategy"
+                "DEBUG: Available strategies: GitHubSbomMetadataCollectionStrategy, GoPkgMetadataCollectionStrategy, ScanCodeToolkitMetadataCollectionStrategy, GitHubRepositoryMetadataCollectionStrategy"
             )
 
     if not github_token:
@@ -293,19 +287,14 @@ def main(
             GitHubSbomMetadataCollectionStrategy(github_client, project_scope)
         )
 
-    if (
-        enabled_strategies["GoLicensesMetadataCollectionStrategy"]
-        and go_licenses_csv_file
-    ):
-        with open(go_licenses_csv_file, "r") as f:
-            go_licenses_report_hint = f.read()
-        strategies.append(GoLicensesMetadataCollectionStrategy(go_licenses_report_hint))
-
     try:
         source_code_manager = SourceCodeManager(cache_dir, cache_ttl)
     except ValueError as e:
         print(f"\033[91m{e}\033[0m", file=sys.stderr)
         sys.exit(1)
+
+    if enabled_strategies["GoPkgsMetadataCollectionStrategy"]:
+        strategies.append(GoPkgMetadataCollectionStrategy(package, source_code_manager))
 
     if enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"]:
         if deep_scanning:

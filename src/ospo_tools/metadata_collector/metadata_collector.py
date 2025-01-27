@@ -18,8 +18,9 @@ class MetadataCollector:
         # pass it to next strategy
         initial_package_metadata = Metadata(
             name=package.replace("https://", "").replace("http://", ""),
-            version="",
+            version=None,
             origin=package,
+            local_src_path=None,
             license=[],
             copyright=[],
         )

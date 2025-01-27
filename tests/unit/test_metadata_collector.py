@@ -13,8 +13,9 @@ def test_metadata_collector_with_no_strategies_returns_empty_metadata() -> None:
     expected = [
         Metadata(
             name="package",
-            version="",
+            version=None,
             origin="https://package",
+            local_src_path=None,
             license=[],
             copyright=[],
         )
@@ -29,6 +30,7 @@ def test_metadata_collector_with_one_strategy_returns_metadata(
         name="name",
         version="version",
         origin="origin",
+        local_src_path=None,
         license=["license"],
         copyright=["copyright"],
     )
@@ -44,8 +46,9 @@ def test_metadata_collector_with_one_strategy_returns_metadata(
         [
             Metadata(
                 name="package",
-                version="",
+                version=None,
                 origin="http://package",
+                local_src_path=None,
                 license=[],
                 copyright=[],
             )
@@ -61,6 +64,7 @@ def test_metadata_collection_with_multiple_strategies_cascade_the_metadata(
         name="name",
         version="version",
         origin="origin",
+        local_src_path=None,
         license=["license"],
         copyright=["copyright"],
     )
@@ -78,8 +82,9 @@ def test_metadata_collection_with_multiple_strategies_cascade_the_metadata(
         [
             Metadata(
                 name="package",
-                version="",
+                version=None,
                 origin="http://package",
+                local_src_path=None,
                 license=[],
                 copyright=[],
             )
@@ -87,6 +92,5 @@ def test_metadata_collection_with_multiple_strategies_cascade_the_metadata(
     )
     mock_strategy_2.augment_metadata.assert_called_once_with([mocked_metadata])
 
-    assert updated_metadata == [mocked_metadata]
-
     expected = [mocked_metadata]
+    assert updated_metadata == expected

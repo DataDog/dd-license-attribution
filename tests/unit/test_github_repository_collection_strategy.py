@@ -38,6 +38,7 @@ def test_github_repository_collection_strategy_returns_same_metadata_if_not_a_gi
             name="",
             version="",
             origin="not_a_github_purl",
+            local_src_path="",
             license=[],
             copyright=[],
         )
@@ -74,6 +75,7 @@ def test_github_repository_collection_strategy_raise_exception_if_error_calling_
             name=None,
             version=None,
             origin="test_purl",
+            local_src_path=None,
             license=[],
             copyright=[],
         )
@@ -111,6 +113,7 @@ def test_github_repository_collection_strategy_returns_uses_repo_owner_when_no_c
             name=None,
             version=None,
             origin="test_purl",
+            local_src_path=None,
             license=[],
             copyright=[],
         )
@@ -123,6 +126,7 @@ def test_github_repository_collection_strategy_returns_uses_repo_owner_when_no_c
             name=None,
             version=None,
             origin="test_purl",
+            local_src_path=None,
             license=["test_license"],
             copyright=["test_owner"],
         )
@@ -156,6 +160,7 @@ def test_github_repository_collection_strategy_do_not_override_license_on_noasse
             name=None,
             version=None,
             origin="test_purl_1",
+            local_src_path=None,
             license=["test_license"],
             copyright=[],
         ),
@@ -163,6 +168,7 @@ def test_github_repository_collection_strategy_do_not_override_license_on_noasse
             name=None,
             version=None,
             origin="test_purl_2",
+            local_src_path=None,
             license=[],
             copyright=[],
         ),
@@ -199,6 +205,7 @@ def test_github_repository_collection_strategy_do_not_override_license_if_previo
             name=None,
             version=None,
             origin="test_purl",
+            local_src_path=None,
             license=["test_license_preset"],
             copyright=[],
         )
@@ -211,6 +218,7 @@ def test_github_repository_collection_strategy_do_not_override_license_if_previo
             name=None,
             version=None,
             origin="test_purl",
+            local_src_path=None,
             license=["test_license_preset"],
             copyright=["test_owner"],
         )
@@ -244,6 +252,7 @@ def test_github_repository_collection_strategy_do_not_override_copyright_if_prev
             name=None,
             version=None,
             origin="test_purl",
+            local_src_path=None,
             license=[],
             copyright=["test_copyright"],
         )
@@ -256,6 +265,7 @@ def test_github_repository_collection_strategy_do_not_override_copyright_if_prev
             name=None,
             version=None,
             origin="test_purl",
+            local_src_path=None,
             license=["test_license"],
             copyright=["test_copyright"],
         )

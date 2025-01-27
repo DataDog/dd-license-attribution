@@ -148,6 +148,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                         name=sbom_package["name"],
                         version=version,
                         origin=origin,
+                        local_src_path=None,
                         license=license,
                         copyright=copyright,
                     )
