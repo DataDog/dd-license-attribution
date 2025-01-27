@@ -15,6 +15,7 @@ def test_report_generator_saves_reporter_and_calls_it_when_metadata_is_passed(
             name="test",
             version="1.0.0",
             origin="test_origin",
+            local_src_path=None,
             license=["MIT"],
             copyright=["test"],
         )
