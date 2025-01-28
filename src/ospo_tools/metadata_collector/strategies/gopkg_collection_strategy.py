@@ -37,6 +37,8 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                 for package_data in package_data_list:
                     if "Module" not in package_data:
                         continue
+                    if "Version" not in package_data["Module"]:
+                        continue
                     # Extract metadata from the package data
                     package_metadata = Metadata(
                         name=package_data["Module"]["Path"],
