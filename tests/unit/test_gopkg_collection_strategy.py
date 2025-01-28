@@ -216,9 +216,9 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
     mock_walk_directory.assert_called_once_with("cache_dir/org_package1")
     mock_output_from_command.assert_has_calls(
         [
-            mocker.call("CWD=pwd; cd org_package1 && go list -json all; cd $CWD"),
+            mocker.call("CWD=`pwd`; cd org_package1 && go list -json all; cd $CWD"),
             mocker.call(
-                "CWD=pwd; cd org_package1/package3 && go list -json all; cd $CWD"
+                "CWD=`pwd`; cd org_package1/package3 && go list -json all; cd $CWD"
             ),
         ]
     )
