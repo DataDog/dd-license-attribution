@@ -27,7 +27,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             if "go.mod" in files:
                 # Run the go list command to get the package details
                 output = output_from_command(
-                    f"CWD=pwd; cd {root} && go list -json all; cd $CWD"
+                    f"CWD=`pwd`; cd {root} && go list -json all; cd $CWD"
                 )
                 corrected_output = (
                     "[" + output.replace("}\n{", "},\n{") + "]"
