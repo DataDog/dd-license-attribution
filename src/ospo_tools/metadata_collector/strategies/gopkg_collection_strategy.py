@@ -35,6 +35,8 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                 package_data_list = json.loads(corrected_output)
 
                 for package_data in package_data_list:
+                    if "Module" not in package_data:
+                        continue
                     # Extract metadata from the package data
                     package_metadata = Metadata(
                         name=package_data["Module"]["Path"],
