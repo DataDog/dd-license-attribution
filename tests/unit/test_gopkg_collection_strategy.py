@@ -89,6 +89,20 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
             "bytes",
             "github.com/org/package1/package3"
     ]
+}
+{
+    "Dir": "/tmp/go/pkg/mod/github.com/org/package5",
+    "ImportPath": "github.com/org/package1/package5",
+    "Name": "package5",
+    "Root": "/tmp/go/pkg/mod/github.com/org/package5",
+    "Module": {
+            "Path": "github.com/org/package1/package5",
+            "Time": "2022-09-15T18:34:49Z",
+            "Dir": "/tmp/go/pkg/mod/github.com/org/package5"
+    },
+    "Deps": [
+            "github.com/org/package6"
+    ]
 }"""
 
     deps_list_json_3 = """
