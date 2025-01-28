@@ -119,6 +119,21 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
             "Dir": "/tmp/go/pkg/mod/github.com/org/package4@v1.2.3"
     },
     "Deps": []
+}
+{
+        "Dir": "/opt/homebrew/Cellar/go/1.23.5/libexec/src/bytes",
+        "ImportPath": "bytes",
+        "Name": "bytes",
+        "Doc": "Package bytes implements functions for the manipulation of byte slices.",
+        "Root": "/opt/homebrew/Cellar/go/1.23.5/libexec",
+        "Match": [
+                "all"
+        ],
+        "Goroot": true,
+        "Standard": true,
+        "Stale": true,
+        "StaleReason": "stale dependency: internal/goarch",
+        "Deps": []
 }"""
 
     mock_output_from_command.side_effect = [deps_list_json_1, deps_list_json_3]
