@@ -37,13 +37,24 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
             if not package.origin or (package.license and package.copyright):
                 updated_metadata.append(package)
                 continue
+            if package.local_src_path is not None:
+                # if we have a local source path from package manager, we use that
+                source_code_reference = SourceCodeReference(
+                    repo_url=package.origin,
+                    branch="",
+                    local_root_path=package.local_src_path,
+                    local_full_path=package.local_src_path,
+                )
             # otherwise we make a shallow clone of the repository or read a cache of it
-            source_code_reference = self.source_code_manager.get_code(
-                package.origin, force_update=False
-            )
-            if not source_code_reference:
-                updated_metadata.append(package)
-                continue
+            else:
+                source_code_reference_or_none = self.source_code_manager.get_code(
+                    package.origin, force_update=False
+                )
+                if not source_code_reference_or_none:
+                    updated_metadata.append(package)
+                    continue
+                else:
+                    source_code_reference = source_code_reference_or_none
 
             if not package.license:
                 # get list of files at the base directory of the repository to attempt to find licenses
