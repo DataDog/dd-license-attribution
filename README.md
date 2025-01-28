@@ -8,7 +8,7 @@ This is a tool to generate 3party-license csv files used to track dependencies l
 
 As Today, only golang is supported. We plan to expand to other languages soon.
 
-This tool collects license and other metadata information using multiple sources, including the GitHub API and the go-licenses package.
+This tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, and the go-pkg list command output.
 It supports gathering data from various repositories to generate a comprehensive 3rd-party license CSV file.
 Because, these tools require calls to public APIs, and the APIs may trottle down based in usage, it is spected that run takes many minutes depeding mostly in the size of the project dependency tree.
 
@@ -16,7 +16,6 @@ Because, these tools require calls to public APIs, and the APIs may trottle down
 
 - python3.10+ - [Python install instructions](https://www.python.org/downloads/)
 - gopkg - [GoLang and GoPkg install instructions](https://go.dev/doc/install)
-- go-licenses - [GoLicenses install instructions](https://github.com/google/go-licenses?tab=readme-ov-file#installation)
 - libmagic (only on mac):
   - `brew install libmagic`
 
@@ -38,8 +37,8 @@ The following optional parameters are available:
 - `--deep-scanning`: it will attemp to parse license and copyright information from full package sourcecode using codescan, this is a intensive task, that depending in the package size, may take hours or even days to process.
 - `--only-transitive-dependencies`: it will not attempt to extract license and copyright from the passed package, only its dependencies.
 - `--only-root-project`: it will only extract information from the licenses and copyright of the passed package, not its dependencies.
-- `--cache-dir`: if a directory is passed to this parameter all the dependencies source code downloaded for analysis is kept in the directory and can be reused between runs. By default, nothing is reused between runs.                                 │
-- `--go-licenses-csv-file`: The path to the Go licenses CSV output file to be used as hint. If your package is a Go project, passing the hint helps identifying the origin of the dependencies.
+- `--cache-dir`: if a directory is passed to this parameter all the dependencies source code downloaded for analysis is kept in the directory and can be reused between runs. By default, nothing is reused between runs.
+- `--cache-ttl`: seconds until cached data is considered expired, by default 1 day.
 
 For more details about optional parameters pass `--help` to the command.
 
@@ -74,13 +73,13 @@ We currently use `black` to reformat files.
 If you use VSCode, files will be automatically reformatted on saving. You can also run black from the command line:
 
 ```bash
-venv/bin/black src/ tests/
+venv/bin/black src tests
 ```
 
 We use MyPy for validating typing of the project. We keep 100% typing coverage.
 
 ```bash
-venv/bin/mypy .
+venv/bin/mypy src tests
 ```
 
 Both, black and mypy requirements are enforced by CI workflow in PRs.
@@ -106,7 +105,6 @@ CI runs the contract tests before attempting to run the unit tests.
 
 ### current development state
 
-- Initial set of dependencies is collected via github-sbom api.
+- Initial set of dependencies is collected via github-sbom api and gopkg listing.
 - Action packages are ignored.
-- Go packages can use go-licenses output as hint when passed by the `--go-licenses-csv-file` argument.
 - Purls are only parsed for Go.
