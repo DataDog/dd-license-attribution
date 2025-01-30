@@ -176,7 +176,7 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
     expected_metadata = [
         Metadata(
             name="github.com/org/package1",
-            origin="github.com/org/package1",
+            origin="https://github.com/org/package1",
             local_src_path="/tmp/go/pkg/mod/github.com/org/package1@v1.0",
             license=["Apache-2.0"],
             version="v1.0",
@@ -192,7 +192,7 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
         ),
         Metadata(
             name="github.com/org/package1/package3",
-            origin="github.com/org/package1/package3",
+            origin="https://github.com/org/package1/tree/HEAD/package3",
             local_src_path="/tmp/go/pkg/mod/github.com/org/package1@v1.0/package3",
             license=[],
             version="v1.0",
@@ -200,7 +200,7 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
         ),
         Metadata(
             name="github.com/org/package4",
-            origin="github.com/org/package4",
+            origin="https://github.com/org/package4",
             local_src_path="/tmp/go/pkg/mod/github.com/org/package4@v1.2.3",
             license=[],
             version="v1.2.3",

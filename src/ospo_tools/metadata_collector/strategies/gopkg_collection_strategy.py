@@ -42,7 +42,9 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                     # Extract metadata from the package data
                     package_metadata = Metadata(
                         name=package_data["Module"]["Path"],
-                        origin=package_data["Module"]["Path"],
+                        origin=self._translate_github_path(
+                            package_data["Module"]["Path"]
+                        ),
                         local_src_path=package_data["Module"]["Dir"],
                         license=[],
                         version=package_data["Module"]["Version"],
@@ -60,3 +62,11 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                         metadata.append(package_metadata)
 
         return metadata
+
+    def _translate_github_path(self, path: str) -> str:
+        if not path.startswith("github.com"):
+            return f"https://{path}"
+        parts = path.split("/", 3)
+        if len(parts) > 3:
+            return f"https://{parts[0]}/{parts[1]}/{parts[2]}/tree/HEAD/{parts[3]}"
+        return f"https://{path}"
