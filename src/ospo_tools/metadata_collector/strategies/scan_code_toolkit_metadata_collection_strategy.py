@@ -45,8 +45,17 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     local_root_path=package.local_src_path,
                     local_full_path=package.local_src_path,
                 )
+                if not package.license:
+                    package.license = self._get_license(source_code_reference)
+                if not package.copyright:
+                    package.copyright = self._get_copyright(source_code_reference)
+
             # otherwise we make a shallow clone of the repository or read a cache of it
-            else:
+            if not package.license or not package.copyright:
+                if package.origin.startswith("github.com/"):
+                    package.origin = package.origin.replace(
+                        "github.com/", "https://github.com/"
+                    )
                 source_code_reference_or_none = self.source_code_manager.get_code(
                     package.origin, force_update=False
                 )
@@ -55,60 +64,10 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     continue
                 else:
                     source_code_reference = source_code_reference_or_none
-
-            if not package.license:
-                # get list of files at the base directory of the repository to attempt to find licenses
-                # filter files to be only the ones that are in the license source files list (non case sensitive)
-                files = self._get_candidate_files(
-                    source_code_reference, self.license_source_files, False
-                )
-                # get the license for each file
-                licenses = []
-                for file_abs_path in files:
-                    license = scancode.api.get_licenses(file_abs_path)
-                    if (
-                        "detected_license_expression_spdx" in license
-                        and license["detected_license_expression_spdx"]
-                    ):
-                        licenses.append(license["detected_license_expression_spdx"])
-                # if we found a license, we update the package metadata
-                if licenses:
-                    package.license = self.cleanup_licenses(licenses)
-            # copyright
-            if not package.copyright:
-                copyrights: dict[str, list[str]] = {
-                    "holders": [],
-                    "authors": [],
-                    "copyrights": [],
-                }
-                files = self._get_candidate_files(
-                    source_code_reference, self.copyright_source_files, True
-                )
-                for file in files:
-                    copyright = scancode.api.get_copyrights(file)
-                    if copyright["holders"]:
-                        for c in copyright["holders"]:
-                            copyrights["holders"].append(c["holder"])
-                    elif copyright["authors"]:
-                        for c in copyright["authors"]:
-                            copyrights["authors"].append(c["author"])
-                    elif copyright["copyrights"]:
-                        for c in copyright["copyrights"]:
-                            copyrights["copyrights"].append(c["copyright"])
-                # If we find a declaration of copyright holders, we use that.
-                if copyrights["holders"]:
-                    # remove duplicates
-                    package.copyright = list(set(copyrights["holders"]))
-                # If we do not find a declaration of holders, we use the authors.
-                elif copyrights["authors"]:
-                    # remove duplicates
-                    package.copyright = list(set(copyrights["authors"]))
-                # If we do not find a declaration of holders or authors, we use the copyrights disclaimers in raw.
-                elif copyrights["copyrights"]:
-                    # remove duplicates
-                    package.copyright = list(set(copyrights["copyrights"]))
-                else:
-                    package.copyright = []
+                if not package.license:
+                    package.license = self._get_license(source_code_reference)
+                if not package.copyright:
+                    package.copyright = self._get_copyright(source_code_reference)
             updated_metadata.append(package)
         return updated_metadata
 
@@ -157,6 +116,60 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                 )
             )
         return candidates
+
+    def _get_license(self, source_code_reference: SourceCodeReference) -> list[str]:
+        # get list of files at the base directory of the repository to attempt to find licenses
+        # filter files to be only the ones that are in the license source files list (non case sensitive)
+        files = self._get_candidate_files(
+            source_code_reference, self.license_source_files, False
+        )
+        # get the license for each file
+        licenses = []
+        for file_abs_path in files:
+            license = scancode.api.get_licenses(file_abs_path)
+            if (
+                "detected_license_expression_spdx" in license
+                and license["detected_license_expression_spdx"]
+            ):
+                licenses.append(license["detected_license_expression_spdx"])
+        # if we found a license, we update the package metadata
+        if licenses:
+            return self.cleanup_licenses(licenses)
+        return []
+
+    def _get_copyright(self, source_code_reference: SourceCodeReference) -> list[str]:
+        copyrights: dict[str, list[str]] = {
+            "holders": [],
+            "authors": [],
+            "copyrights": [],
+        }
+        files = self._get_candidate_files(
+            source_code_reference, self.copyright_source_files, True
+        )
+        for file in files:
+            copyright = scancode.api.get_copyrights(file)
+            if copyright["holders"]:
+                for c in copyright["holders"]:
+                    copyrights["holders"].append(c["holder"])
+            elif copyright["authors"]:
+                for c in copyright["authors"]:
+                    copyrights["authors"].append(c["author"])
+            elif copyright["copyrights"]:
+                for c in copyright["copyrights"]:
+                    copyrights["copyrights"].append(c["copyright"])
+        # If we find a declaration of copyright holders, we use that.
+        if copyrights["holders"]:
+            # remove duplicates
+            return list(set(copyrights["holders"]))
+        # If we do not find a declaration of holders, we use the authors.
+        if copyrights["authors"]:
+            # remove duplicates
+            return list(set(copyrights["authors"]))
+        # If we do not find a declaration of holders or authors, we use the copyrights disclaimers in raw.
+        if copyrights["copyrights"]:
+            # remove duplicates
+            return list(set(copyrights["copyrights"]))
+        return []
 
     @staticmethod
     def cleanup_licenses(licenses: list[str]) -> list[str]:
