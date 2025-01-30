@@ -34,3 +34,8 @@ def change_directory(dir_name: str) -> None:
 
 def get_current_working_directory() -> str:
     return os.getcwd()
+
+
+def open_file(file_path: str) -> str:
+    with open(file_path, "r") as file:
+        return file.read()
