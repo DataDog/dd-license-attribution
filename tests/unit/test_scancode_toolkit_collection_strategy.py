@@ -965,7 +965,7 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_and_license_fro
         Metadata(
             name="github.com/org/package1",
             version="v1.0",
-            origin="github.com/org/package1",
+            origin="https://github.com/org/package1",
             local_src_path="/tmp/go/mod/github.com/org/package1@v1.0",
             license=[],
             copyright=[],
