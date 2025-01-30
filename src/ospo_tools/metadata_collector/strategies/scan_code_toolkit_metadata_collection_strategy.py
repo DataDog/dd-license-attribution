@@ -52,10 +52,6 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
 
             # otherwise we make a shallow clone of the repository or read a cache of it
             if not package.license or not package.copyright:
-                if package.origin.startswith("github.com/"):
-                    package.origin = package.origin.replace(
-                        "github.com/", "https://github.com/"
-                    )
                 source_code_reference_or_none = self.source_code_manager.get_code(
                     package.origin, force_update=False
                 )
