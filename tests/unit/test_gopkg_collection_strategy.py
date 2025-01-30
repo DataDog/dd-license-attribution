@@ -222,10 +222,3 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
             ),
         ]
     )
-
-
-@pytest.mark.xfail
-def test_gopkg_collection_strategy_does_not_fail_under_missed_package_in_cache() -> (
-    None
-):
-    assert False

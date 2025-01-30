@@ -913,3 +913,114 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_and_license_fro
             call("cache_test/package2/main/20220101-000000Z/COPYRIGHT"),
         ]
     )
+
+
+def test_scancode_toolkit_collection_strategy_extracts_copyright_and_license_from_repo_if_local_src_path_cannot_provide_it(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_code.return_value = SourceCodeReference(
+        repo_url="http://github.com/org/package1",
+        branch="main",
+        local_root_path="cache_test/org/package1/main/20220101-000000Z",
+        local_full_path="cache_test/org/package1/main/20220101-000000Z",
+    )
+
+    listdir_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        side_effect=[["nothing", "here"], ["LICENSE", "COPYRIGHT"]],
+    )
+
+    walk_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory",
+        side_effect=[
+            [
+                (
+                    "/tmp/go/mod/github.com/org/package1@v1.0",
+                    [],
+                    ["nothing", "here"],
+                )
+            ],
+            [
+                (
+                    "cache_test/org/package1/main/20220101-000000Z",
+                    [],
+                    ["LICENSE", "COPYRIGHT"],
+                )
+            ],
+        ],
+    )
+
+    scancode_api_mock = mocker.patch("scancode.api")
+    scancode_api_mock.get_licenses.return_value = {
+        "detected_license_expression_spdx": "TEST_LICENSE"
+    }
+    scancode_api_mock.get_copyrights.return_value = {
+        "holders": [{"holder": "TEST_HOLDER"}],
+        "authors": [{"author": "TEST_AUTHOR"}],
+        "copyrights": [{"copyright": "TEST_COPY"}],
+    }
+
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/package1",
+            version="v1.0",
+            origin="github.com/org/package1",
+            local_src_path="/tmp/go/mod/github.com/org/package1@v1.0",
+            license=[],
+            copyright=[],
+        ),
+    ]
+
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        source_code_manager_mock,
+        license_source_files=["license"],
+        copyright_source_files=["copyright"],
+    )
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    expected_metadata = [
+        Metadata(
+            name="github.com/org/package1",
+            version="v1.0",
+            origin="https://github.com/org/package1",
+            local_src_path="/tmp/go/mod/github.com/org/package1@v1.0",
+            license=["TEST_LICENSE"],
+            copyright=["TEST_HOLDER"],
+        ),
+    ]
+
+    assert expected_metadata == updated_metadata
+
+    walk_mock.assert_has_calls(
+        [
+            call("/tmp/go/mod/github.com/org/package1@v1.0"),
+            call("cache_test/org/package1/main/20220101-000000Z"),
+        ]
+    )
+
+    listdir_mock.assert_has_calls(
+        [
+            call("/tmp/go/mod/github.com/org/package1@v1.0"),
+            call("cache_test/org/package1/main/20220101-000000Z"),
+        ]
+    )
+
+    scancode_api_mock.get_licenses.assert_has_calls(
+        [
+            call("cache_test/org/package1/main/20220101-000000Z/LICENSE"),
+        ]
+    )
+
+    scancode_api_mock.get_copyrights.assert_has_calls(
+        [
+            call("cache_test/org/package1/main/20220101-000000Z/COPYRIGHT"),
+        ]
+    )
+
+    source_code_manager_mock.assert_has_calls(
+        [
+            mocker.call.get_code("https://github.com/org/package1", force_update=False),
+        ]
+    )
