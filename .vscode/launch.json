@@ -12,7 +12,7 @@
             "console": "integratedTerminal",
             "args": [
                 // "--only-transitive-dependencies",
-                // "--only-root-project",
+                "--only-root-project",
                 "--cache-dir=cache_test",
                 "--cache-ttl=1700000",
                 "https://github.com/DataDog/stratus-red-team",

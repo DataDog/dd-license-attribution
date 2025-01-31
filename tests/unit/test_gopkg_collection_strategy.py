@@ -2,6 +2,7 @@ from unittest.mock import call
 import pytest_mock
 
 from ospo_tools.artifact_management.source_code_manager import SourceCodeReference
+from ospo_tools.metadata_collector.project_scope import ProjectScope
 from ospo_tools.metadata_collector.strategies.gopkg_collection_strategy import (
     GoPkgMetadataCollectionStrategy,
 )
@@ -18,7 +19,9 @@ def test_gopkg_collection_strategy_do_not_decrement_list_of_dependencies_if_not_
         local_root_path="cache_dir/org_package1",
         local_full_path="cache_dir/org_package1",
     )
-    strategy = GoPkgMetadataCollectionStrategy("package1", mock_source_code_manager)
+    strategy = GoPkgMetadataCollectionStrategy(
+        "package1", mock_source_code_manager, ProjectScope.ALL
+    )
 
     initial_metadata = [
         Metadata(
@@ -49,7 +52,7 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
 ) -> None:
     mock_source_code_manager = mocker.Mock()
     strategy = GoPkgMetadataCollectionStrategy(
-        "https://github.com/org/package1", mock_source_code_manager
+        "https://github.com/org/package1", mock_source_code_manager, ProjectScope.ALL
     )
 
     mock_source_code_manager.get_code.return_value = SourceCodeReference(
@@ -196,6 +199,14 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
             copyright=["Datadog Inc."],
         ),
         Metadata(
+            name="github.com/org/package1/package5",
+            version=None,
+            origin="https://github.com/org/package1/tree/HEAD/package5",
+            local_src_path="/tmp/go/pkg/mod/github.com/org/package5",
+            license=[],
+            copyright=[],
+        ),
+        Metadata(
             name="github.com/org/package1/package3",
             origin="https://github.com/org/package1/tree/HEAD/package3",
             local_src_path="/tmp/go/pkg/mod/github.com/org/package1@v1.0/package3",
@@ -237,7 +248,7 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies_b
 ) -> None:
     mock_source_code_manager = mocker.Mock()
     strategy = GoPkgMetadataCollectionStrategy(
-        "https://github.com/org/package1", mock_source_code_manager
+        "https://github.com/org/package1", mock_source_code_manager, ProjectScope.ALL
     )
 
     mock_source_code_manager.get_code.return_value = SourceCodeReference(
@@ -390,4 +401,129 @@ require github.com/org/package1 v1.0
             call("org_package1/src/go.mod"),
             call("org_package1/examples/go.mod"),
         ]
+    )
+
+
+def test_gopkg_collection_strategy_only_updates_local_source_path_when_only_root_is_passed(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/package1",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+    )
+
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/package1",
+        branch="main",
+        local_root_path="cache_dir/org_package1",
+        local_full_path="cache_dir/org_package1",
+    )
+
+    mock_walk_directory = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.gopkg_collection_strategy.walk_directory"
+    )
+
+    mock_walk_directory.return_value = [
+        ("org_package1", ["src", "examples"], ["go.mod"]),
+        ("org_package1/src", [], ["go.mod"]),
+    ]
+
+    mock_open_file = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        return_value="module github.com/org/package1",
+    )
+
+    deps_list_json_top = """
+{
+    "Dir": "/tmp/go/pkg/mod/github.com/org/package1@v1.0",
+    "ImportPath": "github.com/org/package1",
+    "Name": "org/package1",
+    "Root": "/tmp/go/pkg/mod/github.com/org/package1@v1.0",
+    "Module": {
+            "Path": "github.com/org/package1",
+            "Version": "v1.0",
+            "Time": "2022-09-15T18:34:49Z",
+            "Dir": "/tmp/go/pkg/mod/github.com/org/package1@v1.0"
+    },
+    "Deps": [
+            "bufio",
+            "bytes",
+            "github.com/org/package1/src"
+    ]
+}
+{
+    "Dir": "/tmp/go/pkg/mod/github.com/org/packag1/src",
+    "ImportPath": "github.com/org/package1/src",
+    "Name": "src",
+    "Root": "/tmp/go/pkg/mod/github.com/org/package1/src",
+    "Module": {
+            "Path": "github.com/org/package1/src",
+            "Version": "v1.0",
+            "Time": "2022-09-15T18:34:49Z",
+            "Dir": "/tmp/go/pkg/mod/github.com/org/package1/src"
+    },
+    "Deps": [
+            "github.com/org/package2"
+    ]
+}
+{
+    "Dir": "/tmp/go/pkg/mod/github.com/org/package2",
+    "ImportPath": "github.com/org/package2",
+    "Name": "src",
+    "Root": "/tmp/go/pkg/mod/github.com/org/package2",
+    "Module": {
+            "Path": "github.com/org/package2",
+            "Version": "v1.0",
+            "Time": "2022-09-15T18:34:49Z",
+            "Dir": "/tmp/go/pkg/mod/github.com/org/package2"
+    },
+    "Deps": []
+}"""
+
+    mock_output_from_command = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json_top,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+            version=None,
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    expected_metadata = [
+        Metadata(
+            name="github.com/org/package1",
+            origin="https://github.com/org/package1",
+            local_src_path="/tmp/go/pkg/mod/github.com/org/package1@v1.0",
+            license=[],
+            version="v1.0",
+            copyright=[],
+        ),
+    ]
+
+    assert result == expected_metadata
+
+    mock_source_code_manager.get_code.assert_called_once_with(
+        "https://github.com/org/package1"
+    )
+
+    mock_walk_directory.assert_called_once_with("cache_dir/org_package1")
+    mock_output_from_command.assert_has_calls(
+        [
+            call("CWD=`pwd`; cd org_package1 && go list -json all; cd $CWD"),
+            call("CWD=`pwd`; cd org_package1/src && go list -json all; cd $CWD"),
+        ]
+    )
+    mock_open_file.assert_has_calls(
+        [call("org_package1/go.mod"), call("org_package1/src/go.mod")]
     )

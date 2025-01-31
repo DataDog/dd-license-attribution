@@ -2,6 +2,7 @@ import json
 import re
 from ospo_tools.artifact_management.source_code_manager import SourceCodeManager
 from ospo_tools.metadata_collector.metadata import Metadata
+from ospo_tools.metadata_collector.project_scope import ProjectScope
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
@@ -13,9 +14,11 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         self,
         top_package: str,
         source_code_manager: SourceCodeManager,
+        project_scope: ProjectScope,
     ) -> None:
         self.top_package = top_package
         self.source_code_manager = source_code_manager
+        self.only_root_project = project_scope == ProjectScope.ONLY_ROOT_PROJECT
 
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         # Get the source code directory
@@ -40,8 +43,15 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                 for package_data in package_data_list:
                     if "Module" not in package_data:
                         continue
-                    if "Version" not in package_data["Module"]:
-                        continue
+                    if self.only_root_project:
+                        if not any(
+                            meta.name == package_data["Module"]["Path"]
+                            for meta in metadata
+                        ):
+                            continue
+                    version = None
+                    if "Version" in package_data["Module"]:
+                        version = package_data["Module"]["Version"]
                     # Extract metadata from the package data
                     package_metadata = Metadata(
                         name=package_data["Module"]["Path"],
@@ -50,7 +60,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                         ),
                         local_src_path=package_data["Module"]["Dir"],
                         license=[],
-                        version=package_data["Module"]["Version"],
+                        version=version,
                         copyright=[],
                     )
 
@@ -60,7 +70,11 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                         if meta.name == package_metadata.name:
                             metadata[i].origin = package_metadata.origin
                             metadata[i].local_src_path = package_metadata.local_src_path
-                            metadata[i].version = package_metadata.version
+                            metadata[i].version = (
+                                package_metadata.version
+                                if package_metadata.version is not None
+                                else metadata[i].version
+                            )
                             saved = True
                             break
                     if not saved:
