@@ -1,3 +1,4 @@
+import os
 from typer.testing import CliRunner
 
 from ospo_tools.cli.get_licenses_copyrights import app
@@ -11,9 +12,17 @@ def test_basic_run() -> None:
 
 
 def test_no_github_auth() -> None:
-    result = runner.invoke(app, ["test"], color=False)
-    assert result.exit_code == 2
-    assert "No Github token available" in result.stderr
+    # Save the original environment variable if it there
+    original_github_token = os.environ.pop("GITHUB_TOKEN", None)
+
+    try:
+        result = runner.invoke(app, ["test"], color=False)
+        assert result.exit_code == 2
+        assert "No Github token available" in result.stderr
+    finally:
+        # Restore the original environment variable
+        if original_github_token is not None:
+            os.environ["GITHUB_TOKEN"] = original_github_token
 
 
 def test_github_auth_param() -> None:
