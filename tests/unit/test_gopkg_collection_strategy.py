@@ -153,7 +153,16 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
         "Deps": []
 }"""
 
-    mock_output_from_command.side_effect = [deps_list_json_1, deps_list_json_3]
+    branch_detection_output = (
+        "ref: refs/heads/main\tHEAD\n72a11341aa684010caf1ca5dee779f0e7e84dfe9\tHEAD\n"
+    )
+
+    mock_output_from_command.side_effect = [
+        deps_list_json_1,
+        branch_detection_output,
+        deps_list_json_3,
+        branch_detection_output,
+    ]
 
     mock_open_file = mocker.patch(
         "ospo_tools.metadata_collector.strategies.gopkg_collection_strategy.open_file",
@@ -201,14 +210,14 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
         Metadata(
             name="github.com/org/package1/package5",
             version=None,
-            origin="https://github.com/org/package1/tree/HEAD/package5",
+            origin="https://github.com/org/package1/tree/main/package5",
             local_src_path="/tmp/go/pkg/mod/github.com/org/package5",
             license=[],
             copyright=[],
         ),
         Metadata(
             name="github.com/org/package1/package3",
-            origin="https://github.com/org/package1/tree/HEAD/package3",
+            origin="https://github.com/org/package1/tree/main/package3",
             local_src_path="/tmp/go/pkg/mod/github.com/org/package1@v1.0/package3",
             license=[],
             version="v1.0",
@@ -233,9 +242,11 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
     mock_output_from_command.assert_has_calls(
         [
             mocker.call("CWD=`pwd`; cd org_package1 && go list -json all; cd $CWD"),
+            mocker.call(f"git ls-remote --symref https://github.com/org/package1 HEAD"),
             mocker.call(
                 "CWD=`pwd`; cd org_package1/package3 && go list -json all; cd $CWD"
             ),
+            mocker.call(f"git ls-remote --symref https://github.com/org/package1 HEAD"),
         ]
     )
     mock_open_file.assert_has_calls(
@@ -329,9 +340,18 @@ require github.com/org/package1 v1.0
     ]
 }"""
 
+    branch_detection_output = (
+        "ref: refs/heads/main\tHEAD\n72a11341aa684010caf1ca5dee779f0e7e84dfe9\tHEAD\n"
+    )
+
     mock_output_from_command = mocker.patch(
         "ospo_tools.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
-        side_effect=[deps_list_json_top, deps_list_json_src],
+        side_effect=[
+            deps_list_json_top,
+            branch_detection_output,
+            deps_list_json_src,
+            branch_detection_output,
+        ],
     )
 
     initial_metadata = [
@@ -374,7 +394,7 @@ require github.com/org/package1 v1.0
         ),
         Metadata(
             name="github.com/org/package1/src",
-            origin="https://github.com/org/package1/tree/HEAD/src",
+            origin="https://github.com/org/package1/tree/main/src",
             local_src_path="/tmp/go/pkg/mod/github.com/org/package1/src",
             license=[],
             version="v1.0",
@@ -391,7 +411,9 @@ require github.com/org/package1 v1.0
     mock_output_from_command.assert_has_calls(
         [
             mocker.call("CWD=`pwd`; cd org_package1 && go list -json all; cd $CWD"),
+            mocker.call(f"git ls-remote --symref https://github.com/org/package1 HEAD"),
             mocker.call("CWD=`pwd`; cd org_package1/src && go list -json all; cd $CWD"),
+            mocker.call(f"git ls-remote --symref https://github.com/org/package1 HEAD"),
         ]
     )
 
