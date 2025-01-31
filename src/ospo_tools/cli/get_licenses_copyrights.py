@@ -14,6 +14,7 @@ from ospo_tools.artifact_management.source_code_manager import (
     validate_cache_dir,
 )
 from ospo_tools.metadata_collector import MetadataCollector
+from ospo_tools.metadata_collector.project_scope import ProjectScope
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
@@ -22,7 +23,6 @@ from ospo_tools.metadata_collector.strategies.github_repository_collection_strat
 )
 from ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy import (
     GitHubSbomMetadataCollectionStrategy,
-    ProjectScope,
 )
 from ospo_tools.metadata_collector.strategies.gopkg_collection_strategy import (
     GoPkgMetadataCollectionStrategy,
@@ -294,7 +294,9 @@ def main(
         sys.exit(1)
 
     if enabled_strategies["GoPkgsMetadataCollectionStrategy"]:
-        strategies.append(GoPkgMetadataCollectionStrategy(package, source_code_manager))
+        strategies.append(
+            GoPkgMetadataCollectionStrategy(package, source_code_manager, project_scope)
+        )
 
     if enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"]:
         if deep_scanning:
