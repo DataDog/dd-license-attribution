@@ -87,7 +87,15 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             return f"https://{path}"
         parts = path.split("/", 3)
         if len(parts) > 3:
-            return f"https://{parts[0]}/{parts[1]}/{parts[2]}/tree/HEAD/{parts[3]}"
+            # GoPkg has no info about what branch was used, assuming the HEAD.
+            branch = (
+                output_from_command(
+                    f"git ls-remote --symref https://{parts[0]}/{parts[1]}/{parts[2]} HEAD"
+                )
+                .split()[1]
+                .removeprefix("refs/heads/")
+            )
+            return f"https://{parts[0]}/{parts[1]}/{parts[2]}/tree/{branch}/{parts[3]}"
         return f"https://{path}"
 
     def _is_example_package(self, go_mod_path: str) -> bool:
