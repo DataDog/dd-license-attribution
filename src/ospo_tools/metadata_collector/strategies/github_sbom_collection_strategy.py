@@ -2,16 +2,13 @@ from ospo_tools.metadata_collector.metadata import Metadata
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
-from enum import Enum
+from ospo_tools.metadata_collector.project_scope import ProjectScope
+
+__all__ = ["GitHubSbomMetadataCollectionStrategy", "ProjectScope"]
+
 from agithub.GitHub import GitHub
 from typing import Any
 from giturlparse import parse as parse_git_url
-
-
-class ProjectScope(Enum):
-    ONLY_ROOT_PROJECT = "Only Root Project"
-    ONLY_TRANSITIVE_DEPENDENCIES = "Only Transitive Dependencies"
-    ALL = "All"
 
 
 class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
