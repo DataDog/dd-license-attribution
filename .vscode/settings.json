@@ -13,4 +13,8 @@
         "venv/bin/black"
     ],
     "editor.formatOnSave": true,
+    "markdownlint.config": {
+        "default": true,
+        "MD024": false
+    },
 }
