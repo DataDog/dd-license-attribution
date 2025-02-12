@@ -17,6 +17,12 @@ jobs:
       TERM: dumb
 
     steps:
+      - name: Configure Datadog Test Optimization
+        uses: datadog/test-visibility-github-action@v2
+        with:
+         languages: python
+         api_key: ${{ secrets.DD_API_KEY }}
+         site: datadoghq.com # Change if your site is not US1
       - name: Check out the repository
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -35,9 +41,15 @@ jobs:
 
       - name: Run contract tests
         run: pytest tests/contract
+        env:
+          DD_ENV: contract-tests
+          DD_TAGS: team:ospo
 
       - name: Run tests with coverage
         run: pytest --cov-report=xml --cov-fail-under=90 tests/unit
+        env:
+          DD_ENV: unit-tests
+          DD_TAGS: team:ospo
 
       - name: Upload coverage report
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 #v4.4.3
