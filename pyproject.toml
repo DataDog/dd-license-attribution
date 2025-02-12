@@ -23,6 +23,7 @@ dependencies = [
     "typer",
     "pytz",
     "giturlparse",
+    "ddtrace",
     "beautifulsoup4==4.12.3" # Not a direct dependency but needs to be pin since newer versions are broken
 ]
 
