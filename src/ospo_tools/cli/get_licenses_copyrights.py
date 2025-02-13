@@ -11,8 +11,8 @@ from ospo_tools.adaptors.os import path_exists, create_dirs
 from collections.abc import Callable
 from ospo_tools.artifact_management.source_code_manager import (
     SourceCodeManager,
-    validate_cache_dir,
 )
+from ospo_tools.artifact_management.artifact_manager import validate_cache_dir
 from ospo_tools.metadata_collector import MetadataCollector
 from ospo_tools.metadata_collector.project_scope import ProjectScope
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (

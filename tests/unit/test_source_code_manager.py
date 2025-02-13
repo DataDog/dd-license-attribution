@@ -153,7 +153,7 @@ def test_source_code_manager_get_non_cached_code(
             return_value="ref: refs/heads/main\tHEAD\n72a11341aa684010caf1ca5dee779f0e7e84dfe9\tHEAD\n",
         )
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.get_datetime_now",
+        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
         side_effect=[
             datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
         ],
@@ -162,12 +162,14 @@ def test_source_code_manager_get_non_cached_code(
         "ospo_tools.artifact_management.source_code_manager.parse_git_url",
         return_value=mocked_parser_results,
     )
-    file_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.path_exists",
-        side_effect=[True, False],
+    artifact_file_exists_mock = mocker.patch(
+        "ospo_tools.artifact_management.artifact_manager.path_exists", return_value=True
     )
-
-    mock_list_dir = mocker.patch(
+    artifact_list_dir_mock = mocker.patch(
+        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        return_value=[],
+    )
+    source_code_list_dir_mock = mocker.patch(
         "ospo_tools.artifact_management.source_code_manager.list_dir",
         return_value=[],
     )
@@ -197,13 +199,14 @@ def test_source_code_manager_get_non_cached_code(
         )
     assert get_datetime_now_mock.call_count == 1
     git_url_parse_mock.assert_called_once_with(resource_url)
-    file_exists_mock.assert_called_once_with("cache_dir")
-    mock_list_dir.assert_has_calls([call("cache_dir"), call("cache_dir")])
+    artifact_file_exists_mock.assert_called_once_with("cache_dir")
+    artifact_list_dir_mock.assert_called_once_with("cache_dir")
+    source_code_list_dir_mock.assert_called_once_with("cache_dir")
 
 
 def test_source_code_manager_get_cached_code(mocker: pytest_mock.MockFixture) -> None:
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.get_datetime_now",
+        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
         return_value=datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
     )
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
@@ -218,13 +221,21 @@ def test_source_code_manager_get_cached_code(mocker: pytest_mock.MockFixture) ->
             path_raw="/tree/test_branch/test_dir",
         ),
     )
-    path_exists_mock = mocker.patch(
+    artifact_path_exists_mock = mocker.patch(
+        "ospo_tools.artifact_management.artifact_manager.path_exists",
+        return_value=True,
+    )
+    source_code_path_exists_mock = mocker.patch(
         "ospo_tools.artifact_management.source_code_manager.path_exists",
         return_value=True,
     )
-    list_dir_mock = mocker.patch(
+    artifact_list_dir_mock = mocker.patch(
+        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        return_value=["20211231_001000Z"],
+    )
+    source_code_list_dir_mock = mocker.patch(
         "ospo_tools.artifact_management.source_code_manager.list_dir",
-        side_effect=[[], ["20211231_001000Z"]],
+        return_value=["20211231_001000Z"],
     )
     run_command_mock = mocker.patch(
         "ospo_tools.artifact_management.source_code_manager.run_command", return_value=0
@@ -243,13 +254,13 @@ def test_source_code_manager_get_cached_code(mocker: pytest_mock.MockFixture) ->
     assert code_ref == expected_source_code_reference
     assert get_datetime_now_mock.call_count == 1
     git_url_parse_mock.assert_called_once_with(request_url)
-    path_exists_mock.assert_has_calls(
-        [
-            call("cache_dir"),
-            call("cache_dir/20211231_001000Z/test_owner-test_repo/test_branch"),
-        ]
+    artifact_path_exists_mock.assert_called_once_with("cache_dir")
+    source_code_path_exists_mock.assert_called_once_with(
+        "cache_dir/20211231_001000Z/test_owner-test_repo/test_branch"
     )
-    list_dir_mock.assert_has_calls([call("cache_dir"), call("cache_dir")])
+    artifact_list_dir_mock.assert_called_once_with("cache_dir")
+    source_code_list_dir_mock.assert_called_once_with("cache_dir")
+
     run_command_mock.assert_called_once_with(
         f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
     )
@@ -259,7 +270,7 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.get_datetime_now",
+        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
         side_effect=[
             datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
         ],
@@ -282,10 +293,14 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
         ),
     )
     path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.path_exists",
+        "ospo_tools.artifact_management.artifact_manager.path_exists",
         return_value=True,
     )
-    list_dir_mock = mocker.patch(
+    artifact_list_dir_mock = mocker.patch(
+        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        return_value=["20210101_000000Z"],
+    )
+    source_code_list_dir_mock = mocker.patch(
         "ospo_tools.artifact_management.source_code_manager.list_dir",
         return_value=["20210101_000000Z"],
     )
@@ -308,7 +323,8 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
     assert get_datetime_now_mock.call_count == 1
     git_url_parse_mock.assert_called_once_with(request_url)
     path_exists_mock.assert_called_once_with("cache_dir")
-    list_dir_mock.assert_has_calls([call("cache_dir"), call("cache_dir")])
+    artifact_list_dir_mock.assert_called_once_with("cache_dir")
+    source_code_list_dir_mock.assert_called_once_with("cache_dir")
 
     run_command_mock.assert_has_calls(
         [
@@ -327,7 +343,7 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.get_datetime_now",
+        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
         side_effect=[
             datetime.fromisoformat("2022-01-01T00:00:05+00:00"),
         ],
@@ -345,14 +361,18 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
         ),
     )
     path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.path_exists",
+        "ospo_tools.artifact_management.artifact_manager.path_exists",
         return_value=True,
     )
     run_command_mock = mocker.patch(
         "ospo_tools.artifact_management.source_code_manager.run_command", return_value=0
     )
 
-    mock_list_dir = mocker.patch(
+    artifact_mock_list_dir = mocker.patch(
+        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        return_value=["20210101_000000Z"],
+    )
+    source_code_mock_list_dir = mocker.patch(
         "ospo_tools.artifact_management.source_code_manager.list_dir",
         return_value=["20210101_000000Z"],
     )
@@ -374,7 +394,8 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
     assert get_datetime_now_mock.call_count == 1
     git_url_parse_mock.assert_called_once_with(request_url)
     path_exists_mock.assert_called_once_with("cache_dir")
-    mock_list_dir.assert_has_calls([call("cache_dir"), call("cache_dir")])
+    artifact_mock_list_dir.assert_called_once_with("cache_dir")
+    source_code_mock_list_dir.assert_called_once_with("cache_dir")
 
     mock_create_dirs.assert_called_once_with(expected_cache_dir)
 
@@ -404,11 +425,11 @@ def test_non_github_returns_none(mocker: pytest_mock.MockFixture) -> None:
     )
 
     mock_path_exists = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.path_exists",
+        "ospo_tools.artifact_management.artifact_manager.path_exists",
         return_value=True,
     )
     mock_list_dir = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.list_dir",
+        "ospo_tools.artifact_management.artifact_manager.list_dir",
         return_value=[],
     )
 
@@ -424,11 +445,11 @@ def test_non_github_returns_none(mocker: pytest_mock.MockFixture) -> None:
     mock_list_dir.assert_called_once_with("cache_dir")
 
 
-def test_source_code_manager_get_non_cached_code_for_ambiguous_branch_names(
+def test_artifact_manager_get_non_cached_code_for_ambiguous_branch_names(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.get_datetime_now",
+        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
         return_value=datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
     )
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
@@ -444,10 +465,14 @@ def test_source_code_manager_get_non_cached_code_for_ambiguous_branch_names(
         ),
     )
     path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.path_exists",
+        "ospo_tools.artifact_management.artifact_manager.path_exists",
         return_value=True,
     )
-    list_dir_mock = mocker.patch(
+    artifact_list_dir_mock = mocker.patch(
+        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        return_value=["20210101_000000Z"],
+    )
+    source_code_list_dir_mock = mocker.patch(
         "ospo_tools.artifact_management.source_code_manager.list_dir",
         return_value=["20210101_000000Z"],
     )
@@ -470,7 +495,8 @@ def test_source_code_manager_get_non_cached_code_for_ambiguous_branch_names(
     assert get_datetime_now_mock.call_count == 1
     git_url_parse_mock.assert_called_once_with(request_url)
     path_exists_mock.assert_called_once_with("cache_dir")
-    list_dir_mock.assert_has_calls([call("cache_dir"), call("cache_dir")])
+    artifact_list_dir_mock.assert_called_once_with("cache_dir")
+    source_code_list_dir_mock.assert_called_once_with("cache_dir")
 
     assert run_command_mock.call_count == 2
     run_command_mock.assert_has_calls(
@@ -489,7 +515,7 @@ def test_source_code_manager_fails_init_if_cache_dir_is_not_a_directory(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.path_exists",
+        "ospo_tools.artifact_management.artifact_manager.path_exists",
         return_value=False,
     )
 
@@ -504,11 +530,11 @@ def test_source_code_manager_fails_init_if_cache_dir_contains_unexpected_files(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.path_exists",
+        "ospo_tools.artifact_management.artifact_manager.path_exists",
         return_value=True,
     )
     list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.list_dir",
+        "ospo_tools.artifact_management.artifact_manager.list_dir",
         return_value=["unexpected_file"],
     )
 
