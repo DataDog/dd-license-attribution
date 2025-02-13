@@ -1,5 +1,5 @@
-""" Metadata collector class uses passed strategies to collect metadata from
-    a package and its dependencies. """
+"""Metadata collector class uses passed strategies to collect metadata from
+a package and its dependencies."""
 
 from ospo_tools.metadata_collector.metadata import Metadata
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
