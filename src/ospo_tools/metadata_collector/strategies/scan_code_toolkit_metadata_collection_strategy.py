@@ -3,6 +3,8 @@ from ospo_tools.adaptors.os import list_dir, walk_directory
 
 from ospo_tools.artifact_management.source_code_manager import (
     SourceCodeManager,
+)
+from ospo_tools.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
 from ospo_tools.metadata_collector.metadata import Metadata
