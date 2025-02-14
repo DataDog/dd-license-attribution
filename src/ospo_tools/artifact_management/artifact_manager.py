@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from ospo_tools.adaptors.datetime import get_datetime_now
 from ospo_tools.adaptors.os import path_exists
 from ospo_tools.adaptors.os import list_dir
@@ -12,6 +13,14 @@ def validate_cache_dir(local_cache_dir: str) -> bool:
         except ValueError:
             return False
     return True
+
+
+@dataclass
+class SourceCodeReference:
+    repo_url: str
+    branch: str
+    local_root_path: str
+    local_full_path: str
 
 
 class ArtifactManager:

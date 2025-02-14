@@ -10,15 +10,10 @@ from ospo_tools.adaptors.os import (
 from datetime import datetime
 import pytz
 
-from ospo_tools.artifact_management.artifact_manager import ArtifactManager
-
-
-@dataclass
-class SourceCodeReference:
-    repo_url: str
-    branch: str
-    local_root_path: str
-    local_full_path: str
+from ospo_tools.artifact_management.artifact_manager import (
+    ArtifactManager,
+    SourceCodeReference,
+)
 
 
 def extract_ref(ref: str, url: str) -> str:
