@@ -1,7 +1,7 @@
 from unittest.mock import call
 
 import pytest_mock
-from ospo_tools.artifact_management.source_code_manager import SourceCodeReference
+from ospo_tools.artifact_management.artifact_manager import SourceCodeReference
 from ospo_tools.metadata_collector.metadata import Metadata
 from functools import partial
 from ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
