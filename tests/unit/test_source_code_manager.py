@@ -6,6 +6,8 @@ import pytest_mock
 
 from ospo_tools.artifact_management.source_code_manager import (
     SourceCodeManager,
+)
+from ospo_tools.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
 
