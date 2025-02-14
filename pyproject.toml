@@ -23,6 +23,7 @@ dependencies = [
     "typer",
     "pytz",
     "giturlparse",
+    "requests",
     "beautifulsoup4==4.12.3" # Not a direct dependency but needs to be pin since newer versions are broken
 ]
 
@@ -34,7 +35,8 @@ dev = [
     "mypy",
     "black",
     "mutmut",
-    "types-pytz"
+    "types-pytz",
+    "types-requests"
 ]
 
 [project.scripts]
