@@ -9,7 +9,9 @@ from typing import Annotated
 from ospo_tools.adaptors.os import path_exists, create_dirs
 
 from collections.abc import Callable
+from ospo_tools.artifact_management.python_env_manager import PythonEnvManager
 from ospo_tools.artifact_management.source_code_manager import (
+    NonAccessibleRepository,
     SourceCodeManager,
 )
 from ospo_tools.artifact_management.artifact_manager import validate_cache_dir
@@ -316,7 +318,11 @@ def main(
         strategies.append(GitHubRepositoryMetadataCollectionStrategy(github_client))
 
     metadata_collector = MetadataCollector(strategies)
-    metadata = metadata_collector.collect_metadata(package)
+    try:
+        metadata = metadata_collector.collect_metadata(package)
+    except NonAccessibleRepository as e:
+        print(f"\033[91m{e}\033[0m", file=sys.stderr)
+        exit(1)
 
     csv_reporter = ReportGenerator(CSVReportingWritter())
 
