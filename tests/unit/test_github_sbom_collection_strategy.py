@@ -1,5 +1,6 @@
 from unittest.mock import call
 import pytest
+from ospo_tools.artifact_management.source_code_manager import NonAccessibleRepository
 from ospo_tools.metadata_collector.metadata import Metadata
 from ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy import (
     GitHubSbomMetadataCollectionStrategy,
@@ -72,7 +73,7 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
     mocker: pytest_mock.MockFixture,
 ) -> None:
     sbom_mock = mocker.Mock()
-    sbom_mock.get.return_value = (404, "Not Found")
+    sbom_mock.get.return_value = (500, "Not Found")
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
     github_parse_mock = mocker.patch(
@@ -102,6 +103,46 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
     ]
 
     with pytest.raises(ValueError, match="Failed to get SBOM for test_owner/test_repo"):
+        strategy.augment_metadata(initial_metadata)
+
+    github_parse_mock.assert_called_once_with("test_purl")
+    sbom_mock.get.assert_called_once_with()
+
+
+def test_github_sbom_collection_strategy_raise_special_exception_if_error_calling_github_sbom_api_is_404(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    sbom_mock = mocker.Mock()
+    sbom_mock.get.return_value = (404, "Not Found")
+    github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+
+    github_parse_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(
+            valid=True,
+            platform="github",
+            owner="test_owner",
+            repo="test_repo",
+        ),
+    )
+
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        project_scope=ProjectScope.ALL,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="",
+            version="",
+            origin="test_purl",
+            local_src_path="",
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    with pytest.raises(NonAccessibleRepository, match=".*test_owner/test_repo.*"):
         strategy.augment_metadata(initial_metadata)
 
     github_parse_mock.assert_called_once_with("test_purl")
