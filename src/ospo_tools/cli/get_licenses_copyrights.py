@@ -9,6 +9,7 @@ from typing import Annotated
 from ospo_tools.adaptors.os import path_exists, create_dirs
 
 from collections.abc import Callable
+from ospo_tools.artifact_management.python_env_manager import PythonEnvManager
 from ospo_tools.artifact_management.source_code_manager import (
     NonAccessibleRepository,
     SourceCodeManager,
