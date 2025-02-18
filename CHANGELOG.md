@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ### Fixed
 
 - Bug crashing excecution for constructing the wrong path for Go projects which root was nested multiple directories inside the root-project repository.
+### Added
+
+- Better error message when fetching github-sbom returns a 404 status code.
 
 ## [0.2.0-beta] - 2025-02-11
 

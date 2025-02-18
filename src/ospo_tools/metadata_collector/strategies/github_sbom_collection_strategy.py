@@ -9,6 +9,7 @@ __all__ = ["GitHubSbomMetadataCollectionStrategy", "ProjectScope"]
 from agithub.GitHub import GitHub
 from typing import Any
 from giturlparse import parse as parse_git_url
+from ospo_tools.artifact_management.source_code_manager import NonAccessibleRepository
 
 
 class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
@@ -156,4 +157,10 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
         status, result = self.client.repos[owner][repo]["dependency-graph"].sbom.get()
         if status == 200:
             return result["sbom"]
+        if status == 404:
+            error_message = (
+                f"Inexistent repository or private repository and lack of permissions in GH_TOKEN passed.\n"
+                f"If {owner}/{repo} is a valid repository, please check if the token has content-read and metadata-read required permissions."
+            )
+            raise NonAccessibleRepository(error_message)
         raise ValueError(f"Failed to get SBOM for {owner}/{repo}")

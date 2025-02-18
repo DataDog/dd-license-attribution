@@ -16,6 +16,12 @@ from ospo_tools.artifact_management.artifact_manager import (
 )
 
 
+class NonAccessibleRepository(Exception):
+    """Exception raised when a repository is not accessible."""
+
+    pass
+
+
 def extract_ref(ref: str, url: str) -> str:
     split_ref = ref.split("/")
     for i in range(len(split_ref)):
