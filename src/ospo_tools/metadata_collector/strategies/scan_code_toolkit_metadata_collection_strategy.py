@@ -1,5 +1,5 @@
 import scancode.api
-from ospo_tools.adaptors.os import list_dir, walk_directory
+from ospo_tools.adaptors.os import list_dir, path_exists, walk_directory
 
 from ospo_tools.artifact_management.source_code_manager import (
     SourceCodeManager,
@@ -60,6 +60,21 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     continue
                 else:
                     source_code_reference = source_code_reference_or_none
+                # if the repository location was obtained as a inference from the package manager it may be incorrect
+                # We need to check existance of the path and skip with a warning if not found
+                if (
+                    source_code_reference.local_full_path  # it was inference from package manager
+                    and (
+                        not path_exists(source_code_reference.local_full_path)
+                        or not path_exists(source_code_reference.local_root_path)
+                    )
+                ):
+                    print(
+                        f"Warning: {source_code_reference.local_full_path} does not exist, skipping. "
+                        f"This may be due to the package manager not providing the correct source code location on {package.local_src_path}."
+                    )
+                    updated_metadata.append(package)
+                    continue
                 if not package.license:
                     package.license = self._get_license(source_code_reference)
                 if not package.copyright:

@@ -144,12 +144,24 @@ def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos
         copyright_source_files=copyright_files,
     )
 
+    path_exists_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        return_value=True,
+    )
+
     updated_metadata = strategy.augment_metadata(initial_metadata)
 
     scancode_api_mock.get_licenses.assert_has_calls(
         [
             call("cache_test/test_owner-test_repo/main/20220101-000000Z/License1"),
             call("cache_test/test_owner-test_repo/main/20220101-000000Z/license2"),
+        ]
+    )
+
+    path_exists_mock.assert_has_calls(
+        [
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
         ]
     )
 
@@ -292,6 +304,11 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
         copyright_source_files=copyright_files,
     )
 
+    path_exists_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        return_value=True,
+    )
+
     updated_metadata = strategy.augment_metadata(initial_metadata)
 
     expected_metadata = [
@@ -329,11 +346,20 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
         ),
     ]
 
+    assert expected_metadata == updated_metadata
+
     source_code_manager_mock.assert_has_calls(
         [
             mocker.call.get_code("github_test_purl_2", force_update=False),
             mocker.call.get_code("github_test_purl_3", force_update=False),
             mocker.call.get_code("github_test_purl_4", force_update=False),
+        ]
+    )
+
+    listdir_mock.assert_has_calls(
+        [
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
         ]
     )
 
@@ -359,14 +385,24 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
             ),
         ]
     )
+
+    path_exists_mock.assert_has_calls(
+        [
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+        ]
+    )
+
     listdir_mock.assert_has_calls(
         [
             call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
             call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
         ]
     )
-
-    assert expected_metadata == updated_metadata
 
 
 def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_are_scanned(
@@ -454,6 +490,11 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
 
     walk_mock.side_effect = mock_walk_return_value_side_effect
 
+    path_exists_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        return_value=True,
+    )
+
     strategy = ScanCodeToolkitMetadataCollectionStrategy(
         source_code_manager_mock,
         license_source_files=None,
@@ -461,43 +502,6 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
     )
 
     updated_metadata = strategy.augment_metadata(initial_metadata)
-
-    walk_mock.assert_called_with(
-        "cache_test/test_owner-test_repo/main/20220101-000000Z"
-    )
-
-    scancode_api_mock.get_copyrights.assert_has_calls(
-        [
-            call("cache_test/test_owner-test_repo/main/20220101-000000Z/test_1"),
-            call("cache_test/test_owner-test_repo/main/20220101-000000Z/test_2"),
-            call("cache_test/test_owner-test_repo/main/20220101-000000Z/copy1"),
-            call("cache_test/test_owner-test_repo/main/20220101-000000Z/COPY2"),
-            call(
-                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2/test_3"
-            ),
-            call(
-                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2/test_4"
-            ),
-            call(
-                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2/copy1"
-            ),
-            call(
-                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2/COPY2"
-            ),
-            call(
-                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3/test_5"
-            ),
-            call(
-                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3/test_6"
-            ),
-            call(
-                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3/copy1"
-            ),
-            call(
-                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3/COPY2"
-            ),
-        ]
-    )
 
     expected_metadata = [
         Metadata(
@@ -536,11 +540,59 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
 
     assert expected_metadata == updated_metadata
 
+    walk_mock.assert_called_with(
+        "cache_test/test_owner-test_repo/main/20220101-000000Z"
+    )
+
+    scancode_api_mock.get_copyrights.assert_has_calls(
+        [
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/test_1"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/test_2"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/copy1"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/COPY2"),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2/test_3"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2/test_4"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2/copy1"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_2/COPY2"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3/test_5"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3/test_6"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3/copy1"
+            ),
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_path_3/COPY2"
+            ),
+        ]
+    )
+
     source_code_manager_mock.assert_has_calls(
         [
             mocker.call.get_code("github_test_purl_2", force_update=False),
             mocker.call.get_code("github_test_purl_3", force_update=False),
             mocker.call.get_code("github_test_purl_4", force_update=False),
+        ]
+    )
+
+    path_exists_mock.assert_has_calls(
+        [
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
         ]
     )
 
@@ -607,6 +659,11 @@ def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(
         "detected_license_expression_spdx": "APACHE-2.0"
     }
 
+    path_exists_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        return_value=True,
+    )
+
     license_files = ["license1", "LICENSE2"]
     copyright_files = ["Copy1", "copy2", "copy3"]
 
@@ -617,22 +674,6 @@ def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(
     )
 
     updated_metadata = strategy.augment_metadata(initial_metadata)
-
-    scancode_api_mock.get_licenses.assert_has_calls(
-        [
-            call("cache_test/test_owner-test_repo/main/20220101-000000Z/License1"),
-            call("cache_test/test_owner2-test_repo2/main/20220101-000000Z/license2"),
-            call("cache_test/test_owner-test_repo/main/20220101-000000Z/License1"),
-        ]
-    )
-
-    listdir_mock.assert_has_calls(
-        [
-            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
-            call("cache_test/test_owner2-test_repo2/main/20220101-000000Z"),
-            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
-        ]
-    )
 
     expected_metadata = [
         Metadata(
@@ -663,11 +704,38 @@ def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(
 
     assert expected_metadata == updated_metadata
 
+    scancode_api_mock.get_licenses.assert_has_calls(
+        [
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/License1"),
+            call("cache_test/test_owner2-test_repo2/main/20220101-000000Z/license2"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z/License1"),
+        ]
+    )
+
+    listdir_mock.assert_has_calls(
+        [
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner2-test_repo2/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+        ]
+    )
+
     source_code_manager_mock.assert_has_calls(
         [
             mocker.call.get_code("github_test_purl_1", force_update=False),
             mocker.call.get_code("github_test_purl_2", force_update=False),
             mocker.call.get_code("github_test_purl_1", force_update=False),
+        ]
+    )
+
+    path_exists_mock.assert_has_calls(
+        [
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner2-test_repo2/main/20220101-000000Z"),
+            call("cache_test/test_owner2-test_repo2/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
         ]
     )
 
@@ -729,6 +797,11 @@ def test_dotgit_directory_is_not_inspected_for_license_and_copyright_files(
         "copyrights": [{"copyright": "Datadog Inc. 2024"}],
     }
 
+    path_exists_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        return_value=True,
+    )
+
     strategy = ScanCodeToolkitMetadataCollectionStrategy(
         source_code_manager_mock,
         license_source_files=["LICENSE"],
@@ -772,6 +845,13 @@ def test_dotgit_directory_is_not_inspected_for_license_and_copyright_files(
         [
             call("cache_test/package1/main/20220101-000000Z/test_path_1/COPYRIGHT"),
             call("cache_test/package1/main/20220101-000000Z/COPYRIGHT"),
+        ]
+    )
+
+    path_exists_mock.assert_has_calls(
+        [
+            call("cache_test/package1/main/20220101-000000Z/test_path_1"),
+            call("cache_test/package1/main/20220101-000000Z"),
         ]
     )
 
@@ -849,6 +929,11 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_and_license_fro
         ),
     ]
 
+    path_exists_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        return_value=True,
+    )
+
     strategy = ScanCodeToolkitMetadataCollectionStrategy(
         source_code_manager_mock,
         license_source_files=["license"],
@@ -914,6 +999,13 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_and_license_fro
         ]
     )
 
+    path_exists_mock.assert_has_calls(
+        [
+            call("cache_test/package2/main/20220101-000000Z"),
+            call("cache_test/package2/main/20220101-000000Z"),
+        ]
+    )
+
 
 def test_scancode_toolkit_collection_strategy_extracts_copyright_and_license_from_repo_if_local_src_path_cannot_provide_it(
     mocker: pytest_mock.MockFixture,
@@ -972,6 +1064,11 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_and_license_fro
         ),
     ]
 
+    path_exists_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        return_value=True,
+    )
+
     strategy = ScanCodeToolkitMetadataCollectionStrategy(
         source_code_manager_mock,
         license_source_files=["license"],
@@ -1024,3 +1121,87 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_and_license_fro
             mocker.call.get_code("https://github.com/org/package1", force_update=False),
         ]
     )
+
+    path_exists_mock.assert_has_calls(
+        [
+            call("cache_test/org/package1/main/20220101-000000Z"),
+        ]
+    )
+
+
+def test_no_crash_on_wrong_path_being_infered_in_previous_step_if_the_local_src_dir_is_set(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    listdir_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        return_value=["License1", "license2", "file1", "file2"],
+    )
+
+    scancode_api_mock = mocker.patch("scancode.api")
+    scancode_api_mock.get_licenses.return_value = {}
+
+    license_files = ["license1", "LICENSE2", "license3"]
+    copyright_files = ["copy1", "copy2"]
+
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/test_owner/test_repo",
+        branch="main",
+        local_root_path="cache_test/test_owner-test_repo/main/20220101-000000Z",
+        local_full_path="cache_test/test_owner-test_repo/main/20220101-000000Z/test_not_existent_path",
+    )
+
+    path_exists_mock = mocker.patch(
+        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        side_effect=[True, False],
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            version=None,
+            origin="non_github_test_purl",
+            local_src_path="/local_path/to/package1",
+            license=[],
+            copyright=["Datadog Inc."],
+        ),
+    ]
+
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        source_code_manager_mock,
+        license_source_files=license_files,
+        copyright_source_files=copyright_files,
+    )
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    expected_metadata = [
+        Metadata(
+            name="package1",
+            version=None,
+            origin="non_github_test_purl",
+            local_src_path="/local_path/to/package1",
+            license=[],
+            copyright=["Datadog Inc."],
+        ),
+    ]
+
+    assert expected_metadata == updated_metadata
+
+    scancode_api_mock.get_licenses.assert_has_calls(
+        [
+            call("/local_path/to/package1/License1"),
+            call("/local_path/to/package1/license2"),
+        ]
+    )
+
+    path_exists_mock.assert_has_calls(
+        [
+            call(
+                "cache_test/test_owner-test_repo/main/20220101-000000Z/test_not_existent_path"
+            ),
+            call("cache_test/test_owner-test_repo/main/20220101-000000Z"),
+        ]
+    )
+
+    listdir_mock.assert_called_once_with("/local_path/to/package1")

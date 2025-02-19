@@ -5,17 +5,17 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: Current File",
+            "name": "Python Debugger: get-licenses-copyrights",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/src/ospo_tools/cli/get_licenses_copyrights.py",
             "console": "integratedTerminal",
             "args": [
                 // "--only-transitive-dependencies",
-                "--only-root-project",
+                // "--only-root-project",
                 "--cache-dir=cache_test",
                 "--cache-ttl=1700000",
-                "https://github.com/DataDog/stratus-red-team",
+                "https://github.com/DataDog/inject-browser-sdk",
             ],
             "env": {
                 // Set the GITHUB_TOKEN environment variable before opening vscode. 
