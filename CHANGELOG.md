@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.1-beta] - 2025-02-19
+
+### Fixed
+
+- Bug crashing excecution for constructing the wrong path for Go projects which root was nested multiple directories inside the root-project repository.
+
 ## [0.2.0-beta] - 2025-02-11
 
 ### Added
