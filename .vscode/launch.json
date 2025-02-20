@@ -13,7 +13,7 @@
             "args": [
                 // "--only-transitive-dependencies",
                 // "--only-root-project",
-                "--cache-dir=cache_test",
+                "--cache-dir=/tmp/ospo-tools-tests/cache_test",
                 "--cache-ttl=1700000",
                 "https://github.com/DataDog/inject-browser-sdk",
             ],
