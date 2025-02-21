@@ -12,6 +12,7 @@ from collections.abc import Callable
 from ospo_tools.artifact_management.source_code_manager import (
     NonAccessibleRepository,
     SourceCodeManager,
+    UnauthorizedRepository,
 )
 from ospo_tools.artifact_management.artifact_manager import validate_cache_dir
 from ospo_tools.metadata_collector import MetadataCollector
@@ -319,7 +320,7 @@ def main(
     metadata_collector = MetadataCollector(strategies)
     try:
         metadata = metadata_collector.collect_metadata(package)
-    except NonAccessibleRepository as e:
+    except (NonAccessibleRepository, UnauthorizedRepository) as e:
         print(f"\033[91m{e}\033[0m", file=sys.stderr)
         exit(1)
 

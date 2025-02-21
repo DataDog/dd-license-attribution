@@ -22,6 +22,12 @@ class NonAccessibleRepository(Exception):
     pass
 
 
+class UnauthorizedRepository(Exception):
+    """Exception raised when the GitHub token doesn't have enough permissions."""
+
+    pass
+
+
 def extract_ref(ref: str, url: str) -> str:
     split_ref = ref.split("/")
     for i in range(len(split_ref)):
