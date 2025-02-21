@@ -6,6 +6,7 @@ from ospo_tools.artifact_management.source_code_manager import (
     SourceCodeReference,
 )
 from ospo_tools.metadata_collector.metadata import Metadata
+from sys import stderr
 from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
@@ -71,7 +72,8 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                 ):
                     print(
                         f"Warning: {source_code_reference.local_full_path} does not exist, skipping. "
-                        f"This may be due to the package manager not providing the correct source code location on {package.local_src_path}."
+                        f"This may be due to the package manager not providing the correct source code location on {package.local_src_path}.",
+                        file=stderr,
                     )
                     updated_metadata.append(package)
                     continue
