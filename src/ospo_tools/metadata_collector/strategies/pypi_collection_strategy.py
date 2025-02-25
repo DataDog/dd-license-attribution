@@ -24,29 +24,16 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
 
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = metadata.copy()
-        for i in range(len(updated_metadata)):
-            if updated_metadata[i].name == self.top_package:
-                if updated_metadata[i].origin is None:
-                    return updated_metadata
-                pkg_origin = (
-                    updated_metadata[i].origin
-                    if updated_metadata[i].origin is not None
-                    else ""
-                )
-                top_package_code = (
-                    self.source_code_manager.get_code(pkg_origin)
-                    if pkg_origin is not None
-                    else None
-                )
-                if top_package_code is None:
-                    return updated_metadata
-                top_package_path = top_package_code.local_full_path
-                updated_metadata[i].local_src_path = top_package_path
-                break
+
+        # setup pyenv
+        top_package_path = self._find_top_metadata_path(updated_metadata)
+        if top_package_path is None:
+            return updated_metadata
 
         top_package_env = self.python_env_manager.get_environment(top_package_path)
         if top_package_env is None:
             return updated_metadata
+
         # get the list of dependencies
         dependencies = PythonEnvManager.get_dependencies(top_package_env)
         if dependencies is None:
@@ -86,3 +73,30 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         if response.status_code == 404:
             return None
         return response.json()  # type: ignore
+
+    def _translate_name_gh_to_pypi_sbom(self, name: str) -> str:
+        ret = name.replace("https://", "")
+        ret = ret.replace("http://", "")
+        ret = ret.replace("github.com/", "com.github.")
+        return ret
+
+    def _find_top_metadata_path(self, metadata: list[Metadata]) -> str | None:
+        translated_top_pkg_name = self._translate_name_gh_to_pypi_sbom(self.top_package)
+        for package in metadata:
+            if (
+                package.name == self.top_package
+                or package.name == translated_top_pkg_name
+            ):
+                if package.local_src_path is not None:
+                    return package.local_src_path
+                if package.origin is not None:
+                    pkg_source = self.source_code_manager.get_code(package.origin)
+                    if pkg_source is not None:
+                        package.local_src_path = pkg_source.local_full_path
+                        return pkg_source.local_full_path
+            if package.origin is not None and package.origin.endswith(self.top_package):
+                pkg_source = self.source_code_manager.get_code(package.origin)
+                if pkg_source is not None:
+                    package.local_src_path = pkg_source.local_full_path
+                    return pkg_source.local_full_path
+        return None
