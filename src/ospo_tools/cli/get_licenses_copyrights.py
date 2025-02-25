@@ -30,6 +30,9 @@ from ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy im
 from ospo_tools.metadata_collector.strategies.gopkg_collection_strategy import (
     GoPkgMetadataCollectionStrategy,
 )
+from ospo_tools.metadata_collector.strategies.pypi_collection_strategy import (
+    PypiMetadataCollectionStrategy,
+)
 from ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
     ScanCodeToolkitMetadataCollectionStrategy,
 )
@@ -247,6 +250,7 @@ def main(
     enabled_strategies = {
         "GitHubSbomMetadataCollectionStrategy": True,
         "GoPkgsMetadataCollectionStrategy": True,
+        "PythonPipMetadataCollectionStrategy": True,
         "ScanCodeToolkitMetadataCollectionStrategy": True,
         "GitHubRepositoryMetadataCollectionStrategy": True,
     }
@@ -299,6 +303,15 @@ def main(
     if enabled_strategies["GoPkgsMetadataCollectionStrategy"]:
         strategies.append(
             GoPkgMetadataCollectionStrategy(package, source_code_manager, project_scope)
+        )
+
+    python_env_manager = PythonEnvManager(cache_dir, cache_ttl)
+
+    if enabled_strategies["PythonPipMetadataCollectionStrategy"]:
+        strategies.append(
+            PypiMetadataCollectionStrategy(
+                package, source_code_manager, python_env_manager, project_scope
+            )
         )
 
     if enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"]:
