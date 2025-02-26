@@ -9,7 +9,7 @@ def list_dir(path: str) -> list[str]:
 
 
 def run_command(command: str) -> int:
-    return os.system(command)
+    return os.system(f"{command} >&2")
 
 
 def path_exists(file_path: str) -> bool:
