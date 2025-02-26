@@ -71,7 +71,7 @@ def test_python_env_is_created_if_python_project_detected_and_not_cached(
         "ospo_tools.artifact_management.python_env_manager.change_directory"
     )
     run_command_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.run_command"
+        "ospo_tools.artifact_management.python_env_manager.run_command", return_value=0
     )
 
     python_env_manager = PythonEnvManager("cache_dir", 86400)
@@ -168,7 +168,7 @@ def test_python_env_is_created_if_python_project_detected_and_force_update(
         "ospo_tools.artifact_management.python_env_manager.change_directory"
     )
     run_command_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.run_command"
+        "ospo_tools.artifact_management.python_env_manager.run_command", return_value=0
     )
 
     python_env_manager = PythonEnvManager("cache_dir", 86400)
@@ -210,4 +210,100 @@ def test_get_dependencies_gets_full_list(mocker: MockFixture) -> None:
 
     output_from_command_mock.assert_called_once_with(
         "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/pip list --format=json"
+    )
+
+
+def test_fail_to_create_pyenv_throws(mocker: MockFixture) -> None:
+    get_datetime_now_mock = mocker.patch(
+        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
+        side_effect=[
+            datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
+        ],
+    )
+    artifact_path_exists_mock = mocker.patch(
+        "ospo_tools.artifact_management.artifact_manager.path_exists", return_value=True
+    )
+    artifact_list_dir_mock = mocker.patch(
+        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        return_value=[],
+    )
+    python_env_list_dir_mock = mocker.patch(
+        "ospo_tools.artifact_management.python_env_manager.list_dir",
+        side_effect=[["setup.py", "requirements.txt"], []],
+    )
+
+    chdir_mock = mocker.patch(
+        "ospo_tools.artifact_management.python_env_manager.change_directory"
+    )
+    run_command_mock = mocker.patch(
+        "ospo_tools.artifact_management.python_env_manager.run_command"
+    )
+    run_command_mock.side_effect = [1]
+
+    python_env_manager = PythonEnvManager("cache_dir", 86400)
+    resource_path = "cache_dir/20210901_000000Z/python_project"
+
+    with pytest.raises(Exception) as e:
+        python_env_manager.get_environment(resource_path)
+    assert str(e.value) == "Failed to create Python virtualenv"
+    get_datetime_now_mock.assert_called_once()
+    artifact_path_exists_mock.assert_called_once_with("cache_dir")
+    artifact_list_dir_mock.assert_called_once_with("cache_dir")
+    python_env_list_dir_mock.assert_has_calls([call(resource_path), call("cache_dir")])
+    chdir_mock.assert_called_once_with(resource_path)
+    run_command_mock.assert_called_once_with(
+        "python -m venv cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+    )
+
+
+def test_fail_to_install_dependencies_in_pyenv_throws(mocker: MockFixture) -> None:
+    get_datetime_now_mock = mocker.patch(
+        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
+        side_effect=[
+            datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
+        ],
+    )
+    artifact_path_exists_mock = mocker.patch(
+        "ospo_tools.artifact_management.artifact_manager.path_exists", return_value=True
+    )
+    artifact_list_dir_mock = mocker.patch(
+        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        return_value=[],
+    )
+    python_env_list_dir_mock = mocker.patch(
+        "ospo_tools.artifact_management.python_env_manager.list_dir",
+        side_effect=[["setup.py", "requirements.txt"], []],
+    )
+
+    chdir_mock = mocker.patch(
+        "ospo_tools.artifact_management.python_env_manager.change_directory"
+    )
+    run_command_mock = mocker.patch(
+        "ospo_tools.artifact_management.python_env_manager.run_command"
+    )
+    run_command_mock.side_effect = [0, 1]
+
+    python_env_manager = PythonEnvManager("cache_dir", 86400)
+    resource_path = "cache_dir/20210901_000000Z/python_project"
+
+    with pytest.raises(Exception) as e:
+        python_env_manager.get_environment(resource_path)
+    assert (
+        str(e.value)
+        == "Failed to install dependencies when creating Python virtualenv cache"
+    )
+    get_datetime_now_mock.assert_called_once()
+    artifact_path_exists_mock.assert_called_once_with("cache_dir")
+    artifact_list_dir_mock.assert_called_once_with("cache_dir")
+    python_env_list_dir_mock.assert_has_calls([call(resource_path), call("cache_dir")])
+    chdir_mock.assert_called_once_with(resource_path)
+    run_command_mock.assert_has_calls(
+        [
+            mocker.call(
+                "python -m venv cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+            ),
+            mocker.call(
+                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python -m pip install ."
+            ),
+        ]
     )
