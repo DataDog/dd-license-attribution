@@ -2,6 +2,7 @@ from datetime import datetime
 import json
 import pytz
 from ospo_tools.artifact_management.artifact_manager import ArtifactManager
+
 from ospo_tools.adaptors.os import (
     list_dir,
     change_directory,
@@ -9,6 +10,10 @@ from ospo_tools.adaptors.os import (
     path_exists,
     output_from_command,
 )
+
+
+class PyEnvRuntimeError(Exception):
+    pass
 
 
 class PythonEnvManager(ArtifactManager):
@@ -38,8 +43,12 @@ class PythonEnvManager(ArtifactManager):
     def _create_python_env(self, resource_path: str, normalized_rsc_path: str) -> str:
         venv_path = f"{self.local_cache_dir}/{self.timestamped_dir}/{normalized_rsc_path}_virtualenv"
         change_directory(resource_path)
-        run_command(f"python -m venv {venv_path}")
-        run_command(f"{venv_path}/bin/python -m pip install .")
+        if run_command(f"python -m venv {venv_path}") != 0:
+            raise PyEnvRuntimeError("Failed to create Python virtualenv")
+        if run_command(f"{venv_path}/bin/python -m pip install .") != 0:
+            raise PyEnvRuntimeError(
+                "Failed to install dependencies when creating Python virtualenv cache"
+            )
         return venv_path
 
     def _get_cached(self, normalized_rsc_path: str) -> str | None:
