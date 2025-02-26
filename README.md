@@ -6,11 +6,11 @@ A set of tools mantained by ospo to work with open source projects
 
 This is a tool to generate 3party-license csv files used to track dependencies licenses.
 
-As Today, only golang is supported. We plan to expand to other languages soon.
+As Today, we support golang and python. We plan to expand to other languages soon.
 
-This tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, and the go-pkg list command output.
+This tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, the go-pkg list command output, and the metadata collected from succesfull dependency install via PyPI.
 It supports gathering data from various repositories to generate a comprehensive 3rd-party license CSV file.
-Because, these tools require calls to public APIs, and the APIs may trottle down based in usage, it is spected that run takes many minutes depeding mostly in the size of the project dependency tree.
+Because, these tools require calls to public APIs, and the APIs may trottle down based in usage, it is spected that run takes many minutes depending mostly in the size of the project dependency tree.
 
 ### requirements
 
@@ -105,6 +105,6 @@ CI runs the contract tests before attempting to run the unit tests.
 
 ### current development state
 
-- Initial set of dependencies is collected via github-sbom api and gopkg listing.
+- Initial set of dependencies is collected via github-sbom api, gopkg listing, and PyPI.
 - Action packages are ignored.
-- Purls are only parsed for Go.
+- Python usage of PyPI metadata is limited to pure python projects, when native dependencies or out-of-pypi requirements apply failures are expected. The usage of the PyPI can be disabled in those cases, but will reduce they coverage of the tool.

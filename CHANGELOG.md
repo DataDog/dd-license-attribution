@@ -8,11 +8,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+- Adding Pypi support to augment the dependency metadata.
+
 ## [0.2.1-beta] - 2025-02-21
 
 ### Fixed
 
 - Bug crashing excecution for constructing the wrong path for Go projects which root was nested multiple directories inside the root-project repository.
+
 ### Added
 
 - Better error message when fetching github-sbom returns a 404 status code.
