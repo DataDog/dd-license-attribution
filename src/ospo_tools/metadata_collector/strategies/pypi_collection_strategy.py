@@ -53,15 +53,58 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
                 if "Source" in pypi_info["project_urls"]:
                     origin = pypi_info["project_urls"]["Source"]
 
-            dep_metadata = Metadata(
-                name=pypi_info["name"],
-                origin=origin,
-                local_src_path=None,
-                license=[pypi_info["license"]] if "license" in pypi_info else [],
-                version=pypi_info["version"] if "version" in pypi_info else None,
-                copyright=[pypi_info["author"]] if "author" in pypi_info else [],
+            find_pkg = next(
+                (
+                    pkg
+                    for pkg in updated_metadata
+                    if pkg.name == pypi_info["name"]
+                    or pkg.name
+                    == self._translate_name_gh_to_pypi_sbom(pypi_info["name"])
+                ),
+                None,
             )
-            updated_metadata.append(dep_metadata)
+            if find_pkg is not None:
+                find_pkg.origin = origin if find_pkg.origin is None else find_pkg.origin
+                if (
+                    len(find_pkg.license) == 0
+                    and "license" in pypi_info
+                    and pypi_info["license"] is not None
+                    and len(pypi_info["license"]) != 0
+                ):
+                    find_pkg.license = pypi_info["license"].split(",")
+                if "version" in pypi_info and pypi_info["version"] is not None:
+                    find_pkg.version = pypi_info["version"]
+                if (
+                    len(find_pkg.copyright) == 0
+                    and "author" in pypi_info
+                    and pypi_info["author"] is not None
+                ):
+                    find_pkg.copyright = pypi_info["author"].split(",")
+
+            else:
+                extracted_license = []
+                if (
+                    "license" in pypi_info
+                    and pypi_info["license"] is not None
+                    and len(pypi_info["license"]) != 0
+                ):
+                    extracted_license = pypi_info["license"].split(",")
+                extracted_copyright = []
+                if (
+                    "author" in pypi_info
+                    and pypi_info["author"] is not None
+                    and len(pypi_info["author"]) != 0
+                ):
+                    extracted_copyright = pypi_info["author"].split(",")
+                dep_metadata = Metadata(
+                    name=pypi_info["name"],
+                    origin=origin,
+                    local_src_path=None,
+                    license=extracted_license,
+                    version=pypi_info["version"] if "version" in pypi_info else None,
+                    copyright=extracted_copyright,
+                )
+                updated_metadata.append(dep_metadata)
         return updated_metadata
 
     def _get_metadata_from_pypi(
