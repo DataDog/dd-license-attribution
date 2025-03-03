@@ -24,10 +24,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 - Better error message when fetching github-sbom returns a 404 status code.
 
-### Added
-
-- Better error message when fetching github-sbom returns a 404 status code.
-
 ## [0.2.0-beta] - 2025-02-11
 
 ### Added
