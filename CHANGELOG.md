@@ -8,7 +8,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
-- Adding Pypi support to augment the dependency metadata.
+## [0.3.0-beta] - 2025-03-03
+
+### Added
+
+- Pypi support to augment the dependency metadata.
 
 ## [0.2.1-beta] - 2025-02-21
 
