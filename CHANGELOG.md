@@ -15,10 +15,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Pypi support to augment the dependency metadata.
 - Better error message when fetching github-sbom returns is called without proper permissions.
 
-### Changed
-
-- Abstraction refactor of artifact manager from SourceCodeManager to keep conceptual cache management consistency with the new PythonEnvManager.
-
 ## [0.2.1-beta] - 2025-02-21
 
 ### Fixed
