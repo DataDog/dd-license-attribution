@@ -13,16 +13,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ### Added
 
 - Pypi support to augment the dependency metadata.
+- Better error message when fetching github-sbom returns is called without proper permissions.
+
+### Changed
+
+- Abstraction refactor of artifact manager from SourceCodeManager to keep conceptual cache management consistency with the new PythonEnvManager.
 
 ## [0.2.1-beta] - 2025-02-21
 
 ### Fixed
 
 - Bug crashing excecution for constructing the wrong path for Go projects which root was nested multiple directories inside the root-project repository.
-
-### Added
-
-- Better error message when fetching github-sbom returns a 404 status code.
 
 ## [0.2.0-beta] - 2025-02-11
 
