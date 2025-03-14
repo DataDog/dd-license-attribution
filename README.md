@@ -6,20 +6,21 @@ A set of tools mantained by ospo to work with open source projects
 
 This is a tool to generate 3party-license csv files used to track dependencies licenses.
 
-As Today, we support golang and python. We plan to expand to other languages soon.
+As of today, we support Go and Python. We plan to expand to other languages soon.
 
-This tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, the go-pkg list command output, and the metadata collected from succesfull dependency install via PyPI.
+This tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, the go-pkg list command output, and the metadata collected from successful dependency installation via PyPI.
 It supports gathering data from various repositories to generate a comprehensive 3rd-party license CSV file.
-Because, these tools require calls to public APIs, and the APIs may trottle down based in usage, it is spected that run takes many minutes depending mostly in the size of the project dependency tree.
 
-### requirements
+Runs may take minutes or hours depending on the size of the project dependency tree and the depth of the scanning.
+
+### Requirements
 
 - python3.10+ - [Python install instructions](https://www.python.org/downloads/)
 - gopkg - [GoLang and GoPkg install instructions](https://go.dev/doc/install)
 - libmagic (only on mac):
   - `brew install libmagic`
 
-### usage
+### Usage
 
 To install and run the command after cloning the repository:
 
@@ -34,9 +35,14 @@ get-licenses-copyrights https://github.com/owner/repo > LICENSE-3rdparty.csv
 
 The following optional parameters are available:
 
-- `--deep-scanning`: it will attemp to parse license and copyright information from full package sourcecode using codescan, this is a intensive task, that depending in the package size, may take hours or even days to process.
-- `--only-transitive-dependencies`: it will not attempt to extract license and copyright from the passed package, only its dependencies.
-- `--only-root-project`: it will only extract information from the licenses and copyright of the passed package, not its dependencies.
+**Scanning Options**
+- `--deep-scanning`: Parses license and copyright information from full package source code using [scancode-toolkit](). This is a intensive task, that depending in the package size, may take hours or even days to process.
+- `--only-transitive-dependencies`: Extracts license and copyright from the passed package, only its dependencies.
+- `--only-root-project`: Extracts information from the licenses and copyright of the passed package, not its dependencies.
+- `--skip-pypi-strategy`: Skips the strategy that collects dependencies from PyPI.
+- `--skip-gopkg-strategy`: Skips the strategy that collects dependencies from GoPkg.
+
+**Cache Configuration**
 - `--cache-dir`: if a directory is passed to this parameter all the dependencies source code downloaded for analysis is kept in the directory and can be reused between runs. By default, nothing is reused between runs.
 - `--cache-ttl`: seconds until cached data is considered expired, by default 1 day.
 
@@ -44,7 +50,7 @@ For more details about optional parameters pass `--help` to the command.
 
 ### Development
 
-To develop install the development dependencies in a virtual environment:
+To develop, install the development dependencies in a virtual environment:
 
 ```bash
 # starting at the root of the repository
@@ -56,7 +62,7 @@ pip install -e ".[dev]"
 
 #### Coverage report
 
-To generate test coverage reports locally the following lines need to be run in the root of the repository.
+To generate test coverage reports locally run these commands in the root of the repository:
 
 ```bash
 # for unit tests
@@ -86,15 +92,14 @@ Both, black and mypy requirements are enforced by CI workflow in PRs.
 
 ### Testing
 
-We are using pytest and mutmut and configuring them via `pyproject.toml`.
+The project uses `pytest` and `mutmut` (configured via `pyproject.toml`).
 Unit tests are located in `tests/unit`.
 
 Running `pytest` without parameters in the root of the project runs all unit tests.
-By default, a coverage report is created from the run.
-A less than 90% coverage fails the pytest run.
+By default, a coverage report is created from the run. A less than 90% coverage fails the pytest run.
 
-For generating and running mutation tests, we run `mutmut run`.
-To read the results of mutation test in more detail than the initial output, we run `mutmut results`.
+To generate and run mutation tests, run `mutmut run`.
+To read the results of mutation tests in more detail than the initial output, run `mutmut results`.
 
 The CI step in PRs and merge to main runs all tests and a few end to end tests defined as github workflows in the .github directory.
 Mutation tests are not evaluated for CI.
@@ -103,8 +108,8 @@ Contract tests are available to validate assumptions of external tools/libraries
 These tests do not run by default. To execute them, run `pytest tests/contract`.
 CI runs the contract tests before attempting to run the unit tests.
 
-### current development state
+### Current Development State
 
 - Initial set of dependencies is collected via github-sbom api, gopkg listing, and PyPI.
 - Action packages are ignored.
-- Python usage of PyPI metadata is limited to pure python projects, when native dependencies or out-of-pypi requirements apply failures are expected. The usage of the PyPI can be disabled in those cases, but will reduce they coverage of the tool.
+- Python usage of PyPI metadata is limited to pure Python projects. If there are native dependencies or out-of-pypi requirements, failures are expected. The usage of the PyPI strategy can be disabled in those cases, but will reduce they coverage of the tool.
