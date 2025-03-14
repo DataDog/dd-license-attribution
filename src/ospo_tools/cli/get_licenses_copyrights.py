@@ -47,7 +47,7 @@ from ospo_tools.report_generator.writters.csv_reporting_writter import (
 
 import ospo_tools.config.cli_configs as cli_config
 
-app = typer.Typer()
+app = typer.Typer(add_completion=False)
 
 
 def mutually_exclusive_group() -> (
