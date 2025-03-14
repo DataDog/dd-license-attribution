@@ -37,7 +37,8 @@ class PythonEnvManager(ArtifactManager):
         normalized_rsc_path = resource_path.replace("/", "_")
         cached_env = self._get_cached(normalized_rsc_path)
         if cached_env is None or force_update:
-            return self._create_python_env(resource_path, normalized_rsc_path)
+            cached_env = self._create_python_env(resource_path, normalized_rsc_path)
+        self._install_pip_dependencies(resource_path, cached_env)
         return cached_env
 
     def _create_python_env(self, resource_path: str, normalized_rsc_path: str) -> str:
@@ -45,11 +46,14 @@ class PythonEnvManager(ArtifactManager):
         change_directory(resource_path)
         if run_command(f"python -m venv {venv_path}") != 0:
             raise PyEnvRuntimeError("Failed to create Python virtualenv")
+        return venv_path
+
+    def _install_pip_dependencies(self, resource_path: str, venv_path: str) -> None:
+        change_directory(resource_path)
         if run_command(f"{venv_path}/bin/python -m pip install .") != 0:
             raise PyEnvRuntimeError(
                 "Failed to install dependencies when creating Python virtualenv cache"
             )
-        return venv_path
 
     def _get_cached(self, normalized_rsc_path: str) -> str | None:
         threshold = self.setup_time.timestamp() - self.local_cache_ttl
