@@ -176,6 +176,13 @@ def main(
             help="Enable deep scanning.",
         ),
     ] = False,
+    skip_pypi: Annotated[
+        bool,
+        typer.Option(
+            "--skip-pypi-strategy",
+            help="Skip the PyPI collection strategy.",
+        ),
+    ] = False,
     only_transitive_dependencies: Annotated[
         bool,
         typer.Option(
@@ -285,6 +292,9 @@ def main(
                 "DEBUG: Available strategies: GitHubSbomMetadataCollectionStrategy, GoPkgMetadataCollectionStrategy, ScanCodeToolkitMetadataCollectionStrategy, GitHubRepositoryMetadataCollectionStrategy"
             )
 
+    if skip_pypi:
+        enabled_strategies["PythonPipMetadataCollectionStrategy"] = False
+
     if not github_token:
         github_client = GitHub()
     else:
@@ -343,15 +353,11 @@ def main(
     except PyEnvRuntimeError as e:
         print(f"\033[91m{e}\033[0m", file=sys.stderr)
         print(
-            f"\033[91mThis error can be bypassed by turning off PythonPipMetadataCollectionStrategy\033[0m",
+            f"\033[91mThis error can be bypassed by skipping the PyPI strategy (--skip-pypi-strategy).\033[0m",
             file=sys.stderr,
         )
         print(
-            f'\033[91mExample: --debug \'{{"enabled_strategies": ["GitHubSbomMetadataCollectionStrategy", "GoPkgMetadataCollectionStrategy", "ScanCodeToolkitMetadataCollectionStrategy", "GitHubRepositoryMetadataCollectionStrategy"]}}\'\033[0m',
-            file=sys.stderr,
-        )
-        print(
-            f"\033[91mWhen disabled, the tool will not try to extract dependencies or metadata from PyPI.\033[0m",
+            f"\033[91mWhen skipping this strategy, the tool will not try to extract dependencies or metadata from PyPI.\033[0m",
             file=sys.stderr,
         )
         exit(1)
