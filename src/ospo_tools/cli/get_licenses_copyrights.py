@@ -183,6 +183,13 @@ def main(
             help="Skip the PyPI collection strategy.",
         ),
     ] = False,
+    skip_gopkg: Annotated[
+        bool,
+        typer.Option(
+            "--skip-gopkg-strategy",
+            help="Skip the GoPkg collection strategy.",
+        ),
+    ] = False,
     only_transitive_dependencies: Annotated[
         bool,
         typer.Option(
@@ -294,6 +301,9 @@ def main(
 
     if skip_pypi:
         enabled_strategies["PythonPipMetadataCollectionStrategy"] = False
+
+    if skip_gopkg:
+        enabled_strategies["GoPkgsMetadataCollectionStrategy"] = False
 
     if not github_token:
         github_client = GitHub()
