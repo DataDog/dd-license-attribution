@@ -174,20 +174,7 @@ def main(
         typer.Option(
             "--deep-scanning",
             help="Enable deep scanning.",
-        ),
-    ] = False,
-    skip_pypi: Annotated[
-        bool,
-        typer.Option(
-            "--skip-pypi-strategy",
-            help="Skip the PyPI collection strategy.",
-        ),
-    ] = False,
-    skip_gopkg: Annotated[
-        bool,
-        typer.Option(
-            "--skip-gopkg-strategy",
-            help="Skip the GoPkg collection strategy.",
+            rich_help_panel="Scanning Options",
         ),
     ] = False,
     only_transitive_dependencies: Annotated[
@@ -195,6 +182,7 @@ def main(
         typer.Option(
             "--only-transitive-dependencies",
             help="Only report on transitive dependencies.",
+            rich_help_panel="Scanning Options",
             callback=only_root_project_or_transitive_callback,
         ),
     ] = False,
@@ -203,7 +191,24 @@ def main(
         typer.Option(
             "--only-root-project",
             help="Only report on the root project.",
+            rich_help_panel="Scanning Options",
             callback=only_root_project_or_transitive_callback,
+        ),
+    ] = False,
+    skip_pypi: Annotated[
+        bool,
+        typer.Option(
+            "--skip-pypi-strategy",
+            help="Skip the PyPI collection strategy.",
+            rich_help_panel="Scanning Options",
+        ),
+    ] = False,
+    skip_gopkg: Annotated[
+        bool,
+        typer.Option(
+            "--skip-gopkg-strategy",
+            help="Skip the GoPkg collection strategy.",
+            rich_help_panel="Scanning Options",
         ),
     ] = False,
     cache_dir: Annotated[
@@ -211,6 +216,7 @@ def main(
         typer.Option(
             "--cache-dir",
             help="A directory to save artifacts, as cloned repositories, to reuse between runs. By default, nothing is reused and a new temp directory is created per run.",
+            rich_help_panel="Cache Configuration",
             callback=cache_validation_callback,
         ),
     ] = None,
@@ -219,6 +225,7 @@ def main(
         typer.Option(
             "--force-cache-creation",
             help="Force the creation of a new cache directory, if it doesn't exist.",
+            rich_help_panel="Cache Configuration",
             callback=cache_validation_callback,
         ),
     ] = None,
@@ -227,6 +234,7 @@ def main(
         typer.Option(
             "--cache-ttl",
             help="The time in seconds to keep the cache. Default is 86400 seconds (1 day).",
+            rich_help_panel="Cache Configuration",
             callback=cache_validation_callback,
         ),
     ] = None,
@@ -235,6 +243,7 @@ def main(
         typer.Option(
             "--github-token",
             help="The GitHub token to use for authentication. If not provided, the GITHUB_TOKEN environment variable will be used.",
+            rich_help_panel="GitHub Authentication",
             envvar="GITHUB_TOKEN",
             callback=github_token_callback,
         ),
@@ -244,13 +253,15 @@ def main(
         typer.Option(
             "--no-gh-auth",
             help="Do not use github auth token. Throttling limits are going to be lower and access to non public resources will be blocked.",
+            rich_help_panel="GitHub Authentication",
             callback=github_token_callback,
         ),
     ] = False,
     debug: Annotated[
         str,
         typer.Option(
-            help="A JSON formatted object used for debugging purposes. This is not a stable interface."
+            help="A JSON formatted object used for debugging purposes. This is not a stable interface.",
+            rich_help_panel="Debug Options",
         ),
     ] = "",
 ) -> None:
