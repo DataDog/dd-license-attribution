@@ -112,4 +112,4 @@ CI runs the contract tests before attempting to run the unit tests.
 
 - Initial set of dependencies is collected via github-sbom api, gopkg listing, and PyPI.
 - Action packages are ignored.
-- Python usage of PyPI metadata is limited to pure Python projects. If there are native dependencies or out-of-pypi requirements, failures are expected. The usage of the PyPI strategy can be disabled in those cases, but will reduce they coverage of the tool.
+- Python usage of PyPI metadata is limited to pure Python projects. If there are native dependencies or out-of-pypi requirements, failures are expected. The usage of the PyPI strategy can be disabled in those cases, but will reduce the coverage of the tool.

@@ -198,7 +198,7 @@ def main(
     skip_pypi: Annotated[
         bool,
         typer.Option(
-            "--skip-pypi-strategy",
+            "--no-pypi-strategy",
             help="Skip the PyPI collection strategy.",
             rich_help_panel="Scanning Options",
         ),
@@ -206,7 +206,7 @@ def main(
     skip_gopkg: Annotated[
         bool,
         typer.Option(
-            "--skip-gopkg-strategy",
+            "--no-gopkg-strategy",
             help="Skip the GoPkg collection strategy.",
             rich_help_panel="Scanning Options",
         ),
