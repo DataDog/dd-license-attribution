@@ -87,7 +87,7 @@ def test_python_env_is_created_if_python_project_detected_and_not_cached(
     artifact_path_exists_mock.assert_called_once_with("cache_dir")
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     python_env_list_dir_mock.assert_has_calls([call(resource_path), call("cache_dir")])
-    assert chdir_mock.call_count == 2
+    chdir_mock.assert_has_calls([call(resource_path), call(resource_path)])
     run_command_mock.assert_has_calls(
         [
             mocker.call(
@@ -199,7 +199,7 @@ def test_python_env_is_created_if_python_project_detected_and_force_update(
     python_env_path_exists_mock.assert_called_once_with(
         "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
     )
-    assert chdir_mock.call_count == 2
+    chdir_mock.assert_has_calls([call(resource_path), call(resource_path)])
     run_command_mock.assert_has_calls(
         [
             mocker.call(
@@ -310,7 +310,7 @@ def test_fail_to_install_dependencies_in_pyenv_throws(mocker: MockFixture) -> No
     artifact_path_exists_mock.assert_called_once_with("cache_dir")
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     python_env_list_dir_mock.assert_has_calls([call(resource_path), call("cache_dir")])
-    assert chdir_mock.call_count == 2
+    chdir_mock.assert_has_calls([call(resource_path), call(resource_path)])
     run_command_mock.assert_has_calls(
         [
             mocker.call(
