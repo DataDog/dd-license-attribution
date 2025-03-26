@@ -47,6 +47,8 @@ from ospo_tools.report_generator.writters.csv_reporting_writter import (
 
 import ospo_tools.config.cli_configs as cli_config
 
+from ospo_tools.metadata_collector.license_checker import LicenseChecker
+
 app = typer.Typer(add_completion=False)
 
 
@@ -384,6 +386,9 @@ def main(
         exit(1)
 
     csv_reporter = ReportGenerator(CSVReportingWritter())
+
+    checker = LicenseChecker()
+    checker.check_copyleft_licenses(metadata)
 
     output = csv_reporter.generate_report(metadata)
     if temp_dir is not None:
