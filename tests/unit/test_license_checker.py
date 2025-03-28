@@ -7,7 +7,7 @@ from ospo_tools.config.cli_configs import default_config
 
 def test_is_cautionary_license_with_gpl() -> None:
     """Test that GPL licenses are correctly identified as cautionary."""
-    checker = LicenseChecker()
+    checker = LicenseChecker(default_config.preset_cautionary_licenses)
     assert checker._is_cautionary_license("GPL-3.0")
     assert checker._is_cautionary_license("GPL-2.0")
     assert checker._is_cautionary_license("GPL")
@@ -15,21 +15,21 @@ def test_is_cautionary_license_with_gpl() -> None:
 
 def test_is_cautionary_license_with_eupl() -> None:
     """Test that EUPL licenses are correctly identified as cautionary."""
-    checker = LicenseChecker()
+    checker = LicenseChecker(default_config.preset_cautionary_licenses)
     assert checker._is_cautionary_license("EUPL-1.2")
     assert checker._is_cautionary_license("EUPL")
 
 
 def test_is_cautionary_license_with_agpl() -> None:
     """Test that AGPL licenses are correctly identified as cautionary."""
-    checker = LicenseChecker()
+    checker = LicenseChecker(default_config.preset_cautionary_licenses)
     assert checker._is_cautionary_license("AGPL-3.0")
     assert checker._is_cautionary_license("AGPL")
 
 
 def test_is_cautionary_license_with_non_cautionary() -> None:
     """Test that non-cautionary licenses are correctly identified."""
-    checker = LicenseChecker()
+    checker = LicenseChecker(default_config.preset_cautionary_licenses)
     assert not checker._is_cautionary_license("MIT")
     assert not checker._is_cautionary_license("Apache-2.0")
     assert not checker._is_cautionary_license("BSD-3-Clause")
@@ -38,7 +38,7 @@ def test_is_cautionary_license_with_non_cautionary() -> None:
 
 def test_is_cautionary_license_case_insensitive() -> None:
     """Test that license detection is case insensitive."""
-    checker = LicenseChecker()
+    checker = LicenseChecker(default_config.preset_cautionary_licenses)
     assert checker._is_cautionary_license("gpl-3.0")
     assert checker._is_cautionary_license("eupl-1.2")
     assert checker._is_cautionary_license("agpl-3.0")
@@ -46,7 +46,7 @@ def test_is_cautionary_license_case_insensitive() -> None:
 
 def test_check_cautionary_licenses_with_empty_metadata_list() -> None:
     """Test that checking an empty metadata list exists fast."""
-    checker = LicenseChecker()
+    checker = LicenseChecker(default_config.preset_cautionary_licenses)
     with patch.object(checker, "_is_cautionary_license") as mock_is_cautionary:
         checker.check_cautionary_licenses([])
         mock_is_cautionary.assert_not_called()
@@ -62,7 +62,7 @@ def test_check_cautionary_licenses_with_no_license() -> None:
         license=[],
         copyright=[],
     )
-    checker = LicenseChecker()
+    checker = LicenseChecker(default_config.preset_cautionary_licenses)
     with patch.object(checker, "_is_cautionary_license") as mock_is_cautionary:
         checker.check_cautionary_licenses([metadata])
         mock_is_cautionary.assert_not_called()
@@ -78,7 +78,7 @@ def test_check_cautionary_licenses_with_non_cautionary_license() -> None:
         license=["MIT"],
         copyright=[],
     )
-    checker = LicenseChecker()
+    checker = LicenseChecker(default_config.preset_cautionary_licenses)
     with patch.object(checker, "_is_cautionary_license") as mock_is_cautionary:
         mock_is_cautionary.return_value = False
         checker.check_cautionary_licenses([metadata])
@@ -97,7 +97,7 @@ def test_check_cautionary_licenses_with_cautionary_license() -> None:
         license=["GPL-3.0"],
         copyright=[],
     )
-    checker = LicenseChecker()
+    checker = LicenseChecker(default_config.preset_cautionary_licenses)
     with patch.object(checker, "_is_cautionary_license") as mock_is_cautionary:
         mock_is_cautionary.return_value = True
         with patch("builtins.print") as mock_print:
@@ -116,7 +116,7 @@ def test_check_cautionary_licenses_with_multiple_licenses() -> None:
         license=["MIT", "GPL-3.0", "Apache-2.0"],
         copyright=[],
     )
-    checker = LicenseChecker()
+    checker = LicenseChecker(default_config.preset_cautionary_licenses)
     with patch.object(checker, "_is_cautionary_license") as mock_is_cautionary:
         mock_is_cautionary.side_effect = [False, True, False]
         with patch("builtins.print") as mock_print:
@@ -138,7 +138,7 @@ def test_check_cautionary_licenses_with_all_cautionary_keywords() -> None:
         )
         for i, keyword in enumerate(default_config.preset_cautionary_licenses)
     ]
-    checker = LicenseChecker()
+    checker = LicenseChecker(default_config.preset_cautionary_licenses)
     with patch.object(checker, "_is_cautionary_license") as mock_is_cautionary:
         mock_is_cautionary.return_value = True
         with patch("builtins.print") as mock_print:

@@ -2,14 +2,13 @@ import sys
 from typing import List
 
 from ospo_tools.metadata_collector.metadata import Metadata
-from ospo_tools.config.cli_configs import default_config
 
 
 class LicenseChecker:
     """A class to check for cautionary licenses in a list of Metadata objects."""
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, cautionary_licenses: List[str]) -> None:
+        self._cautionary_licenses = cautionary_licenses
 
     def check_cautionary_licenses(self, metadata_list: List[Metadata]) -> None:
         for metadata in metadata_list:
@@ -27,5 +26,5 @@ class LicenseChecker:
         license_text_upper = license_text.upper()
         return any(
             license_text_upper.startswith(keyword.upper())
-            for keyword in default_config.preset_cautionary_licenses
+            for keyword in self._cautionary_licenses
         )
