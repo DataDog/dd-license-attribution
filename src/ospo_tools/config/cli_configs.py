@@ -5,7 +5,7 @@ from dataclasses import dataclass
 class Config:
     preset_license_file_locations: list[str]
     preset_copyright_file_locations: list[str]
-    preset_copyleft_licenses: list[str]
+    preset_cautionary_licenses: list[str]
 
 
 default_config = Config(
@@ -39,7 +39,7 @@ default_config = Config(
         "LICENCE.md",  # I know it is misspelled, but it is common in the wild
         "license/LICENSE.txt",
     ],
-    preset_copyleft_licenses=[
+    preset_cautionary_licenses=[
         "GPL",
         "EUPL",
         "AGPL",
