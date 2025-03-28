@@ -48,6 +48,7 @@ from ospo_tools.report_generator.writters.csv_reporting_writter import (
 import ospo_tools.config.cli_configs as cli_config
 
 from ospo_tools.metadata_collector.license_checker import LicenseChecker
+from ospo_tools.config.cli_configs import default_config
 
 app = typer.Typer(add_completion=False)
 
@@ -387,7 +388,7 @@ def main(
 
     csv_reporter = ReportGenerator(CSVReportingWritter())
 
-    checker = LicenseChecker()
+    checker = LicenseChecker(default_config.preset_cautionary_licenses)
     checker.check_cautionary_licenses(metadata)
 
     output = csv_reporter.generate_report(metadata)
