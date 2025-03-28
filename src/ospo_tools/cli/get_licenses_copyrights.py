@@ -388,7 +388,7 @@ def main(
     csv_reporter = ReportGenerator(CSVReportingWritter())
 
     checker = LicenseChecker()
-    checker.check_copyleft_licenses(metadata)
+    checker.check_cautionary_licenses(metadata)
 
     output = csv_reporter.generate_report(metadata)
     if temp_dir is not None:
