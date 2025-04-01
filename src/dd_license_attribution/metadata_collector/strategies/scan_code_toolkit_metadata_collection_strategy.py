@@ -4,17 +4,17 @@
 # Copyright 2024-present Datadog, Inc.
 
 import scancode.api
-from ospo_tools.adaptors.os import list_dir, path_exists, walk_directory
+from dd_license_attribution.adaptors.os import list_dir, path_exists, walk_directory
 
-from ospo_tools.artifact_management.source_code_manager import (
+from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
 )
-from ospo_tools.artifact_management.artifact_manager import (
+from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
-from ospo_tools.metadata_collector.metadata import Metadata
+from dd_license_attribution.metadata_collector.metadata import Metadata
 from sys import stderr
-from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
+from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
 

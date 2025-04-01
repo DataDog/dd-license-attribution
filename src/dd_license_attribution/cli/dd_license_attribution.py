@@ -11,48 +11,48 @@ import tempfile
 import typer
 from agithub.GitHub import GitHub
 from typing import Annotated
-from ospo_tools.adaptors.os import path_exists, create_dirs
+from dd_license_attribution.adaptors.os import path_exists, create_dirs
 
 from collections.abc import Callable
-from ospo_tools.artifact_management.python_env_manager import (
+from dd_license_attribution.artifact_management.python_env_manager import (
     PyEnvRuntimeError,
     PythonEnvManager,
 )
-from ospo_tools.artifact_management.source_code_manager import (
+from dd_license_attribution.artifact_management.source_code_manager import (
     NonAccessibleRepository,
     SourceCodeManager,
     UnauthorizedRepository,
 )
-from ospo_tools.artifact_management.artifact_manager import validate_cache_dir
-from ospo_tools.metadata_collector import MetadataCollector
-from ospo_tools.metadata_collector.project_scope import ProjectScope
-from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
+from dd_license_attribution.artifact_management.artifact_manager import validate_cache_dir
+from dd_license_attribution.metadata_collector import MetadataCollector
+from dd_license_attribution.metadata_collector.project_scope import ProjectScope
+from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
-from ospo_tools.metadata_collector.strategies.github_repository_collection_strategy import (
+from dd_license_attribution.metadata_collector.strategies.github_repository_collection_strategy import (
     GitHubRepositoryMetadataCollectionStrategy,
 )
-from ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy import (
+from dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy import (
     GitHubSbomMetadataCollectionStrategy,
 )
-from ospo_tools.metadata_collector.strategies.gopkg_collection_strategy import (
+from dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy import (
     GoPkgMetadataCollectionStrategy,
 )
-from ospo_tools.metadata_collector.strategies.pypi_collection_strategy import (
+from dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy import (
     PypiMetadataCollectionStrategy,
 )
-from ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
+from dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
     ScanCodeToolkitMetadataCollectionStrategy,
 )
-from ospo_tools.report_generator.report_generator import ReportGenerator
+from dd_license_attribution.report_generator.report_generator import ReportGenerator
 import json
-from ospo_tools.report_generator.writters.csv_reporting_writter import (
+from dd_license_attribution.report_generator.writters.csv_reporting_writter import (
     CSVReportingWritter,
 )
 
-import ospo_tools.config.cli_configs as cli_config
+import dd_license_attribution.config.cli_configs as cli_config
 
-from ospo_tools.metadata_collector.license_checker import LicenseChecker
+from dd_license_attribution.metadata_collector.license_checker import LicenseChecker
 
 app = typer.Typer(add_completion=False)
 

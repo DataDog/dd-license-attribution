@@ -5,9 +5,9 @@
 
 from unittest.mock import patch
 
-from ospo_tools.metadata_collector.license_checker import LicenseChecker
-from ospo_tools.metadata_collector.metadata import Metadata
-from ospo_tools.config.cli_configs import default_config
+from dd_license_attribution.metadata_collector.license_checker import LicenseChecker
+from dd_license_attribution.metadata_collector.metadata import Metadata
+from dd_license_attribution.config.cli_configs import default_config
 
 
 def test_is_cautionary_license_with_gpl() -> None:

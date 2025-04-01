@@ -5,13 +5,13 @@
 
 import json
 import re
-from ospo_tools.artifact_management.source_code_manager import SourceCodeManager
-from ospo_tools.metadata_collector.metadata import Metadata
-from ospo_tools.metadata_collector.project_scope import ProjectScope
-from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
+from dd_license_attribution.artifact_management.source_code_manager import SourceCodeManager
+from dd_license_attribution.metadata_collector.metadata import Metadata
+from dd_license_attribution.metadata_collector.project_scope import ProjectScope
+from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
-from ospo_tools.adaptors.os import output_from_command, walk_directory, open_file
+from dd_license_attribution.adaptors.os import output_from_command, walk_directory, open_file
 
 
 class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):

@@ -7,27 +7,27 @@ from unittest.mock import call
 import pytest
 from pytest_mock import MockFixture
 from datetime import datetime
-from ospo_tools.artifact_management.artifact_manager import SourceCodeReference
-from ospo_tools.artifact_management.python_env_manager import PythonEnvManager
+from dd_license_attribution.artifact_management.artifact_manager import SourceCodeReference
+from dd_license_attribution.artifact_management.python_env_manager import PythonEnvManager
 
 
 def test_python_env_is_not_created_if_not_python_project_detected(
     mocker: MockFixture,
 ) -> None:
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
+        "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
         side_effect=[
             datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
         ],
     )
     artifact_path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.path_exists", return_value=True
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists", return_value=True
     )
     artifact_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.list_dir", return_value=[]
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir", return_value=[]
     )
     python_env_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.list_dir",
+        "dd_license_attribution.artifact_management.python_env_manager.list_dir",
         return_value=["test.go"],
     )
     python_env_manager = PythonEnvManager("cache_dir", 86400)
@@ -55,28 +55,28 @@ def test_python_env_is_created_if_python_project_detected_and_not_cached(
     mocker: MockFixture, py_file: str
 ) -> None:
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
+        "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
         side_effect=[
             datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
         ],
     )
     artifact_path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.path_exists", return_value=True
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists", return_value=True
     )
     artifact_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
         return_value=[],
     )
     python_env_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.list_dir",
+        "dd_license_attribution.artifact_management.python_env_manager.list_dir",
         side_effect=[["test.py", py_file], []],
     )
 
     chdir_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.change_directory"
+        "dd_license_attribution.artifact_management.python_env_manager.change_directory"
     )
     run_command_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.run_command", return_value=0
+        "dd_license_attribution.artifact_management.python_env_manager.run_command", return_value=0
     )
 
     python_env_manager = PythonEnvManager("cache_dir", 86400)
@@ -109,31 +109,31 @@ def test_python_env_is_returned_if_python_project_detected_and_cached(
     mocker: MockFixture,
 ) -> None:
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
+        "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
         side_effect=[
             datetime.fromisoformat("2022-01-01T10:00:00+00:00"),
         ],
     )
     artifact_path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.path_exists", return_value=True
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists", return_value=True
     )
     artifact_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
         return_value=["20220101_000000Z"],
     )
     python_env_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.list_dir",
+        "dd_license_attribution.artifact_management.python_env_manager.list_dir",
         side_effect=[["setup.py", "test.py"], ["20220101_000000Z"]],
     )
     python_env_path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.path_exists",
+        "dd_license_attribution.artifact_management.python_env_manager.path_exists",
         return_value=True,
     )
     chdir_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.change_directory"
+        "dd_license_attribution.artifact_management.python_env_manager.change_directory"
     )
     run_command_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.run_command", return_value=0
+        "dd_license_attribution.artifact_management.python_env_manager.run_command", return_value=0
     )
     python_env_manager = PythonEnvManager("cache_dir", 86400)
     resource_path = "cache_dir/20210901_000000Z/python_project"
@@ -163,31 +163,31 @@ def test_python_env_is_created_if_python_project_detected_and_force_update(
     mocker: MockFixture,
 ) -> None:
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
+        "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
         side_effect=[
             datetime.fromisoformat("2022-01-01T10:00:00+00:00"),
         ],
     )
     artifact_path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.path_exists", return_value=True
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists", return_value=True
     )
     artifact_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
         return_value=["20220101_000000Z"],
     )
     python_env_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.list_dir",
+        "dd_license_attribution.artifact_management.python_env_manager.list_dir",
         side_effect=[["setup.py", "test.py"], ["20220101_000000Z"]],
     )
     python_env_path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.path_exists",
+        "dd_license_attribution.artifact_management.python_env_manager.path_exists",
         return_value=True,
     )
     chdir_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.change_directory"
+        "dd_license_attribution.artifact_management.python_env_manager.change_directory"
     )
     run_command_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.run_command", return_value=0
+        "dd_license_attribution.artifact_management.python_env_manager.run_command", return_value=0
     )
 
     python_env_manager = PythonEnvManager("cache_dir", 86400)
@@ -219,7 +219,7 @@ def test_python_env_is_created_if_python_project_detected_and_force_update(
 
 def test_get_dependencies_gets_full_list(mocker: MockFixture) -> None:
     output_from_command_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.output_from_command",
+        "dd_license_attribution.artifact_management.python_env_manager.output_from_command",
         return_value='[{ "name": "pytest", "version":"8.3.4"}, {"name":"pytest-cov", "version":"6.0.0"}]',
     )
 
@@ -234,28 +234,28 @@ def test_get_dependencies_gets_full_list(mocker: MockFixture) -> None:
 
 def test_fail_to_create_pyenv_throws(mocker: MockFixture) -> None:
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
+        "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
         side_effect=[
             datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
         ],
     )
     artifact_path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.path_exists", return_value=True
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists", return_value=True
     )
     artifact_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
         return_value=[],
     )
     python_env_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.list_dir",
+        "dd_license_attribution.artifact_management.python_env_manager.list_dir",
         side_effect=[["setup.py", "requirements.txt"], []],
     )
 
     chdir_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.change_directory"
+        "dd_license_attribution.artifact_management.python_env_manager.change_directory"
     )
     run_command_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.run_command"
+        "dd_license_attribution.artifact_management.python_env_manager.run_command"
     )
     run_command_mock.side_effect = [1]
 
@@ -277,28 +277,28 @@ def test_fail_to_create_pyenv_throws(mocker: MockFixture) -> None:
 
 def test_fail_to_install_dependencies_in_pyenv_throws(mocker: MockFixture) -> None:
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
+        "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
         side_effect=[
             datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
         ],
     )
     artifact_path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.path_exists", return_value=True
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists", return_value=True
     )
     artifact_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
         return_value=[],
     )
     python_env_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.list_dir",
+        "dd_license_attribution.artifact_management.python_env_manager.list_dir",
         side_effect=[["setup.py", "requirements.txt"], []],
     )
 
     chdir_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.change_directory"
+        "dd_license_attribution.artifact_management.python_env_manager.change_directory"
     )
     run_command_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.run_command"
+        "dd_license_attribution.artifact_management.python_env_manager.run_command"
     )
     run_command_mock.side_effect = [0, 1]
 

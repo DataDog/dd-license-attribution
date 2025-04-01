@@ -6,12 +6,12 @@
 import typing
 import pytest_mock
 
-from ospo_tools.artifact_management.artifact_manager import SourceCodeReference
-from ospo_tools.metadata_collector.project_scope import ProjectScope
-from ospo_tools.metadata_collector.strategies.pypi_collection_strategy import (
+from dd_license_attribution.artifact_management.artifact_manager import SourceCodeReference
+from dd_license_attribution.metadata_collector.project_scope import ProjectScope
+from dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy import (
     PypiMetadataCollectionStrategy,
 )
-from ospo_tools.metadata_collector.metadata import Metadata
+from dd_license_attribution.metadata_collector.metadata import Metadata
 
 
 class mocked_requests_response:
@@ -110,7 +110,7 @@ def test_pypi_collection_strategy_adds_pypi_metadata_to_list_of_dependencies(
         "cache_dir/20220101_000000Z/org_package1_virtualenv"
     )
     get_dependencies_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
         return_value=[
             ("package3", "1.2.3"),
             ("package4", "2.3.4"),
@@ -239,7 +239,7 @@ def test_dependency_in_initial_metadata_is_augmented_and_not_duplicated_when_fou
         "cache_dir/20220101_000000Z/org_top_package_virtualenv"
     )
     get_dependencies_mock = mocker.patch(
-        "ospo_tools.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
         return_value=[
             ("pytest", "21.4.0"),
         ],

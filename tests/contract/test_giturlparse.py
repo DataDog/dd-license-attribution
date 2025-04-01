@@ -38,7 +38,7 @@ def test_tree_url_2() -> None:
 
 def test_blob_url_1() -> None:
     blob_url = (
-        "https://github.com/DataDog/ospo-tools/blob/main/src/ospo_tools/cli/__init__.py"
+        "https://github.com/DataDog/ospo-tools/blob/main/src/dd_license_attribution/cli/__init__.py"
     )
     parsed = parse(blob_url)
     assert parsed.valid
@@ -48,8 +48,8 @@ def test_blob_url_1() -> None:
     assert parsed.repo == "ospo-tools"
     # The values below may seem incorrect, but it is current behavior at the time of writing
     assert parsed.branch == ""
-    assert parsed.path_raw == "/blob/main/src/ospo_tools/cli/__init__.py"
-    assert parsed.path == "main/src/ospo_tools/cli/__init__.py"
+    assert parsed.path_raw == "/blob/main/src/dd_license_attribution/cli/__init__.py"
+    assert parsed.path == "main/src/dd_license_attribution/cli/__init__.py"
     assert parsed.github
 
 

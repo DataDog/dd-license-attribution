@@ -40,13 +40,13 @@ dev = [
 ]
 
 [project.scripts]
-dd-license-attribution = "ospo_tools.cli.dd_license_attribution:app"
+dd-license-attribution = "dd_license_attribution.cli.dd_license_attribution:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.pytest.ini_options]
-addopts = "--cov=src/ospo_tools"
+addopts = "--cov=src/dd_license_attribution"
 xfail_strict = "True"
 
 [tool.mutmut]

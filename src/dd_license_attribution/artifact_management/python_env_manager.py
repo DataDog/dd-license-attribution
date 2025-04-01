@@ -6,9 +6,9 @@
 from datetime import datetime
 import json
 import pytz
-from ospo_tools.artifact_management.artifact_manager import ArtifactManager
+from dd_license_attribution.artifact_management.artifact_manager import ArtifactManager
 
-from ospo_tools.adaptors.os import (
+from dd_license_attribution.adaptors.os import (
     list_dir,
     change_directory,
     run_command,

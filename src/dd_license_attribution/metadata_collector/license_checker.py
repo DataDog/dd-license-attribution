@@ -6,7 +6,7 @@
 import sys
 from typing import List
 
-from ospo_tools.metadata_collector.metadata import Metadata
+from dd_license_attribution.metadata_collector.metadata import Metadata
 
 
 class LicenseChecker:

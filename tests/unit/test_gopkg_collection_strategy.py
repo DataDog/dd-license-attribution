@@ -6,12 +6,12 @@
 from unittest.mock import call
 import pytest_mock
 
-from ospo_tools.artifact_management.artifact_manager import SourceCodeReference
-from ospo_tools.metadata_collector.project_scope import ProjectScope
-from ospo_tools.metadata_collector.strategies.gopkg_collection_strategy import (
+from dd_license_attribution.artifact_management.artifact_manager import SourceCodeReference
+from dd_license_attribution.metadata_collector.project_scope import ProjectScope
+from dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy import (
     GoPkgMetadataCollectionStrategy,
 )
-from ospo_tools.metadata_collector.metadata import Metadata
+from dd_license_attribution.metadata_collector.metadata import Metadata
 
 
 def test_gopkg_collection_strategy_do_not_decrement_list_of_dependencies_if_not_go_related(
@@ -68,7 +68,7 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
     )
 
     mock_walk_directory = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.gopkg_collection_strategy.walk_directory"
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory"
     )
     mock_walk_directory.return_value = [
         ("org_package1", ["package3", "ignore"], ["go.mod", "test"]),
@@ -77,7 +77,7 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
     ]
 
     mock_output_from_command = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.gopkg_collection_strategy.output_from_command"
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command"
     )
 
     deps_list_json_1 = """
@@ -170,7 +170,7 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
     ]
 
     mock_open_file = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
         return_value="module github.com/org/package1",
     )
 
@@ -275,7 +275,7 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies_b
     )
 
     mock_walk_directory = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.gopkg_collection_strategy.walk_directory"
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory"
     )
     mock_walk_directory.return_value = [
         ("org_package1", ["src", "examples"], ["go.mod"]),
@@ -284,7 +284,7 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies_b
     ]
 
     mock_open_file = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
         side_effect=[
             "module github.com/org/package1",
             "module github.com/org/package1/src",
@@ -350,7 +350,7 @@ require github.com/org/package1 v1.0
     )
 
     mock_output_from_command = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
         side_effect=[
             deps_list_json_top,
             branch_detection_output,
@@ -449,7 +449,7 @@ def test_gopkg_collection_strategy_only_updates_local_source_path_when_only_root
     )
 
     mock_walk_directory = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.gopkg_collection_strategy.walk_directory"
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory"
     )
 
     mock_walk_directory.return_value = [
@@ -458,7 +458,7 @@ def test_gopkg_collection_strategy_only_updates_local_source_path_when_only_root
     ]
 
     mock_open_file = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
         return_value="module github.com/org/package1",
     )
 
@@ -510,7 +510,7 @@ def test_gopkg_collection_strategy_only_updates_local_source_path_when_only_root
 }"""
 
     mock_output_from_command = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
         return_value=deps_list_json_top,
     )
 
