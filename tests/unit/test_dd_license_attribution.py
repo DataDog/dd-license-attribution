@@ -6,7 +6,7 @@
 import os
 from typer.testing import CliRunner
 
-from ospo_tools.cli.get_licenses_copyrights import app
+from ospo_tools.cli.dd_license_attribution import app
 
 runner = CliRunner(mix_stderr=False)
 

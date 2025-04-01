@@ -31,14 +31,14 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install .
 
-      - name: Run the get-licenses-copyrights script with the --help flag
+      - name: Run the dd-license-attribution script with the --help flag
         run: |
-          get-licenses-copyrights --help
+          dd-license-attribution --help
 
-      - name: Run the get-licenses-copyrights script against the Stratus Red Team repository only for root (quick fail)
+      - name: Run the dd-license-attribution script against the Stratus Red Team repository only for root (quick fail)
         run: |
-          get-licenses-copyrights --no-gh-auth --only-root-project https://github.com/DataDog/stratus-red-team
+          dd-license-attribution --no-gh-auth --only-root-project https://github.com/DataDog/stratus-red-team
 
-      - name: Run the get-licenses-copyrights script against the dd-trace-py repository with dependencies
+      - name: Run the dd-license-attribution script against the dd-trace-py repository with dependencies
         run: |
-          get-licenses-copyrights --no-gh-auth https://github.com/DataDog/dd-trace-py
+          dd-license-attribution --no-gh-auth https://github.com/DataDog/dd-trace-py

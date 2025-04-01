@@ -5,7 +5,7 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Python Debugger: get-licenses-copyrights",
+            "name": "Python Debugger: dd-license-attribution",
             "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/src/ospo_tools/cli/get_licenses_copyrights.py",

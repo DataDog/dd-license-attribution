@@ -1,15 +1,11 @@
-# ospo-tools
+# Datadog License Attribution Tracker
 
-A set of tools mantained by ospo to work with open source projects
+Datadog License Attribution Tracker is a tool that collects license and copyright information for third party dependencies of a project and returns a list of said dependencies and their licenses and copyright attributions, if found.
 
-## get-licenses-copyrights
+As of today, Datadog License Attribution Tracker supports Go and Python projects. It will be extended in the future to support more languages.
 
-This is a tool to generate 3party-license csv files used to track dependencies licenses.
-
-As of today, we support Go and Python. We plan to expand to other languages soon.
-
-This tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, the go-pkg list command output, and the metadata collected from successful dependency installation via PyPI.
-It supports gathering data from various repositories to generate a comprehensive 3rd-party license CSV file.
+The tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, the go-pkg list command output, and the metadata collected from successful dependency installation via PyPI.
+It supports gathering data from various repositories to generate a comprehensive list of third party dependencies.
 
 Runs may take minutes or hours depending on the size of the project dependency tree and the depth of the scanning.
 
@@ -30,7 +26,7 @@ pip install .
 
 # Optionally you can define a GITHUB_TOKEN, if used it will raise the throttling threashold and maspeed up your generation calls to github APIs.
 export GITHUB_TOKEN=YOUR_TOKEN
-get-licenses-copyrights https://github.com/owner/repo > LICENSE-3rdparty.csv
+dd-license-attribution https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
 
 The following optional parameters are available:
