@@ -37,9 +37,7 @@ def test_tree_url_2() -> None:
 
 
 def test_blob_url_1() -> None:
-    blob_url = (
-        "https://github.com/DataDog/ospo-tools/blob/main/src/dd_license_attribution/cli/__init__.py"
-    )
+    blob_url = "https://github.com/DataDog/ospo-tools/blob/main/src/dd_license_attribution/cli/__init__.py"
     parsed = parse(blob_url)
     assert parsed.valid
     assert parsed.protocol == "https"

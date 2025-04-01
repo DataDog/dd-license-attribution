@@ -170,7 +170,8 @@ def test_source_code_manager_get_non_cached_code(
         return_value=mocked_parser_results,
     )
     artifact_file_exists_mock = mocker.patch(
-        "dd_license_attribution.artifact_management.artifact_manager.path_exists", return_value=True
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
+        return_value=True,
     )
     artifact_list_dir_mock = mocker.patch(
         "dd_license_attribution.artifact_management.artifact_manager.list_dir",
@@ -245,7 +246,8 @@ def test_source_code_manager_get_cached_code(mocker: pytest_mock.MockFixture) ->
         return_value=["20211231_001000Z"],
     )
     run_command_mock = mocker.patch(
-        "dd_license_attribution.artifact_management.source_code_manager.run_command", return_value=0
+        "dd_license_attribution.artifact_management.source_code_manager.run_command",
+        return_value=0,
     )
 
     source_code_manager = SourceCodeManager("cache_dir", 86400)
@@ -312,7 +314,8 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
         return_value=["20210101_000000Z"],
     )
     run_command_mock = mocker.patch(
-        "dd_license_attribution.artifact_management.source_code_manager.run_command", return_value=0
+        "dd_license_attribution.artifact_management.source_code_manager.run_command",
+        return_value=0,
     )
 
     source_code_manager = SourceCodeManager("cache_dir", 86400)
@@ -372,7 +375,8 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
         return_value=True,
     )
     run_command_mock = mocker.patch(
-        "dd_license_attribution.artifact_management.source_code_manager.run_command", return_value=0
+        "dd_license_attribution.artifact_management.source_code_manager.run_command",
+        return_value=0,
     )
 
     artifact_mock_list_dir = mocker.patch(
@@ -484,7 +488,8 @@ def test_artifact_manager_get_non_cached_code_for_ambiguous_branch_names(
         return_value=["20210101_000000Z"],
     )
     run_command_mock = mocker.patch(
-        "dd_license_attribution.artifact_management.source_code_manager.run_command", return_value=0
+        "dd_license_attribution.artifact_management.source_code_manager.run_command",
+        return_value=0,
     )
 
     source_code_manager = SourceCodeManager("cache_dir", 86400)
