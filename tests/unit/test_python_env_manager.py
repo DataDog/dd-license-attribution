@@ -7,8 +7,12 @@ from unittest.mock import call
 import pytest
 from pytest_mock import MockFixture
 from datetime import datetime
-from dd_license_attribution.artifact_management.artifact_manager import SourceCodeReference
-from dd_license_attribution.artifact_management.python_env_manager import PythonEnvManager
+from dd_license_attribution.artifact_management.artifact_manager import (
+    SourceCodeReference,
+)
+from dd_license_attribution.artifact_management.python_env_manager import (
+    PythonEnvManager,
+)
 
 
 def test_python_env_is_not_created_if_not_python_project_detected(
@@ -21,10 +25,12 @@ def test_python_env_is_not_created_if_not_python_project_detected(
         ],
     )
     artifact_path_exists_mock = mocker.patch(
-        "dd_license_attribution.artifact_management.artifact_manager.path_exists", return_value=True
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
+        return_value=True,
     )
     artifact_list_dir_mock = mocker.patch(
-        "dd_license_attribution.artifact_management.artifact_manager.list_dir", return_value=[]
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
+        return_value=[],
     )
     python_env_list_dir_mock = mocker.patch(
         "dd_license_attribution.artifact_management.python_env_manager.list_dir",
@@ -61,7 +67,8 @@ def test_python_env_is_created_if_python_project_detected_and_not_cached(
         ],
     )
     artifact_path_exists_mock = mocker.patch(
-        "dd_license_attribution.artifact_management.artifact_manager.path_exists", return_value=True
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
+        return_value=True,
     )
     artifact_list_dir_mock = mocker.patch(
         "dd_license_attribution.artifact_management.artifact_manager.list_dir",
@@ -76,7 +83,8 @@ def test_python_env_is_created_if_python_project_detected_and_not_cached(
         "dd_license_attribution.artifact_management.python_env_manager.change_directory"
     )
     run_command_mock = mocker.patch(
-        "dd_license_attribution.artifact_management.python_env_manager.run_command", return_value=0
+        "dd_license_attribution.artifact_management.python_env_manager.run_command",
+        return_value=0,
     )
 
     python_env_manager = PythonEnvManager("cache_dir", 86400)
@@ -115,7 +123,8 @@ def test_python_env_is_returned_if_python_project_detected_and_cached(
         ],
     )
     artifact_path_exists_mock = mocker.patch(
-        "dd_license_attribution.artifact_management.artifact_manager.path_exists", return_value=True
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
+        return_value=True,
     )
     artifact_list_dir_mock = mocker.patch(
         "dd_license_attribution.artifact_management.artifact_manager.list_dir",
@@ -133,7 +142,8 @@ def test_python_env_is_returned_if_python_project_detected_and_cached(
         "dd_license_attribution.artifact_management.python_env_manager.change_directory"
     )
     run_command_mock = mocker.patch(
-        "dd_license_attribution.artifact_management.python_env_manager.run_command", return_value=0
+        "dd_license_attribution.artifact_management.python_env_manager.run_command",
+        return_value=0,
     )
     python_env_manager = PythonEnvManager("cache_dir", 86400)
     resource_path = "cache_dir/20210901_000000Z/python_project"
@@ -169,7 +179,8 @@ def test_python_env_is_created_if_python_project_detected_and_force_update(
         ],
     )
     artifact_path_exists_mock = mocker.patch(
-        "dd_license_attribution.artifact_management.artifact_manager.path_exists", return_value=True
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
+        return_value=True,
     )
     artifact_list_dir_mock = mocker.patch(
         "dd_license_attribution.artifact_management.artifact_manager.list_dir",
@@ -187,7 +198,8 @@ def test_python_env_is_created_if_python_project_detected_and_force_update(
         "dd_license_attribution.artifact_management.python_env_manager.change_directory"
     )
     run_command_mock = mocker.patch(
-        "dd_license_attribution.artifact_management.python_env_manager.run_command", return_value=0
+        "dd_license_attribution.artifact_management.python_env_manager.run_command",
+        return_value=0,
     )
 
     python_env_manager = PythonEnvManager("cache_dir", 86400)
@@ -240,7 +252,8 @@ def test_fail_to_create_pyenv_throws(mocker: MockFixture) -> None:
         ],
     )
     artifact_path_exists_mock = mocker.patch(
-        "dd_license_attribution.artifact_management.artifact_manager.path_exists", return_value=True
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
+        return_value=True,
     )
     artifact_list_dir_mock = mocker.patch(
         "dd_license_attribution.artifact_management.artifact_manager.list_dir",
@@ -283,7 +296,8 @@ def test_fail_to_install_dependencies_in_pyenv_throws(mocker: MockFixture) -> No
         ],
     )
     artifact_path_exists_mock = mocker.patch(
-        "dd_license_attribution.artifact_management.artifact_manager.path_exists", return_value=True
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
+        return_value=True,
     )
     artifact_list_dir_mock = mocker.patch(
         "dd_license_attribution.artifact_management.artifact_manager.list_dir",
