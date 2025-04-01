@@ -3,16 +3,16 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ospo-tools"
+name = "dd-license-attribution"
 version = "0.3.0"
-description = "A set of tools to help with the OSPO activities and reporting"
+description = "A tool that collects license and copyright information for third party dependencies of a project."
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
     { name = "Damian Vicino", email = "damian.vicino@datadoghq.com" },
     { name = "Ara Pulido", email = "ara.pulido@datadoghq.com" }
 ]
-urls = { "Homepage" = "https://github.com/DataDog/ospo-tools" }
+urls = { "Homepage" = "https://github.com/DataDog/dd-license-attribution" }
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent"
@@ -40,7 +40,7 @@ dev = [
 ]
 
 [project.scripts]
-get-licenses-copyrights = "ospo_tools.cli.get_licenses_copyrights:app"
+dd-license-attribution = "ospo_tools.cli.dd_license_attribution:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
