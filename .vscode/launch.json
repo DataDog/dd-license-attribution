@@ -8,7 +8,7 @@
             "name": "Python Debugger: dd-license-attribution",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/src/ospo_tools/cli/get_licenses_copyrights.py",
+            "program": "${workspaceFolder}/src/dd_license_attribution/cli/get_licenses_copyrights.py",
             "console": "integratedTerminal",
             "args": [
                 // "--only-transitive-dependencies",

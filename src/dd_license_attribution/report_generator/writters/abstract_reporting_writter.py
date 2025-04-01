@@ -5,7 +5,7 @@
 
 from abc import ABC, abstractmethod
 
-from ospo_tools.metadata_collector.metadata import Metadata
+from dd_license_attribution.metadata_collector.metadata import Metadata
 
 
 class ReportingWritter(ABC):

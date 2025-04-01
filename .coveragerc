@@ -8,5 +8,5 @@ exclude_lines =
 
 [run]
 omit =
-    src/ospo_tools/cli/*
-    src/ospo_tools/config/*
+    src/dd_license_attribution/cli/*
+    src/dd_license_attribution/config/*

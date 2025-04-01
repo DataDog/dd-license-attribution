@@ -3,7 +3,4 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
-from ospo_tools.metadata_collector.metadata_collector import MetadataCollector
-from ospo_tools.metadata_collector.project_scope import ProjectScope
-
-__all__ = ["MetadataCollector", "ProjectScope"]
+from dd_license_attribution.report_generator.report_generator import ReportGenerator

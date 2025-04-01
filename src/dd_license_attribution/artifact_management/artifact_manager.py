@@ -4,9 +4,9 @@
 # Copyright 2024-present Datadog, Inc.
 
 from dataclasses import dataclass
-from ospo_tools.adaptors.datetime import get_datetime_now
-from ospo_tools.adaptors.os import path_exists
-from ospo_tools.adaptors.os import list_dir
+from dd_license_attribution.adaptors.datetime import get_datetime_now
+from dd_license_attribution.adaptors.os import path_exists
+from dd_license_attribution.adaptors.os import list_dir
 from datetime import datetime
 import pytz
 
