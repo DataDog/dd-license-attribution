@@ -9,10 +9,10 @@ from unittest.mock import call
 import pytest
 import pytest_mock
 
-from ospo_tools.artifact_management.source_code_manager import (
+from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
 )
-from ospo_tools.artifact_management.artifact_manager import (
+from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
 
@@ -148,7 +148,7 @@ def test_source_code_manager_get_non_cached_code(
     )
     if mocked_parser_results.path_raw != "":
         run_command_mock = mocker.patch(
-            "ospo_tools.artifact_management.source_code_manager.run_command",
+            "dd_license_attribution.artifact_management.source_code_manager.run_command",
             return_value=0,
         )
     if (
@@ -156,28 +156,28 @@ def test_source_code_manager_get_non_cached_code(
         and not "test_branch" in mocked_parser_results.path_raw
     ):
         output_from_command_mock = mocker.patch(
-            "ospo_tools.artifact_management.source_code_manager.output_from_command",
+            "dd_license_attribution.artifact_management.source_code_manager.output_from_command",
             return_value="ref: refs/heads/main\tHEAD\n72a11341aa684010caf1ca5dee779f0e7e84dfe9\tHEAD\n",
         )
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
+        "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
         side_effect=[
             datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
         ],
     )
     git_url_parse_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.parse_git_url",
+        "dd_license_attribution.artifact_management.source_code_manager.parse_git_url",
         return_value=mocked_parser_results,
     )
     artifact_file_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.path_exists", return_value=True
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists", return_value=True
     )
     artifact_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
         return_value=[],
     )
     source_code_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.list_dir",
+        "dd_license_attribution.artifact_management.source_code_manager.list_dir",
         return_value=[],
     )
 
@@ -213,12 +213,12 @@ def test_source_code_manager_get_non_cached_code(
 
 def test_source_code_manager_get_cached_code(mocker: pytest_mock.MockFixture) -> None:
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
+        "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
         return_value=datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
     )
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
     git_url_parse_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.parse_git_url",
+        "dd_license_attribution.artifact_management.source_code_manager.parse_git_url",
         return_value=GitUrlParseMock(
             valid=True,
             owner="test_owner",
@@ -229,23 +229,23 @@ def test_source_code_manager_get_cached_code(mocker: pytest_mock.MockFixture) ->
         ),
     )
     artifact_path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.path_exists",
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
         return_value=True,
     )
     source_code_path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.path_exists",
+        "dd_license_attribution.artifact_management.source_code_manager.path_exists",
         return_value=True,
     )
     artifact_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
         return_value=["20211231_001000Z"],
     )
     source_code_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.list_dir",
+        "dd_license_attribution.artifact_management.source_code_manager.list_dir",
         return_value=["20211231_001000Z"],
     )
     run_command_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.run_command", return_value=0
+        "dd_license_attribution.artifact_management.source_code_manager.run_command", return_value=0
     )
 
     source_code_manager = SourceCodeManager("cache_dir", 86400)
@@ -277,7 +277,7 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
+        "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
         side_effect=[
             datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
         ],
@@ -285,11 +285,11 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
 
     mock_create_dirs = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.create_dirs"
+        "dd_license_attribution.artifact_management.source_code_manager.create_dirs"
     )
 
     git_url_parse_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.parse_git_url",
+        "dd_license_attribution.artifact_management.source_code_manager.parse_git_url",
         return_value=GitUrlParseMock(
             valid=True,
             owner="test_owner",
@@ -300,19 +300,19 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
         ),
     )
     path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.path_exists",
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
         return_value=True,
     )
     artifact_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
         return_value=["20210101_000000Z"],
     )
     source_code_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.list_dir",
+        "dd_license_attribution.artifact_management.source_code_manager.list_dir",
         return_value=["20210101_000000Z"],
     )
     run_command_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.run_command", return_value=0
+        "dd_license_attribution.artifact_management.source_code_manager.run_command", return_value=0
     )
 
     source_code_manager = SourceCodeManager("cache_dir", 86400)
@@ -350,14 +350,14 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
+        "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
         side_effect=[
             datetime.fromisoformat("2022-01-01T00:00:05+00:00"),
         ],
     )
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
     git_url_parse_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.parse_git_url",
+        "dd_license_attribution.artifact_management.source_code_manager.parse_git_url",
         return_value=GitUrlParseMock(
             valid=True,
             owner="test_owner",
@@ -368,23 +368,23 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
         ),
     )
     path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.path_exists",
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
         return_value=True,
     )
     run_command_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.run_command", return_value=0
+        "dd_license_attribution.artifact_management.source_code_manager.run_command", return_value=0
     )
 
     artifact_mock_list_dir = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
         return_value=["20210101_000000Z"],
     )
     source_code_mock_list_dir = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.list_dir",
+        "dd_license_attribution.artifact_management.source_code_manager.list_dir",
         return_value=["20210101_000000Z"],
     )
     mock_create_dirs = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.create_dirs"
+        "dd_license_attribution.artifact_management.source_code_manager.create_dirs"
     )
     source_code_manager = SourceCodeManager("cache_dir", 86400)
     code_ref = source_code_manager.get_code(request_url, force_update=True)
@@ -420,7 +420,7 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
 
 def test_non_github_returns_none(mocker: pytest_mock.MockFixture) -> None:
     git_url_parse_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.parse_git_url",
+        "dd_license_attribution.artifact_management.source_code_manager.parse_git_url",
         return_value=GitUrlParseMock(
             valid=False,
             owner="",
@@ -432,11 +432,11 @@ def test_non_github_returns_none(mocker: pytest_mock.MockFixture) -> None:
     )
 
     mock_path_exists = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.path_exists",
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
         return_value=True,
     )
     mock_list_dir = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
         return_value=[],
     )
 
@@ -456,12 +456,12 @@ def test_artifact_manager_get_non_cached_code_for_ambiguous_branch_names(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     get_datetime_now_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.get_datetime_now",
+        "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
         return_value=datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
     )
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
     git_url_parse_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.parse_git_url",
+        "dd_license_attribution.artifact_management.source_code_manager.parse_git_url",
         return_value=GitUrlParseMock(
             valid=True,
             owner="test_owner",
@@ -472,19 +472,19 @@ def test_artifact_manager_get_non_cached_code_for_ambiguous_branch_names(
         ),
     )
     path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.path_exists",
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
         return_value=True,
     )
     artifact_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
         return_value=["20210101_000000Z"],
     )
     source_code_list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.list_dir",
+        "dd_license_attribution.artifact_management.source_code_manager.list_dir",
         return_value=["20210101_000000Z"],
     )
     run_command_mock = mocker.patch(
-        "ospo_tools.artifact_management.source_code_manager.run_command", return_value=0
+        "dd_license_attribution.artifact_management.source_code_manager.run_command", return_value=0
     )
 
     source_code_manager = SourceCodeManager("cache_dir", 86400)
@@ -522,7 +522,7 @@ def test_source_code_manager_fails_init_if_cache_dir_is_not_a_directory(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.path_exists",
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
         return_value=False,
     )
 
@@ -537,11 +537,11 @@ def test_source_code_manager_fails_init_if_cache_dir_contains_unexpected_files(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     path_exists_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.path_exists",
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
         return_value=True,
     )
     list_dir_mock = mocker.patch(
-        "ospo_tools.artifact_management.artifact_manager.list_dir",
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
         return_value=["unexpected_file"],
     )
 

@@ -4,9 +4,9 @@
 # Copyright 2024-present Datadog, Inc.
 
 import pytest_mock
-from ospo_tools.metadata_collector.metadata import Metadata
-from ospo_tools.report_generator.report_generator import ReportGenerator
-from ospo_tools.report_generator.writters.abstract_reporting_writter import (
+from dd_license_attribution.metadata_collector.metadata import Metadata
+from dd_license_attribution.report_generator.report_generator import ReportGenerator
+from dd_license_attribution.report_generator.writters.abstract_reporting_writter import (
     ReportingWritter,
 )
 

@@ -5,12 +5,12 @@
 
 from unittest.mock import call
 import pytest
-from ospo_tools.artifact_management.source_code_manager import (
+from dd_license_attribution.artifact_management.source_code_manager import (
     NonAccessibleRepository,
     UnauthorizedRepository,
 )
-from ospo_tools.metadata_collector.metadata import Metadata
-from ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy import (
+from dd_license_attribution.metadata_collector.metadata import Metadata
+from dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy import (
     GitHubSbomMetadataCollectionStrategy,
     ProjectScope,
 )
@@ -35,7 +35,7 @@ def test_github_sbom_collection_strategy_returns_same_metadata_if_not_a_github_r
     github_client_mock = mocker.Mock(spec_set=GitHub)
 
     github_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(
             valid=True,
             platform="not_github",
@@ -85,7 +85,7 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
     github_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(
             valid=True,
             platform="github",
@@ -125,7 +125,7 @@ def test_github_sbom_collection_strategy_raise_special_exception_if_error_callin
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
     github_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(
             valid=True,
             platform="github",
@@ -165,7 +165,7 @@ def test_github_sbom_collection_strategy_raise_special_exception_if_error_callin
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
     github_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(
             valid=True,
             platform="github",
@@ -219,7 +219,7 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
     github_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(
             valid=True,
             platform="github",
@@ -285,7 +285,7 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
     giturlparse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
         side_effect=[
             GitUrlParseMock(True, "github", "test_owner", "test_repo"),
             GitUrlParseMock(True, "gitlab", None, None),
@@ -384,7 +384,7 @@ def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_fals
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
     github_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(
             valid=True,
             platform="github",
@@ -456,7 +456,7 @@ def test_strategy_does_not_keep_root_when_with_root_project_is_false(
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
     github_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
     )
 
@@ -534,7 +534,7 @@ def test_github_sbom_collection_strategy_uses_name_as_origin_if_download_locatio
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
 
     giturlparse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
     )
 

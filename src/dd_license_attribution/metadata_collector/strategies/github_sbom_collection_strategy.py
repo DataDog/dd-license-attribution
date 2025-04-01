@@ -3,18 +3,18 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
-from ospo_tools.metadata_collector.metadata import Metadata
-from ospo_tools.metadata_collector.strategies.abstract_collection_strategy import (
+from dd_license_attribution.metadata_collector.metadata import Metadata
+from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
-from ospo_tools.metadata_collector.project_scope import ProjectScope
+from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 
 __all__ = ["GitHubSbomMetadataCollectionStrategy", "ProjectScope"]
 
 from agithub.GitHub import GitHub
 from typing import Any
 from giturlparse import parse as parse_git_url
-from ospo_tools.artifact_management.source_code_manager import (
+from dd_license_attribution.artifact_management.source_code_manager import (
     NonAccessibleRepository,
     UnauthorizedRepository,
 )

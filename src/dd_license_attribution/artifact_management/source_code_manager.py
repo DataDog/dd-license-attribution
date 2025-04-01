@@ -5,7 +5,7 @@
 
 from dataclasses import dataclass
 from giturlparse import parse as parse_git_url
-from ospo_tools.adaptors.os import (
+from dd_license_attribution.adaptors.os import (
     list_dir,
     run_command,
     path_exists,
@@ -15,7 +15,7 @@ from ospo_tools.adaptors.os import (
 from datetime import datetime
 import pytz
 
-from ospo_tools.artifact_management.artifact_manager import (
+from dd_license_attribution.artifact_management.artifact_manager import (
     ArtifactManager,
     SourceCodeReference,
 )

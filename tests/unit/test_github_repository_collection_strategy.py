@@ -6,8 +6,8 @@
 from unittest.mock import call
 import pytest
 import pytest_mock
-from ospo_tools.metadata_collector.metadata import Metadata
-from ospo_tools.metadata_collector.strategies.github_repository_collection_strategy import (
+from dd_license_attribution.metadata_collector.metadata import Metadata
+from dd_license_attribution.metadata_collector.strategies.github_repository_collection_strategy import (
     GitHubRepositoryMetadataCollectionStrategy,
 )
 from agithub.GitHub import GitHub
@@ -30,7 +30,7 @@ def test_github_repository_collection_strategy_returns_same_metadata_if_not_a_gi
     github_client_mock = mocker.Mock(spec_set=GitHub)
 
     github_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        "dd_license_attribution.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(False, "not_github", None, None),
     )
 
@@ -69,7 +69,7 @@ def test_github_repository_collection_strategy_raise_exception_if_error_calling_
     gh_mock = GitHubClientMock(repo_info_mock)
 
     github_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        "dd_license_attribution.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
     )
 
@@ -107,7 +107,7 @@ def test_github_repository_collection_strategy_returns_uses_repo_owner_when_no_c
     gh_mock = GitHubClientMock(repo_info_mock)
 
     github_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        "dd_license_attribution.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
     )
 
@@ -154,7 +154,7 @@ def test_github_repository_collection_strategy_do_not_override_license_on_noasse
     gh_mock = GitHubClientMock(repo_info_mock)
 
     github_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        "dd_license_attribution.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
     )
 
@@ -199,7 +199,7 @@ def test_github_repository_collection_strategy_do_not_override_license_if_previo
     gh_mock = GitHubClientMock(repo_info_mock)
 
     github_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        "dd_license_attribution.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
     )
 
@@ -246,7 +246,7 @@ def test_github_repository_collection_strategy_do_not_override_copyright_if_prev
     gh_mock = GitHubClientMock(repo_info_mock)
 
     github_parse_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        "dd_license_attribution.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
     )
 

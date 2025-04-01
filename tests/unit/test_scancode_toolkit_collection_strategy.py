@@ -6,10 +6,10 @@
 from unittest.mock import call
 
 import pytest_mock
-from ospo_tools.artifact_management.artifact_manager import SourceCodeReference
-from ospo_tools.metadata_collector.metadata import Metadata
+from dd_license_attribution.artifact_management.artifact_manager import SourceCodeReference
+from dd_license_attribution.metadata_collector.metadata import Metadata
 from functools import partial
-from ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
+from dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
     ScanCodeToolkitMetadataCollectionStrategy,
 )
 
@@ -102,7 +102,7 @@ def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos
     mocker: pytest_mock.MockFixture,
 ) -> None:
     listdir_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
         return_value=["License1", "license2", "file1", "file2"],
     )
 
@@ -150,7 +150,7 @@ def test_scancode_toolkit_collection_strategy_extracts_license_from_github_repos
     )
 
     path_exists_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
         return_value=True,
     )
 
@@ -260,11 +260,11 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
     ]
 
     walk_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory"
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory"
     )
 
     listdir_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
         return_value=["ignore"],
     )
 
@@ -310,7 +310,7 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_from_github_rep
     )
 
     path_exists_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
         return_value=True,
     )
 
@@ -467,7 +467,7 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
     )
 
     walk_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory"
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory"
     )
     mock_walk_return_value_side_effect: list[list[tuple[str, list[str], list[str]]]] = [
         [
@@ -496,7 +496,7 @@ def test_scancode_toolkit_collection_strategy_receives_empty_filters_all_files_a
     walk_mock.side_effect = mock_walk_return_value_side_effect
 
     path_exists_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
         return_value=True,
     )
 
@@ -628,7 +628,7 @@ def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(
     ]
 
     listdir_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
         side_effect=[["License1"], ["license2"], ["License1", "file2"]],
     )
 
@@ -665,7 +665,7 @@ def test_scancode_toolkit_collection_strategy_do_not_mix_up_pre_cloned_repos(
     }
 
     path_exists_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
         return_value=True,
     )
 
@@ -767,12 +767,12 @@ def test_dotgit_directory_is_not_inspected_for_license_and_copyright_files(
         )
     ]
     listdir_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
         return_value=["LICENSE", "COPYRIGHT"],
     )
 
     walk_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory",
         return_value=[
             (
                 "cache_test/package1/main/20220101-000000Z/test_path_1",
@@ -803,7 +803,7 @@ def test_dotgit_directory_is_not_inspected_for_license_and_copyright_files(
     }
 
     path_exists_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
         return_value=True,
     )
 
@@ -873,12 +873,12 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_and_license_fro
     )
 
     listdir_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
         return_value=["LICENSE", "COPYRIGHT"],
     )
 
     walk_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory",
         side_effect=[
             [
                 (
@@ -935,7 +935,7 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_and_license_fro
     ]
 
     path_exists_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
         return_value=True,
     )
 
@@ -1024,12 +1024,12 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_and_license_fro
     )
 
     listdir_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
         side_effect=[["nothing", "here"], ["LICENSE", "COPYRIGHT"]],
     )
 
     walk_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory",
         side_effect=[
             [
                 (
@@ -1070,7 +1070,7 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_and_license_fro
     ]
 
     path_exists_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
         return_value=True,
     )
 
@@ -1138,7 +1138,7 @@ def test_no_crash_on_wrong_path_being_infered_in_previous_step_if_the_local_src_
     mocker: pytest_mock.MockFixture,
 ) -> None:
     listdir_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
         return_value=["License1", "license2", "file1", "file2"],
     )
 
@@ -1157,7 +1157,7 @@ def test_no_crash_on_wrong_path_being_infered_in_previous_step_if_the_local_src_
     )
 
     path_exists_mock = mocker.patch(
-        "ospo_tools.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
         side_effect=[True, False],
     )
 
