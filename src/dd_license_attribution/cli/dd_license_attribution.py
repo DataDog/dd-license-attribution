@@ -23,7 +23,9 @@ from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
     UnauthorizedRepository,
 )
-from dd_license_attribution.artifact_management.artifact_manager import validate_cache_dir
+from dd_license_attribution.artifact_management.artifact_manager import (
+    validate_cache_dir,
+)
 from dd_license_attribution.metadata_collector import MetadataCollector
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (

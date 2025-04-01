@@ -6,7 +6,9 @@
 import typing
 import pytest_mock
 
-from dd_license_attribution.artifact_management.artifact_manager import SourceCodeReference
+from dd_license_attribution.artifact_management.artifact_manager import (
+    SourceCodeReference,
+)
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy import (
     PypiMetadataCollectionStrategy,
