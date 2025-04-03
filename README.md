@@ -44,65 +44,9 @@ The following optional parameters are available:
 
 For more details about optional parameters pass `--help` to the command.
 
-### Development
+### Development and Contributing
 
-To develop, install the development dependencies in a virtual environment:
-
-```bash
-# starting at the root of the repository
-# create and activate a venv
-python3 -m venv venv
-source venv/bin/activate
-pip install -e ".[dev]"
-```
-
-#### Coverage report
-
-To generate test coverage reports locally run these commands in the root of the repository:
-
-```bash
-# for unit tests
-pytest --cov-report=xml --cov-fail-under=90 tests/unit
-# for integration tests
-pytest tests/integration
-```
-
-Github PRs and Push will trigger a run of unit tests for validation and fail if coverage is below 90%.
-
-#### Linting
-
-We currently use `black` to reformat files.
-If you use VSCode, files will be automatically reformatted on saving. You can also run black from the command line:
-
-```bash
-venv/bin/black src tests
-```
-
-We use MyPy for validating typing of the project. We keep 100% typing coverage.
-
-```bash
-venv/bin/mypy src tests
-```
-
-Both, black and mypy requirements are enforced by CI workflow in PRs.
-
-### Testing
-
-The project uses `pytest` and `mutmut` (configured via `pyproject.toml`).
-Unit tests are located in `tests/unit`.
-
-Running `pytest` without parameters in the root of the project runs all unit tests.
-By default, a coverage report is created from the run. A less than 90% coverage fails the pytest run.
-
-To generate and run mutation tests, run `mutmut run`.
-To read the results of mutation tests in more detail than the initial output, run `mutmut results`.
-
-The CI step in PRs and merge to main runs all tests and a few end to end tests defined as github workflows in the .github directory.
-Mutation tests are not evaluated for CI.
-
-Contract tests are available to validate assumptions of external tools/libraries usages that are mocked in unit tests.
-These tests do not run by default. To execute them, run `pytest tests/contract`.
-CI runs the contract tests before attempting to run the unit tests.
+For instructions on how to develop or contribute to the project, read our [CONTRIBUTING.md guidelines](./CONTRIBUTING.md).
 
 ### Current Development State
 
