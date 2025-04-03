@@ -7,7 +7,7 @@ name = "dd-license-attribution"
 version = "0.3.0"
 description = "A tool that collects license and copyright information for third party dependencies of a project."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     { name = "Damian Vicino", email = "damian.vicino@datadoghq.com" },
     { name = "Ara Pulido", email = "ara.pulido@datadoghq.com" }
