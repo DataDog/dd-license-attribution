@@ -23,13 +23,24 @@ Once you have some code ready, open a PR, [linking it to the issue](https://docs
 
 ### Setting up your development environment
 
-To develop, install the development dependencies in a virtual environment:
+Install the following requirements:
+
+- [pyenv](https://github.com/pyenv/pyenv)
+- [pyenv-virtualenv](https://github.com/pyenv/pyenv-virtualenv)
+
+To install both requirements in MacOS:
+
+```bash
+brew install pyenv
+brew install pyenv-virtualenv
+```
+Create a virtual environment using pyenv:
 
 ```bash
 # starting at the root of the repository
-# create and activate a venv
-python3 -m venv venv
-source venv/bin/activate
+pyenv install 3.11
+pyenv virtualenv 3.11 dd-license-attribution
+pyenv local dd-license-attribution
 pip install -e ".[dev]"
 ```
 
@@ -52,7 +63,7 @@ We currently use `black` to reformat files.
 If you use VSCode, files will be automatically reformatted on saving. You can also run black from the command line:
 
 ```bash
-venv/bin/black src tests
+black src tests
 ```
 
 We use MyPy for validating typing of the project. We keep 100% typing coverage.
