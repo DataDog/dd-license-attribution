@@ -11,7 +11,7 @@ Runs may take minutes or hours depending on the size of the project dependency t
 
 ### Requirements
 
-- python3.10+ - [Python install instructions](https://www.python.org/downloads/)
+- python3.11+ - [Python install instructions](https://www.python.org/downloads/)
 - gopkg - [GoLang and GoPkg install instructions](https://go.dev/doc/install)
 - libmagic (only on mac):
   - `brew install libmagic`
