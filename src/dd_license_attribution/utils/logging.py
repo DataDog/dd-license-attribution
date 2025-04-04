@@ -4,13 +4,9 @@
 # Copyright 2024-present Datadog, Inc.
 import logging
 import sys
-from typing import Optional
 
 
-def setup_logging(level: Optional[int] = None) -> None:
-    if level is None:
-        level = logging.INFO
-
+def setup_logging(level: int) -> None:
     class ColoredFormatter(logging.Formatter):
 
         grey = "\x1b[38;20m"

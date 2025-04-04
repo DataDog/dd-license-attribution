@@ -279,8 +279,7 @@ def main(
     """
     Generate a CSV report of third party dependencies for a given open source repository.
     """
-    # Set up logging
-    setup_logging()
+    setup_logging(logging.INFO)
 
     if not only_root_project and not only_transitive_dependencies:
         project_scope = ProjectScope.ALL
