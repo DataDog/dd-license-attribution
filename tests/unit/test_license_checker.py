@@ -88,8 +88,8 @@ def test_check_cautionary_licenses_with_non_cautionary_license() -> None:
         mock_is_cautionary.return_value = False
         checker.check_cautionary_licenses([metadata])
         mock_is_cautionary.assert_called_once_with("MIT")
-        with patch("builtins.print") as mock_print:
-            mock_print.assert_not_called()
+        with patch("logging.warning") as mock_logging:
+            mock_logging.assert_not_called()
 
 
 def test_check_cautionary_licenses_with_cautionary_license() -> None:
@@ -105,10 +105,10 @@ def test_check_cautionary_licenses_with_cautionary_license() -> None:
     checker = LicenseChecker(default_config.preset_cautionary_licenses)
     with patch.object(checker, "_is_cautionary_license") as mock_is_cautionary:
         mock_is_cautionary.return_value = True
-        with patch("builtins.print") as mock_print:
+        with patch("logging.warning") as mock_logging:
             checker.check_cautionary_licenses([metadata])
             mock_is_cautionary.assert_called_once_with("GPL-3.0")
-            mock_print.assert_called_once()
+            mock_logging.assert_called_once()
 
 
 def test_check_cautionary_licenses_with_multiple_licenses() -> None:
@@ -124,10 +124,10 @@ def test_check_cautionary_licenses_with_multiple_licenses() -> None:
     checker = LicenseChecker(default_config.preset_cautionary_licenses)
     with patch.object(checker, "_is_cautionary_license") as mock_is_cautionary:
         mock_is_cautionary.side_effect = [False, True, False]
-        with patch("builtins.print") as mock_print:
+        with patch("logging.warning") as mock_logging:
             checker.check_cautionary_licenses([metadata])
             assert mock_is_cautionary.call_count == 3
-            mock_print.assert_called_once()
+            mock_logging.assert_called_once()
 
 
 def test_check_cautionary_licenses_with_all_cautionary_keywords() -> None:
@@ -146,11 +146,11 @@ def test_check_cautionary_licenses_with_all_cautionary_keywords() -> None:
     checker = LicenseChecker(default_config.preset_cautionary_licenses)
     with patch.object(checker, "_is_cautionary_license") as mock_is_cautionary:
         mock_is_cautionary.return_value = True
-        with patch("builtins.print") as mock_print:
+        with patch("logging.warning") as mock_logging:
             checker.check_cautionary_licenses(metadata_list)
             assert mock_is_cautionary.call_count == len(
                 default_config.preset_cautionary_licenses
             )
-            assert mock_print.call_count == len(
+            assert mock_logging.call_count == len(
                 default_config.preset_cautionary_licenses
             )
