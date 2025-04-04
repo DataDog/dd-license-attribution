@@ -4,13 +4,15 @@
 # Copyright 2024-present Datadog, Inc.
 
 from unittest.mock import call
+
 import pytest
 import pytest_mock
+from agithub.GitHub import GitHub
+
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.github_repository_collection_strategy import (
     GitHubRepositoryMetadataCollectionStrategy,
 )
-from agithub.GitHub import GitHub
 
 
 class GitUrlParseMock:

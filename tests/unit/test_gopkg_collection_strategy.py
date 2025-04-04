@@ -4,16 +4,17 @@
 # Copyright 2024-present Datadog, Inc.
 
 from unittest.mock import call
+
 import pytest_mock
 
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
+from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy import (
     GoPkgMetadataCollectionStrategy,
 )
-from dd_license_attribution.metadata_collector.metadata import Metadata
 
 
 def test_gopkg_collection_strategy_do_not_decrement_list_of_dependencies_if_not_go_related(

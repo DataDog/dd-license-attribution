@@ -4,7 +4,11 @@
 # Copyright 2024-present Datadog, Inc.
 
 from unittest.mock import call
+
 import pytest
+import pytest_mock
+from agithub.GitHub import GitHub
+
 from dd_license_attribution.artifact_management.source_code_manager import (
     NonAccessibleRepository,
     UnauthorizedRepository,
@@ -14,8 +18,6 @@ from dd_license_attribution.metadata_collector.strategies.github_sbom_collection
     GitHubSbomMetadataCollectionStrategy,
     ProjectScope,
 )
-from agithub.GitHub import GitHub
-import pytest_mock
 
 
 class GitUrlParseMock:
