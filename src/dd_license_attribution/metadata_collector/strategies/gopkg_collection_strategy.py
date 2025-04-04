@@ -5,6 +5,12 @@
 
 import json
 import re
+
+from dd_license_attribution.adaptors.os import (
+    open_file,
+    output_from_command,
+    walk_directory,
+)
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
 )
@@ -12,11 +18,6 @@ from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
-)
-from dd_license_attribution.adaptors.os import (
-    output_from_command,
-    walk_directory,
-    open_file,
 )
 
 

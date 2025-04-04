@@ -8,7 +8,7 @@
             "name": "Python Debugger: dd-license-attribution",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/src/dd_license_attribution/cli/get_licenses_copyrights.py",
+            "program": "${workspaceFolder}/src/dd_license_attribution/cli/dd_license_attribution.py",
             "console": "integratedTerminal",
             "args": [
                 // "--only-transitive-dependencies",
@@ -18,7 +18,7 @@
                 "https://github.com/DataDog/inject-browser-sdk",
             ],
             "env": {
-                // Set the GITHUB_TOKEN environment variable before opening vscode. 
+                // Set the GITHUB_TOKEN environment variable before opening vscode.
                 // Then start vscode using the command `code .`
                 // The GITHUB_TOKEN is used to authenticate with the GitHub API.
                 // The GitHub Token needs only to have permissions "Contents" repository permissions (read).

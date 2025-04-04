@@ -4,11 +4,12 @@
 # Copyright 2024-present Datadog, Inc.
 
 from dataclasses import dataclass
-from dd_license_attribution.adaptors.datetime import get_datetime_now
-from dd_license_attribution.adaptors.os import path_exists
-from dd_license_attribution.adaptors.os import list_dir
 from datetime import datetime
+
 import pytz
+
+from dd_license_attribution.adaptors.datetime import get_datetime_now
+from dd_license_attribution.adaptors.os import list_dir, path_exists
 
 
 def validate_cache_dir(local_cache_dir: str) -> bool:

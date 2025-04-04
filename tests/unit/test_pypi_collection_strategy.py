@@ -4,16 +4,17 @@
 # Copyright 2024-present Datadog, Inc.
 
 import typing
+
 import pytest_mock
 
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
+from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy import (
     PypiMetadataCollectionStrategy,
 )
-from dd_license_attribution.metadata_collector.metadata import Metadata
 
 
 class MockedRequestsResponse:

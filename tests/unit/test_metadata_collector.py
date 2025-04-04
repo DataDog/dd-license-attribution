@@ -3,10 +3,10 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
-from dd_license_attribution.metadata_collector import MetadataCollector
-from dd_license_attribution.metadata_collector.metadata import Metadata
 import pytest_mock
 
+from dd_license_attribution.metadata_collector import MetadataCollector
+from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )

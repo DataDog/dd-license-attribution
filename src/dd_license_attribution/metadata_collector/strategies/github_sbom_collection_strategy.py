@@ -4,16 +4,18 @@
 # Copyright 2024-present Datadog, Inc.
 
 from dd_license_attribution.metadata_collector.metadata import Metadata
+from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
-from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 
 __all__ = ["GitHubSbomMetadataCollectionStrategy", "ProjectScope"]
 
-from agithub.GitHub import GitHub
 from typing import Any
+
+from agithub.GitHub import GitHub
 from giturlparse import parse as parse_git_url
+
 from dd_license_attribution.artifact_management.source_code_manager import (
     NonAccessibleRepository,
     UnauthorizedRepository,

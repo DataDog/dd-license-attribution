@@ -5,8 +5,8 @@
 
 """Here we collect a set of OS wrappers and adaptors to be easily replaced during testing and debugging."""
 
-from typing import Iterator
 import os
+from typing import Iterator
 
 
 def list_dir(path: str) -> list[str]:
