@@ -3,18 +3,19 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
-from datetime import datetime
 import json
+from datetime import datetime
+
 import pytz
-from dd_license_attribution.artifact_management.artifact_manager import ArtifactManager
 
 from dd_license_attribution.adaptors.os import (
-    list_dir,
     change_directory,
-    run_command,
-    path_exists,
+    list_dir,
     output_from_command,
+    path_exists,
+    run_command,
 )
+from dd_license_attribution.artifact_management.artifact_manager import ArtifactManager
 
 
 class PyEnvRuntimeError(Exception):

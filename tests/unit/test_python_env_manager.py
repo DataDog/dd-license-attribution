@@ -3,10 +3,12 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
+from datetime import datetime
 from unittest.mock import call
+
 import pytest
 from pytest_mock import MockFixture
-from datetime import datetime
+
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )

@@ -66,13 +66,19 @@ If you use VSCode, files will be automatically reformatted on saving. You can al
 black src tests
 ```
 
-We use MyPy for validating typing of the project. We keep 100% typing coverage.
+We use MyPy to validate typing of the project. We keep 100% typing coverage.
 
 ```bash
 venv/bin/mypy src tests
 ```
 
-Both, black and mypy requirements are enforced by CI workflow in PRs.
+We use isort to organize imports.
+
+```bash
+venv/bin/isort src tests
+```
+
+Black, mypy, and isort requirements are enforced by CI workflow in PRs.
 
 ### Testing your changes
 

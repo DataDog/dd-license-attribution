@@ -5,6 +5,7 @@
 
 from abc import ABC, abstractmethod
 from typing import List
+
 from dd_license_attribution.metadata_collector.metadata import Metadata
 
 

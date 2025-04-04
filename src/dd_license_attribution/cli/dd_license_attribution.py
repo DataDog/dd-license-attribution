@@ -6,16 +6,27 @@
 # This file is an entry point for the command line tool generate-3rd-party-csv.
 # Here we parse parameters and call the right metadata_collector and report_generator
 
+import json
 import sys
 import tempfile
+from collections.abc import Callable
+from typing import Annotated
+
 import typer
 import logging
 from agithub.GitHub import GitHub
+<<<<<<< HEAD
 from typing import Annotated
 from dd_license_attribution.adaptors.os import path_exists, create_dirs
 from dd_license_attribution.utils.logging import setup_logging
+=======
+>>>>>>> c270aaf (Add isort to organize imports)
 
-from collections.abc import Callable
+import dd_license_attribution.config.cli_configs as cli_config
+from dd_license_attribution.adaptors.os import create_dirs, path_exists
+from dd_license_attribution.artifact_management.artifact_manager import (
+    validate_cache_dir,
+)
 from dd_license_attribution.artifact_management.python_env_manager import (
     PyEnvRuntimeError,
     PythonEnvManager,
@@ -25,10 +36,8 @@ from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
     UnauthorizedRepository,
 )
-from dd_license_attribution.artifact_management.artifact_manager import (
-    validate_cache_dir,
-)
 from dd_license_attribution.metadata_collector import MetadataCollector
+from dd_license_attribution.metadata_collector.license_checker import LicenseChecker
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
@@ -49,14 +58,9 @@ from dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_meta
     ScanCodeToolkitMetadataCollectionStrategy,
 )
 from dd_license_attribution.report_generator.report_generator import ReportGenerator
-import json
 from dd_license_attribution.report_generator.writters.csv_reporting_writter import (
     CSVReportingWritter,
 )
-
-import dd_license_attribution.config.cli_configs as cli_config
-
-from dd_license_attribution.metadata_collector.license_checker import LicenseChecker
 
 app = typer.Typer(add_completion=False)
 

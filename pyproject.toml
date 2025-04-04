@@ -34,6 +34,7 @@ dev = [
     "pytest-mock",
     "mypy",
     "black",
+    "isort",
     "mutmut",
     "types-pytz",
     "types-requests"
@@ -82,3 +83,6 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "giturlparse"
 ignore_missing_imports = true
+
+[tool.isort]
+profile = "black"

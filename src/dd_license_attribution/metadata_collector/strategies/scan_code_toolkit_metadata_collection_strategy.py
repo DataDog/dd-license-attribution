@@ -3,15 +3,17 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
-import scancode.api
 import logging
 from dd_license_attribution.adaptors.os import list_dir, path_exists, walk_directory
 
-from dd_license_attribution.artifact_management.source_code_manager import (
-    SourceCodeManager,
-)
+import scancode.api
+
+from dd_license_attribution.adaptors.os import list_dir, path_exists, walk_directory
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
+)
+from dd_license_attribution.artifact_management.source_code_manager import (
+    SourceCodeManager,
 )
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
