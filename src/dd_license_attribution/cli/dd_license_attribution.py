@@ -9,9 +9,11 @@
 import sys
 import tempfile
 import typer
+import logging
 from agithub.GitHub import GitHub
 from typing import Annotated
 from dd_license_attribution.adaptors.os import path_exists, create_dirs
+from dd_license_attribution.utils.logging import setup_logging
 
 from collections.abc import Callable
 from dd_license_attribution.artifact_management.python_env_manager import (
@@ -277,6 +279,8 @@ def main(
     """
     Generate a CSV report of third party dependencies for a given open source repository.
     """
+    # Set up logging
+    setup_logging()
 
     if not only_root_project and not only_transitive_dependencies:
         project_scope = ProjectScope.ALL
@@ -307,16 +311,16 @@ def main(
             for strategy in enabled_strategies:
                 if strategy not in debug_enabled_strategies:
                     enabled_strategies[strategy] = False
-            print(f"DEBUG: Enabled strategies: {enabled_strategies}")
+            logging.debug(f"Enabled strategies: {enabled_strategies}")
         else:
-            print(
-                "DEBUG: No strategies enabled - if you wanted to enable strategies, please provide a debug object with a list of them in the 'enabled_strategies' key."
+            logging.debug(
+                "No strategies enabled - if you wanted to enable strategies, provide a debug object with a list of them in the 'enabled_strategies' key."
             )
-            print(
-                'DEBUG: Example: --debug \'{"enabled_strategies": ["GitHubSbomMetadataCollectionStrategy", "GoPkgMetadataCollectionStrategy"]}\''
+            logging.debug(
+                'Example: --debug \'{"enabled_strategies": ["GitHubSbomMetadataCollectionStrategy", "GoPkgMetadataCollectionStrategy"]}\''
             )
-            print(
-                "DEBUG: Available strategies: GitHubSbomMetadataCollectionStrategy, GoPkgMetadataCollectionStrategy, ScanCodeToolkitMetadataCollectionStrategy, GitHubRepositoryMetadataCollectionStrategy"
+            logging.debug(
+                "Available strategies: GitHubSbomMetadataCollectionStrategy, GoPkgMetadataCollectionStrategy, ScanCodeToolkitMetadataCollectionStrategy, GitHubRepositoryMetadataCollectionStrategy"
             )
 
     if skip_pypi:
@@ -340,7 +344,7 @@ def main(
     try:
         source_code_manager = SourceCodeManager(cache_dir, cache_ttl)
     except ValueError as e:
-        print(f"\033[91m{e}\033[0m", file=sys.stderr)
+        logging.error(str(e))
         sys.exit(1)
 
     if enabled_strategies["GoPkgsMetadataCollectionStrategy"]:
@@ -378,19 +382,17 @@ def main(
     try:
         metadata = metadata_collector.collect_metadata(package)
     except (NonAccessibleRepository, UnauthorizedRepository) as e:
-        print(f"\033[91m{e}\033[0m", file=sys.stderr)
-        exit(1)
+        logging.error(str(e))
+        sys.exit(1)
     except PyEnvRuntimeError as e:
-        print(f"\033[91m{e}\033[0m", file=sys.stderr)
-        print(
-            f"\033[91mThis error can be bypassed by skipping the PyPI strategy (--skip-pypi-strategy).\033[0m",
-            file=sys.stderr,
+        logging.error(str(e))
+        logging.error(
+            "This error can be bypassed by skipping the PyPI strategy (--no-pypi-strategy)."
         )
-        print(
-            f"\033[91mWhen skipping this strategy, the tool will not try to extract dependencies or metadata from PyPI.\033[0m",
-            file=sys.stderr,
+        logging.error(
+            "When skipping this strategy, the tool will not try to extract dependencies or metadata from PyPI."
         )
-        exit(1)
+        sys.exit(1)
 
     csv_reporter = ReportGenerator(CSVReportingWritter())
 
