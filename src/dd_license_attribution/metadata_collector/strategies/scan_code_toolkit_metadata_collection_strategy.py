@@ -4,6 +4,7 @@
 # Copyright 2024-present Datadog, Inc.
 
 import scancode.api
+import logging
 from dd_license_attribution.adaptors.os import list_dir, path_exists, walk_directory
 
 from dd_license_attribution.artifact_management.source_code_manager import (
@@ -13,7 +14,6 @@ from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
 from dd_license_attribution.metadata_collector.metadata import Metadata
-from sys import stderr
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
@@ -77,10 +77,9 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                         or not path_exists(source_code_reference.local_root_path)
                     )
                 ):
-                    print(
-                        f"Warning: {source_code_reference.local_full_path} does not exist, skipping. "
-                        f"This may be due to the package manager not providing the correct source code location on {package.local_src_path}.",
-                        file=stderr,
+                    logging.warning(
+                        f"{source_code_reference.local_full_path} does not exist, skipping. "
+                        f"This may be due to the package manager not providing the correct source code location on {package.local_src_path}."
                     )
                     updated_metadata.append(package)
                     continue
