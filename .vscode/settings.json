@@ -9,7 +9,7 @@
         "editor.defaultFormatter": "ms-python.black-formatter",
     },
     "black-formatter.path": [
-        "venv/bin/black"
+        "black"
     ],
     "editor.formatOnSave": true,
     "markdownlint.config": {

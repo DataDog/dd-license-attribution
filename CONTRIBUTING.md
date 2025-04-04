@@ -69,13 +69,13 @@ black src tests
 We use MyPy to validate typing of the project. We keep 100% typing coverage.
 
 ```bash
-venv/bin/mypy src tests
+mypy src tests
 ```
 
 We use isort to organize imports.
 
 ```bash
-venv/bin/isort src tests
+isort src tests
 ```
 
 Black, mypy, and isort requirements are enforced by CI workflow in PRs.
