@@ -46,9 +46,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                 output = output_from_command(
                     f"CWD=`pwd`; cd {root} && go list -json all; cd $CWD"
                 )
-                corrected_output = (
-                    "[" + output.replace("}\n{", "},\n{") + "]"
-                )  # Correct the output to be a valid JSON array
+                corrected_output = "[{}]".format(output.replace("}\n{", "},\n{"))
                 package_data_list = json.loads(corrected_output)
 
                 for package_data in package_data_list:
