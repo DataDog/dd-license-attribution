@@ -381,7 +381,11 @@ def main(
     try:
         metadata = metadata_collector.collect_metadata(package)
     except (NonAccessibleRepository, UnauthorizedRepository) as e:
+<<<<<<< HEAD
         logging.error(str(e))
+=======
+        print(f"\033[91m{e}\033[0m", file=sys.stderr)
+>>>>>>> ceac356 (Add Python best practices)
         sys.exit(1)
     except PyEnvRuntimeError as e:
         logging.error(str(e))

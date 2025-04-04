@@ -16,7 +16,7 @@ from dd_license_attribution.metadata_collector.strategies.pypi_collection_strate
 from dd_license_attribution.metadata_collector.metadata import Metadata
 
 
-class mocked_requests_response:
+class MockedRequestsResponse:
     def __init__(
         self, status_code: int, json_ret: dict[str, dict[str, typing.Any]]
     ) -> None:
@@ -122,7 +122,7 @@ def test_pypi_collection_strategy_adds_pypi_metadata_to_list_of_dependencies(
 
     mock_request = mocker.patch("requests.get")
     mock_request.side_effect = [
-        mocked_requests_response(
+        MockedRequestsResponse(
             200,
             {
                 "info": {
@@ -133,7 +133,7 @@ def test_pypi_collection_strategy_adds_pypi_metadata_to_list_of_dependencies(
                 }
             },
         ),
-        mocked_requests_response(
+        MockedRequestsResponse(
             200,
             {
                 "info": {
@@ -144,7 +144,7 @@ def test_pypi_collection_strategy_adds_pypi_metadata_to_list_of_dependencies(
                 }
             },
         ),
-        mocked_requests_response(
+        MockedRequestsResponse(
             200,
             {
                 "info": {
@@ -247,7 +247,7 @@ def test_dependency_in_initial_metadata_is_augmented_and_not_duplicated_when_fou
         ],
     )
     mock_request = mocker.patch("requests.get")
-    mock_request.return_value = mocked_requests_response(
+    mock_request.return_value = MockedRequestsResponse(
         200,
         {
             "info": {
