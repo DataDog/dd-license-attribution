@@ -4,17 +4,18 @@
 # Copyright 2024-present Datadog, Inc.
 
 from dataclasses import dataclass
-from giturlparse import parse as parse_git_url
-from dd_license_attribution.adaptors.os import (
-    list_dir,
-    run_command,
-    path_exists,
-    create_dirs,
-    output_from_command,
-)
 from datetime import datetime
-import pytz
 
+import pytz
+from giturlparse import parse as parse_git_url
+
+from dd_license_attribution.adaptors.os import (
+    create_dirs,
+    list_dir,
+    output_from_command,
+    path_exists,
+    run_command,
+)
 from dd_license_attribution.artifact_management.artifact_manager import (
     ArtifactManager,
     SourceCodeReference,

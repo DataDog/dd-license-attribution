@@ -3,14 +3,15 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
+from functools import partial
 from unittest.mock import call
 
 import pytest_mock
+
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
 from dd_license_attribution.metadata_collector.metadata import Metadata
-from functools import partial
 from dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
     ScanCodeToolkitMetadataCollectionStrategy,
 )

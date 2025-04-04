@@ -4,6 +4,7 @@
 # Copyright 2024-present Datadog, Inc.
 
 import os
+
 from typer.testing import CliRunner
 
 from dd_license_attribution.cli.dd_license_attribution import app

@@ -9,11 +9,11 @@ from unittest.mock import call
 import pytest
 import pytest_mock
 
-from dd_license_attribution.artifact_management.source_code_manager import (
-    SourceCodeManager,
-)
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
+)
+from dd_license_attribution.artifact_management.source_code_manager import (
+    SourceCodeManager,
 )
 
 
