@@ -48,6 +48,9 @@ from dd_license_attribution.metadata_collector.strategies.gopkg_collection_strat
 from dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy import (
     PypiMetadataCollectionStrategy,
 )
+from dd_license_attribution.metadata_collector.strategies.override_strategy import (
+    OverrideCollectionStrategy,
+)
 from dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
     ScanCodeToolkitMetadataCollectionStrategy,
 )
@@ -274,6 +277,14 @@ def main(
             rich_help_panel="Debug Options",
         ),
     ] = "",
+    override_spec: Annotated[
+        str | None,
+        typer.Option(
+            "--override-spec",
+            help="A file with a JSON formatted array of override rules to address hard to process or incorrectly extracted dependency information.",
+            rich_help_panel="Processing Options",
+        ),
+    ] = None,
 ) -> None:
     """
     Generate a CSV report of third party dependencies for a given open source repository.
@@ -376,6 +387,31 @@ def main(
     if enabled_strategies["GitHubRepositoryMetadataCollectionStrategy"]:
         strategies.append(GitHubRepositoryMetadataCollectionStrategy(github_client))
 
+    override_strategy = None
+    if override_spec:
+        try:
+            with open(override_spec, "r") as file:
+                override_rules_json = json.load(file)
+                override_rules = OverrideCollectionStrategy.json_to_override_rules(
+                    override_rules_json
+                )
+                # interleave the override rules between all the elements of strategies
+                # this is done to make sure that the override rules are applied to all
+                # dependencies as soon as they are added to the closure and prevent
+                # failures of fetching non available data
+                override_strategy = OverrideCollectionStrategy(override_rules)
+                for i in range(len(strategies) - 1, -1, -1):
+                    strategies.insert(i, override_strategy)
+        except FileNotFoundError:
+            logging.error(f"Override spec file not found: {override_spec}")
+            sys.exit(1)
+        except json.JSONDecodeError:
+            logging.error(f"Invalid JSON in override spec file: {override_spec}")
+            sys.exit(1)
+        except Exception as e:
+            logging.error(f"Error reading override spec file: {e}")
+            sys.exit(1)
+
     metadata_collector = MetadataCollector(strategies)
     try:
         metadata = metadata_collector.collect_metadata(package)
@@ -401,6 +437,8 @@ def main(
     if temp_dir is not None:
         temp_dir.cleanup()
     print(output)
+    if override_strategy is not None and not override_strategy.all_matches_used():
+        logging.warning(f"Not all matches in the override spec file were used.")
 
 
 if __name__ == "__main__":
