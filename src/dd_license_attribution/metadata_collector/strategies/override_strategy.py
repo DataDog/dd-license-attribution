@@ -18,7 +18,7 @@ class OverrideType(Enum):
     REPLACE = "replace"
 
 
-class OverrideMatchField(Enum):
+class OverrideTargetField(Enum):
     """
     Enum for different fields that can be matched for overrides.
     """
@@ -34,7 +34,7 @@ class OverrideRule:
     """
 
     override_type: OverrideType
-    matcher: Dict[OverrideMatchField, str]
+    target: Dict[OverrideTargetField, str]
     replacement: Metadata | None
 
 
@@ -45,17 +45,17 @@ class OverrideCollectionStrategy(MetadataCollectionStrategy):
 
     def __init__(self, override_rules: list[OverrideRule]) -> None:
         self.override_rules = override_rules
-        self.matched_rules: list[OverrideRule] = []
+        self.unused_rules = override_rules
 
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         # find the matching rules for each metadata
         for meta in metadata:
             for rule in self.override_rules:
                 # check if the rule matches the metadata
-                if rule.matcher and all(
-                    (field == OverrideMatchField.COMPONENT and meta.name == value)
-                    or (field == OverrideMatchField.ORIGIN and meta.origin == value)
-                    for field, value in rule.matcher.items()
+                if rule.target and all(
+                    (field == OverrideTargetField.COMPONENT and meta.name == value)
+                    or (field == OverrideTargetField.ORIGIN and meta.origin == value)
+                    for field, value in rule.target.items()
                 ):
                     # apply the override based on the rule type
                     if rule.override_type == OverrideType.ADD:
@@ -64,10 +64,12 @@ class OverrideCollectionStrategy(MetadataCollectionStrategy):
                                 "Replacement for add should always be a dictionary."
                             )
                         metadata.append(rule.replacement)
-                        self.matched_rules.append(rule)
+                        # remove the rule from the unused rules
+                        self.unused_rules.remove(rule)
                     elif rule.override_type == OverrideType.REMOVE:
                         metadata.remove(meta)
-                        self.matched_rules.append(rule)
+                        # remove the rule from the unused rules
+                        self.unused_rules.remove(rule)
                     elif rule.override_type == OverrideType.REPLACE:
                         if rule.replacement is None:
                             raise ValueError(
@@ -75,21 +77,12 @@ class OverrideCollectionStrategy(MetadataCollectionStrategy):
                             )
                         metadata.remove(meta)
                         metadata.append(rule.replacement)
-                        self.matched_rules.append(rule)
+                        # remove the rule from the unused rules
+                        self.unused_rules.remove(rule)
         return metadata
 
-    def all_matches_used(self) -> bool:
-        """
-        Check if all matches in the override rules are used.
-        """
-        # dedup the matched rules
-        unique_rules = []
-        for rule in self.matched_rules:
-            if rule not in unique_rules:
-                unique_rules.append(rule)
-        self.matched_rules = unique_rules
-
-        return len(self.matched_rules) == len(self.override_rules)
+    def unused_targets(self) -> list[dict[OverrideTargetField, str]]:
+        return [rule.target for rule in self.unused_rules]
 
     @staticmethod
     def json_to_override_rules(json_obj: list[dict[str, Any]]) -> list[OverrideRule]:
@@ -98,17 +91,17 @@ class OverrideCollectionStrategy(MetadataCollectionStrategy):
         """
         override_rules = []
         for rule in json_obj:
-            matchers: Dict[OverrideMatchField, str] = {}
-            for matcher in rule.get("matcher", {}):
+            targets: Dict[OverrideTargetField, str] = {}
+            for target in rule.get("target", {}):
                 try:
-                    match_field = OverrideMatchField(matcher)
+                    match_field = OverrideTargetField(target)
                 except Exception as e:
                     print(f"Error: {e}")
                     raise ValueError(
-                        f"Matcher field must be a origin or component: {matcher}"
+                        f"Target field must be a origin or component: {target}"
                     )
-                match_value = rule["matcher"][matcher]
-                matchers[match_field] = match_value
+                match_value = rule["target"][target]
+                targets[match_field] = match_value
             replacement_data = rule.get("replacement", {})
             # if replacement_data is None it has to be a REMOVE rule
             if replacement_data is None and rule["override_type"] != "remove":
@@ -134,7 +127,7 @@ class OverrideCollectionStrategy(MetadataCollectionStrategy):
                 )
             override_rule = OverrideRule(
                 override_type=OverrideType(rule["override_type"]),
-                matcher=matchers,
+                target=targets,
                 replacement=replacement,
             )
             override_rules.append(override_rule)

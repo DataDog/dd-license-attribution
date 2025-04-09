@@ -3,8 +3,8 @@ import json
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.override_strategy import (
     OverrideCollectionStrategy,
-    OverrideMatchField,
     OverrideRule,
+    OverrideTargetField,
     OverrideType,
 )
 
@@ -14,7 +14,7 @@ def test_override_collection_strategy_json_to_rules() -> None:
     test_json = """[
         {
             "override_type": "add",
-            "matcher": {"origin": "example.com", "component": "test-component"},
+            "target": {"origin": "example.com", "component": "test-component"},
             "replacement": {
                 "name": "test-replacement",
                 "origin": "test-replacement.com",
@@ -25,11 +25,11 @@ def test_override_collection_strategy_json_to_rules() -> None:
         },
         {
             "override_type": "remove",
-            "matcher": {"origin": "test-remove.com"}
+            "target": {"origin": "test-remove.com"}
         },
         {
             "override_type": "replace",
-            "matcher": {"origin": "test-replace.com"},
+            "target": {"origin": "test-replace.com"},
             "replacement": {
                 "name": "test-replace",
                 "origin": "test-replace.com",
@@ -43,9 +43,9 @@ def test_override_collection_strategy_json_to_rules() -> None:
     expected_rules = [
         OverrideRule(
             override_type=OverrideType.ADD,
-            matcher={
-                OverrideMatchField.ORIGIN: "example.com",
-                OverrideMatchField.COMPONENT: "test-component",
+            target={
+                OverrideTargetField.ORIGIN: "example.com",
+                OverrideTargetField.COMPONENT: "test-component",
             },
             replacement=Metadata(
                 name="test-replacement",
@@ -58,12 +58,12 @@ def test_override_collection_strategy_json_to_rules() -> None:
         ),
         OverrideRule(
             override_type=OverrideType.REMOVE,
-            matcher={OverrideMatchField.ORIGIN: "test-remove.com"},
+            target={OverrideTargetField.ORIGIN: "test-remove.com"},
             replacement=None,
         ),
         OverrideRule(
             override_type=OverrideType.REPLACE,
-            matcher={OverrideMatchField.ORIGIN: "test-replace.com"},
+            target={OverrideTargetField.ORIGIN: "test-replace.com"},
             replacement=Metadata(
                 name="test-replace",
                 origin="test-replace.com",
@@ -82,12 +82,12 @@ def test_override_collection_strategy_json_to_rules() -> None:
     assert rules == expected_rules
 
 
-def test_override_collection_strategy_adds_on_match() -> None:
+def test_override_collection_strategy_adds_on_target_match() -> None:
     rules = [
         OverrideRule(
             override_type=OverrideType.ADD,
-            matcher={
-                OverrideMatchField.ORIGIN: "example.com",
+            target={
+                OverrideTargetField.ORIGIN: "example.com",
             },
             replacement=Metadata(
                 name="test-addition",
@@ -121,10 +121,10 @@ def test_override_collection_strategy_adds_on_match() -> None:
     assert updated_metadata[1].copyright == ["copyright holder"]
     assert updated_metadata[1].local_src_path is None
     assert updated_metadata[0] == metadata[0]
-    assert strategy.all_matches_used() is True
+    assert len(strategy.unused_targets()) == 0
 
 
-def test_override_collection_strategy_replaces_on_match() -> None:
+def test_override_collection_strategy_replaces_on_target_match() -> None:
     expected_replacement = Metadata(
         name="test-replace",
         origin="test-replace.com",
@@ -136,8 +136,8 @@ def test_override_collection_strategy_replaces_on_match() -> None:
     rules = [
         OverrideRule(
             override_type=OverrideType.REPLACE,
-            matcher={
-                OverrideMatchField.ORIGIN: "test-replace.com",
+            target={
+                OverrideTargetField.ORIGIN: "test-replace.com",
             },
             replacement=expected_replacement,
         )
@@ -156,15 +156,15 @@ def test_override_collection_strategy_replaces_on_match() -> None:
     ]
     updated_metadata = strategy.augment_metadata(metadata)
     assert updated_metadata == [expected_replacement]
-    assert strategy.all_matches_used() is True
+    assert len(strategy.unused_targets()) == 0
 
 
-def test_override_collection_strategy_removes_on_match() -> None:
+def test_override_collection_strategy_removes_on_target_match() -> None:
     rules = [
         OverrideRule(
             override_type=OverrideType.REMOVE,
-            matcher={
-                OverrideMatchField.ORIGIN: "example.com",
+            target={
+                OverrideTargetField.ORIGIN: "example.com",
             },
             replacement=None,
         )
@@ -183,16 +183,15 @@ def test_override_collection_strategy_removes_on_match() -> None:
     ]
     updated_metadata = strategy.augment_metadata(metadata)
     assert len(updated_metadata) == 0
-    assert strategy.all_matches_used() is True
+    assert len(strategy.unused_targets()) == 0
 
 
-def test_override_collection_strategy_does_not_match_notifies_failure() -> None:
-
+def test_override_collection_strategy_does_not_target_match_notifies_failure() -> None:
     rules = [
         OverrideRule(
             override_type=OverrideType.REMOVE,
-            matcher={
-                OverrideMatchField.ORIGIN: "example.com",
+            target={
+                OverrideTargetField.ORIGIN: "example.com",
             },
             replacement=None,
         )
@@ -211,4 +210,5 @@ def test_override_collection_strategy_does_not_match_notifies_failure() -> None:
     ]
     updated_metadata = strategy.augment_metadata(metadata)
     assert updated_metadata == metadata
-    assert strategy.all_matches_used() is False
+    assert len(strategy.unused_targets()) == 1
+    assert strategy.unused_targets()[0] == rules[0].target

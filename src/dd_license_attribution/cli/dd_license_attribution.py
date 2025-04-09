@@ -437,8 +437,11 @@ def main(
     if temp_dir is not None:
         temp_dir.cleanup()
     print(output)
-    if override_strategy is not None and not override_strategy.all_matches_used():
-        logging.warning(f"Not all matches in the override spec file were used.")
+    if override_strategy is not None and len(override_strategy.unused_targets()) != 0:
+        logging.warning(f"Not all targets in the override spec file were used.")
+        logging.warning(
+            f"Unused targets: {override_strategy.unused_targets()}. Consider removing them."
+        )
 
 
 if __name__ == "__main__":
