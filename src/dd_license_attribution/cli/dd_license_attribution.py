@@ -307,7 +307,7 @@ def main(
         setup_logging(logging.INFO)
     else:
         raise ValueError(
-           f"Invalid log level. Must be one of: DEBUG, ERROR, WARNING, INFO. Provided: {log_level}"
+            f"Invalid log level. Must be one of: DEBUG, ERROR, WARNING, INFO. Provided: {log_level}"
         )
 
     if not only_root_project and not only_transitive_dependencies:
