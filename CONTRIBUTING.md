@@ -25,24 +25,22 @@ Once you have some code ready, open a PR, [linking it to the issue](https://docs
 
 Install the following requirements:
 
-- [pyenv](https://github.com/pyenv/pyenv)
-- [pyenv-virtualenv](https://github.com/pyenv/pyenv-virtualenv)
+- [pipenv](https://pipenv.pypa.io/en/latest/installation.html)
 
 To install both requirements in MacOS:
 
 ```bash
-brew install pyenv
-brew install pyenv-virtualenv
+brew install pipenv
 ```
+
 Create a virtual environment using pyenv:
 
 ```bash
 # starting at the root of the repository
-pyenv install 3.11
-pyenv virtualenv 3.11 dd-license-attribution
-pyenv local dd-license-attribution
-pip install -e ".[dev]"
+pipenv --python 3.11 install -e ".[dev]"
 ```
+
+To run commands, prefix `pipenv run` to the commands. Eg. `pipenv run dd-license-attribution https://github.com/DataDog/dd-license-attribution`.
 
 #### Coverage report
 
@@ -50,9 +48,9 @@ To generate test coverage reports locally run these commands in the root of the 
 
 ```bash
 # for unit tests
-pytest --cov-report=xml --cov-fail-under=90 tests/unit
+pipenv run pytest --cov-report=xml --cov-fail-under=90 tests/unit
 # for integration tests
-pytest tests/integration
+pipenv run pytest tests/integration
 ```
 
 Github PRs and Push will trigger a run of unit tests for validation and fail if coverage is below 90%.
@@ -63,19 +61,19 @@ We currently use `black` to reformat files.
 If you use VSCode, files will be automatically reformatted on saving. You can also run black from the command line:
 
 ```bash
-black src tests
+pipenv run black src tests
 ```
 
 We use MyPy to validate typing of the project. We keep 100% typing coverage.
 
 ```bash
-mypy src tests
+pipenv run mypy src tests
 ```
 
 We use isort to organize imports.
 
 ```bash
-isort src tests
+pipenv run isort src tests
 ```
 
 Black, mypy, and isort requirements are enforced by CI workflow in PRs.
