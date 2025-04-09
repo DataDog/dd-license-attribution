@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- `--no-pypi-strategy` optional parameter in CLI to skip pypi usage when unsupported binary dependencies are required.
+- `--no-gopkg-strategy` optional parameter in CLI to skip gopkg usage when unsuppord module definition is part of the dependencies required.
+- Warning emited when a dependency includes a License that requires special attention. List of cautionary licenses is defined by config.
+- Logging support
+- `--override-spec` optional parameter in CLI to specify how to manually override known packages.
+
+## Removed
+
+- Autocomplete support for CLI.
+
+## Changed
+
+- `get-licenses-copyright` CLI was renamed to `dd-license-attribution`.
+
 ## [0.3.0-beta] - 2025-03-03
 
 ### Added
