@@ -49,7 +49,7 @@ For more details about optional parameters pass `--help` to the command.
 #### Manual override configuration
 
 In some cases, `dd-license-attribution` is not be able to extract a particular dependency information, or the information is not be available in the dependency itself to extract.
-In those cases, we offer the option to override, remove, or inject manually the information needed.
+For those cases, there is an option to override, remove, or manually inject the information needed.
 Any time, this parameter is used we recommend that a PR or feature request is created against this project if the tool needs to be improved or to the target dependency to add the missing information and keep this override as a temporary measure while the changes are upstreamed.
 
 - `--override-spec`: a file with a override description.
