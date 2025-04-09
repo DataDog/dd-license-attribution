@@ -1,10 +1,11 @@
+from dataclasses import dataclass
+from enum import Enum
+from typing import Any, Dict
+
+from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
-from enum import Enum
-from dataclasses import dataclass
-from typing import Dict, Any
-from dd_license_attribution.metadata_collector.metadata import Metadata
 
 
 class OverrideType(Enum):

@@ -1,11 +1,12 @@
 import json
+
+from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.override_strategy import (
     OverrideCollectionStrategy,
+    OverrideMatchField,
     OverrideRule,
     OverrideType,
-    OverrideMatchField,
 )
-from dd_license_attribution.metadata_collector.metadata import Metadata
 
 
 def test_override_collection_strategy_json_to_rules() -> None:

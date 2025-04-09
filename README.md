@@ -60,8 +60,8 @@ The override description file needs to be defined as a json file similar to the 
 [
   {
     "override_type":"ADD",
-    "match":{"component":"aiohttp"},
-    "override": {
+    "target":{"component":"aiohttp"},
+    "replacement": {
       "component": "httpref",
       "origin":"https://github.com/http/ref",
       "license": "APACHE-2.0",
@@ -74,13 +74,16 @@ The override description file needs to be defined as a json file similar to the 
 Each element of the array in the spec is a rule.
 Each rule has an override type:
 
-- `ADD` means that the override is a new dependency to be added to the closure.
+- `ADD` means that the override is a new dependency to be added to the closure as specified in the replacement field.
 - `REMOVE` means that the dependency needs to be removed from the closure.
-- `REPLACE` means that any data about the specified dependency needs to be replaced by the one passed.
+- `REPLACE` means that any data about the specified dependency needs to be replaced by the one passed in the replacement field.
 
 In all cases, the application depends on a matching condition specified as a `"field":"value"` where the field can be `component` or `origin`.
+Component refers to the canonical name of the dependency as reported by the tool.
+Origin refers to the purl used to find the dependency by package management tools.
 
 If a override is never used, then a warning will be emitted at the end of execution.
+The warnings allow users to identify unexpected target matching failures.
 
 ### Development and Contributing
 
