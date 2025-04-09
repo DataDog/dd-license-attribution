@@ -285,11 +285,30 @@ def main(
             rich_help_panel="Processing Options",
         ),
     ] = None,
+    log_level: Annotated[
+        str,
+        typer.Option(
+            "--log-level",
+            help="Set the logging level. Default is INFO.",
+            rich_help_panel="Logging Options",
+        ),
+    ] = "INFO",
 ) -> None:
     """
     Generate a CSV report of third party dependencies for a given open source repository.
     """
-    setup_logging(logging.INFO)
+    if log_level.upper() == "DEBUG":
+        setup_logging(logging.DEBUG)
+    elif log_level.upper() == "ERROR":
+        setup_logging(logging.ERROR)
+    elif log_level.upper() == "WARNING":
+        setup_logging(logging.WARNING)
+    elif log_level.upper() == "INFO":
+        setup_logging(logging.INFO)
+    else:
+        raise ValueError(
+           f"Invalid log level. Must be one of: DEBUG, ERROR, WARNING, INFO. Provided: {log_level}"
+        )
 
     if not only_root_project and not only_transitive_dependencies:
         project_scope = ProjectScope.ALL
