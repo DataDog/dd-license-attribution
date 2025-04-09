@@ -45,11 +45,11 @@ from dd_license_attribution.metadata_collector.strategies.github_sbom_collection
 from dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy import (
     GoPkgMetadataCollectionStrategy,
 )
-from dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy import (
-    PypiMetadataCollectionStrategy,
-)
 from dd_license_attribution.metadata_collector.strategies.override_strategy import (
     OverrideCollectionStrategy,
+)
+from dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy import (
+    PypiMetadataCollectionStrategy,
 )
 from dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
     ScanCodeToolkitMetadataCollectionStrategy,
