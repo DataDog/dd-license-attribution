@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0-beta] - 2025-04-10
+
 ### Added
 
 - `--no-pypi-strategy` optional parameter in CLI to skip pypi usage when unsupported binary dependencies are required.
