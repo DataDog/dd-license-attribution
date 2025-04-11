@@ -317,3 +317,178 @@ def test_dependency_in_initial_metadata_is_augmented_and_not_duplicated_when_fou
         "/path/to/top_package"
     )
     mock_request.assert_called_once_with("https://pypi.org/pypi/pytest/21.4.0/json")
+
+
+def test_dependency_in_initial_metadata_is_augmented_and_github_origin_is_preferred_over_a_non_github_origin(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = (
+        "cache_dir/20220101_000000Z/org_top_package_virtualenv"
+    )
+    get_dependencies_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[
+            ("pytest", "21.4.0"),
+        ],
+    )
+    mock_request = mocker.patch("requests.get")
+    mock_request.return_value = MockedRequestsResponse(
+        200,
+        {
+            "info": {
+                "license": "MIT",
+                "author": "Datadog Inc.",
+                "name": "pytest",
+                "version": "21.4.0",
+                "project_urls": {"Source Code": "not_a_github_url"},
+            }
+        },
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "top_package",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ONLY_ROOT_PROJECT,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="top_package",
+            version="1.0.1",
+            origin="https://github.com/org/top_package",
+            local_src_path="/path/to/top_package",
+            license=[],
+            copyright=[],
+        ),
+        Metadata(
+            name="pytest",
+            version=None,
+            origin="https://github.com/org2/pytest",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        ),
+    ]
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    expected_metadata = [
+        Metadata(
+            name="top_package",
+            version="1.0.1",
+            origin="https://github.com/org/top_package",
+            local_src_path="/path/to/top_package",
+            license=[],
+            copyright=[],
+        ),
+        Metadata(
+            name="pytest",
+            version="21.4.0",
+            origin="https://github.com/org2/pytest",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["Datadog Inc."],
+        ),
+    ]
+    assert updated_metadata == expected_metadata
+    get_dependencies_mock.assert_called_once_with(
+        "cache_dir/20220101_000000Z/org_top_package_virtualenv"
+    )
+    mock_request.assert_called_once_with("https://pypi.org/pypi/pytest/21.4.0/json")
+    source_code_manager_mock.get_code.assert_not_called()
+    python_env_manager_mock.get_environment.assert_called_once_with(
+        "/path/to/top_package"
+    )
+    mock_request.assert_called_once_with("https://pypi.org/pypi/pytest/21.4.0/json")
+
+
+def test_dependency_in_initial_metadata_is_augmented_the_right_github_url_is_found(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = (
+        "cache_dir/20220101_000000Z/org_top_package_virtualenv"
+    )
+    get_dependencies_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[
+            ("pytest", "21.4.0"),
+        ],
+    )
+    mock_request = mocker.patch("requests.get")
+    mock_request.return_value = MockedRequestsResponse(
+        200,
+        {
+            "info": {
+                "license": "MIT",
+                "author": "Datadog Inc.",
+                "name": "pytest",
+                "version": "21.4.0",
+                "project_urls": {
+                    "Source Code": "not_a_github_url",
+                    "GitHub": "https://github.com/org2/pytest",
+                },
+            }
+        },
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "top_package",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ONLY_ROOT_PROJECT,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="top_package",
+            version="1.0.1",
+            origin="https://github.com/org/top_package",
+            local_src_path="/path/to/top_package",
+            license=[],
+            copyright=[],
+        ),
+        Metadata(
+            name="pytest",
+            version=None,
+            origin="",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        ),
+    ]
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    expected_metadata = [
+        Metadata(
+            name="top_package",
+            version="1.0.1",
+            origin="https://github.com/org/top_package",
+            local_src_path="/path/to/top_package",
+            license=[],
+            copyright=[],
+        ),
+        Metadata(
+            name="pytest",
+            version="21.4.0",
+            origin="https://github.com/org2/pytest",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["Datadog Inc."],
+        ),
+    ]
+    assert updated_metadata == expected_metadata
+    get_dependencies_mock.assert_called_once_with(
+        "cache_dir/20220101_000000Z/org_top_package_virtualenv"
+    )
+    mock_request.assert_called_once_with("https://pypi.org/pypi/pytest/21.4.0/json")
+    source_code_manager_mock.get_code.assert_not_called()
+    python_env_manager_mock.get_environment.assert_called_once_with(
+        "/path/to/top_package"
+    )
+    mock_request.assert_called_once_with("https://pypi.org/pypi/pytest/21.4.0/json")
