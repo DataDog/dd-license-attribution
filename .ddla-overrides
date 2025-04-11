@@ -1,0 +1,21 @@
+[
+  {
+    "override_type": "replace",
+    "target": {
+      "origin": "pypi:typing_extensions"
+    },
+    "replacement": {
+      "name": "typing_extensions",
+      "origin": "https://github.com/python/typing_extensions",
+      "version": "2.14.0",
+      "license": [
+        "PSF-2.0"
+      ],
+      "copyright": [
+        "Corporation for National Research Initiatives",
+        "Python Software Foundation",
+        "Stichting Mathematisch Centrum Amsterdam, The Netherlands"
+      ]
+    }
+  }
+]
