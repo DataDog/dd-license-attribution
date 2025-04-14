@@ -2,7 +2,7 @@
   {
     "override_type": "replace",
     "target": {
-      "origin": "pypi:typing_extensions"
+      "origin": "https://github.com/python/typing_extensions"
     },
     "replacement": {
       "name": "typing_extensions",
@@ -15,6 +15,58 @@
         "Corporation for National Research Initiatives",
         "Python Software Foundation",
         "Stichting Mathematisch Centrum Amsterdam, The Netherlands"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "origin": "https://github.com/pallets/markupsafe/"
+    },
+    "replacement": {
+      "name": "MarkupSafe",
+      "origin": "https://github.com/pallets/markupsafe/",
+      "version": "2.1.2",
+      "license": [
+        "BSD-3-Clause"
+      ],
+      "copyright": [
+        "Pallets"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "origin": "https://www.crummy.com/software/BeautifulSoup/bs4/"
+    },
+    "replacement": {
+      "name": "beautifulsoup4",
+      "origin": "https://www.crummy.com/software/BeautifulSoup/bs4/",
+      "version": "4.12.3",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "Leonard Richardson"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "origin": "https://github.com/pudo/normality.git"
+    },
+    "replacement": {
+      "name": "normality",
+      "origin": "https://github.com/pudo/normality.git",
+      "version": "3.0.0",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "Friedrich Lindenberg",
+        "Gregor Aisch"
       ]
     }
   }
