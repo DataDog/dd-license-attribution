@@ -169,7 +169,6 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
         deps_list_json_1,
         branch_detection_output,
         deps_list_json_3,
-        branch_detection_output,
     ]
 
     mock_open_file = mocker.patch(
@@ -254,7 +253,6 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
             mocker.call(
                 "CWD=`pwd`; cd org_package1/package3 && go list -json all; cd $CWD"
             ),
-            mocker.call(f"git ls-remote --symref https://github.com/org/package1 HEAD"),
         ]
     )
     mock_open_file.assert_has_calls(
@@ -358,7 +356,6 @@ require github.com/org/package1 v1.0
             deps_list_json_top,
             branch_detection_output,
             deps_list_json_src,
-            branch_detection_output,
         ],
     )
 
@@ -421,7 +418,6 @@ require github.com/org/package1 v1.0
             mocker.call("CWD=`pwd`; cd org_package1 && go list -json all; cd $CWD"),
             mocker.call(f"git ls-remote --symref https://github.com/org/package1 HEAD"),
             mocker.call("CWD=`pwd`; cd org_package1/src && go list -json all; cd $CWD"),
-            mocker.call(f"git ls-remote --symref https://github.com/org/package1 HEAD"),
         ]
     )
 
@@ -484,7 +480,7 @@ def test_gopkg_collection_strategy_only_updates_local_source_path_when_only_root
     ]
 }
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/org/packag1/src",
+    "Dir": "/tmp/go/pkg/mod/github.com/org/package1/src",
     "ImportPath": "github.com/org/package1/src",
     "Name": "src",
     "Root": "/tmp/go/pkg/mod/github.com/org/package1/src",
