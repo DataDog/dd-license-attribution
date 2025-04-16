@@ -3,9 +3,9 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
+import logging
 from typing import Any, Dict, Optional
 
-import logging
 import requests
 from giturlparse import validate as validate_git_url
 
