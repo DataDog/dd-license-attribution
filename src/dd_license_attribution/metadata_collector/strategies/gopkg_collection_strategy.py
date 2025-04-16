@@ -31,6 +31,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         self.top_package = top_package
         self.source_code_manager = source_code_manager
         self.only_root_project = project_scope == ProjectScope.ONLY_ROOT_PROJECT
+        self._head_branch_cache: dict[str, str] = {}
 
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         # Get the source code directory
@@ -98,14 +99,16 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         parts = path.split("/", 3)
         if len(parts) > 3:
             # GoPkg has no info about what branch was used, assuming the HEAD.
-            branch = (
-                output_from_command(
-                    f"git ls-remote --symref https://{parts[0]}/{parts[1]}/{parts[2]} HEAD"
+            # Use branch cache initialized in constructor
+            repo_url = f"https://{parts[0]}/{parts[1]}/{parts[2]}"
+            if repo_url not in self._head_branch_cache:
+                self._head_branch_cache[repo_url] = (
+                    output_from_command(f"git ls-remote --symref {repo_url} HEAD")
+                    .split()[1]
+                    .removeprefix("refs/heads/")
                 )
-                .split()[1]
-                .removeprefix("refs/heads/")
-            )
-            return f"https://{parts[0]}/{parts[1]}/{parts[2]}/tree/{branch}/{parts[3]}"
+            branch = self._head_branch_cache[repo_url]
+            return f"{repo_url}/tree/{branch}/{parts[3]}"
         return f"https://{path}"
 
     def _is_example_package(self, go_mod_path: str) -> bool:
