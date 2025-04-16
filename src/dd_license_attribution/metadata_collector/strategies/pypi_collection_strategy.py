@@ -5,6 +5,7 @@
 
 from typing import Any, Dict, Optional
 
+import logging
 import requests
 from giturlparse import validate as validate_git_url
 
@@ -151,7 +152,11 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         # get metadata from pypi API
         request_uri = f"https://pypi.org/pypi/{package}/{version}/json"
         response = requests.get(request_uri)
-        if response.status_code == 404 or response.status_code == 503:
+        if response.status_code == 404:
+            logging.warning(f"pypi.org is returning a 404 for {package}. Skipping.")
+            return None
+        if response.status_code == 503:
+            logging.warning(f"pypi.org is returning a 503 for{package}. Skipping.")
             return None
         return response.json()  # type: ignore
 
