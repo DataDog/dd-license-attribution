@@ -351,7 +351,7 @@ def test_dependency_in_initial_metadata_is_augmented_and_github_origin_is_prefer
         "top_package",
         source_code_manager_mock,
         python_env_manager_mock,
-        ProjectScope.ONLY_ROOT_PROJECT,
+        ProjectScope.ALL,
     )
 
     initial_metadata = [
@@ -440,7 +440,7 @@ def test_dependency_in_initial_metadata_is_augmented_the_right_github_url_is_fou
         "top_package",
         source_code_manager_mock,
         python_env_manager_mock,
-        ProjectScope.ONLY_ROOT_PROJECT,
+        ProjectScope.ALL,
     )
 
     initial_metadata = [
