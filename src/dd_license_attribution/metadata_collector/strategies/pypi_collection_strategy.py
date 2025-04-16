@@ -3,9 +3,11 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
+import logging
 from typing import Any, Dict, Optional
 
 import requests
+from giturlparse import validate as validate_git_url
 
 from dd_license_attribution.artifact_management.python_env_manager import (
     PythonEnvManager,
@@ -60,9 +62,32 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
                 pypi_info = {"name": dependency}
 
             origin = "pypi:" + dependency
+            project_urls = {}
+            # Depending on the pypi package, the GitHub URL is in different keys
             if "project_urls" in pypi_info:
-                if "Source" in pypi_info["project_urls"]:
-                    origin = pypi_info["project_urls"]["Source"]
+                project_urls = pypi_info["project_urls"]
+
+            for key in project_urls:
+                project_urls[key] = project_urls[key].replace("http://", "https://")
+
+            if "Homepage" in project_urls and validate_git_url(
+                project_urls["Homepage"]
+            ):
+                origin = project_urls["Homepage"]
+            if "GitHub" in project_urls and validate_git_url(project_urls["GitHub"]):
+                origin = project_urls["GitHub"]
+            if "Repository" in project_urls and validate_git_url(
+                project_urls["Repository"]
+            ):
+                origin = project_urls["Repository"]
+            if "Code" in project_urls and validate_git_url(project_urls["Code"]):
+                origin = project_urls["Code"]
+            if "Source Code" in project_urls and validate_git_url(
+                project_urls["Source Code"]
+            ):
+                origin = project_urls["Source Code"]
+            if "Source" in project_urls and validate_git_url(project_urls["Source"]):
+                origin = project_urls["Source"]
 
             find_pkg = next(
                 (
@@ -75,7 +100,10 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
                 None,
             )
             if find_pkg is not None:
-                find_pkg.origin = origin if find_pkg.origin is None else find_pkg.origin
+                if find_pkg.origin is None:
+                    find_pkg.origin = origin
+                elif not validate_git_url(find_pkg.origin):
+                    find_pkg.origin = origin
                 if (
                     len(find_pkg.license) == 0
                     and "license" in pypi_info
@@ -125,6 +153,10 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         request_uri = f"https://pypi.org/pypi/{package}/{version}/json"
         response = requests.get(request_uri)
         if response.status_code == 404:
+            logging.warning(f"pypi.org is returning a 404 for {package}. Skipping.")
+            return None
+        if response.status_code == 503:
+            logging.warning(f"pypi.org is returning a 503 for{package}. Skipping.")
             return None
         return response.json()  # type: ignore
 

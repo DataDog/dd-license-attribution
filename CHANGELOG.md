@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- The PyPI strategy now covers more cases.
+
 ## [0.4.0-beta] - 2025-04-10
 
 ### Added
@@ -46,7 +50,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - New strategy based in GoPkg to replace the GoLicenses one and improve results reliability.
 
 ### Changed
-  
+
 - Improvements to CLI argument management.
 - Performance improvements to the deep scan file collection logic.
 - Consolidating testing adaptors in new module.
