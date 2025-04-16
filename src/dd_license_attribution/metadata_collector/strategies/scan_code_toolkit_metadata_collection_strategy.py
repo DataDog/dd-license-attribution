@@ -4,6 +4,10 @@
 # Copyright 2024-present Datadog, Inc.
 
 import logging
+import warnings
+
+# Suppress the libmagic warning from typecode
+warnings.filterwarnings("ignore", category=UserWarning, module="typecode.magic2")
 
 import scancode.api
 

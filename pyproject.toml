@@ -49,6 +49,9 @@ where = ["src"]
 [tool.pytest.ini_options]
 addopts = "--cov=src/dd_license_attribution"
 xfail_strict = "True"
+filterwarnings = [
+    "ignore::UserWarning:typecode.magic2:"
+]
 
 [tool.mutmut]
 paths_to_mutate = ["src/"]
