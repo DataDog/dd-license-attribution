@@ -36,9 +36,19 @@ jobs:
           dd-license-attribution --help
 
       - name: Run the dd-license-attribution script against the Stratus Red Team repository only for root (quick fail)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          dd-license-attribution --no-gh-auth --only-root-project https://github.com/DataDog/stratus-red-team
+          dd-license-attribution --only-root-project https://github.com/DataDog/stratus-red-team
 
       - name: Run the dd-license-attribution script against the dd-trace-py repository with dependencies
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          dd-license-attribution --no-gh-auth https://github.com/DataDog/dd-trace-py
+          dd-license-attribution --override-spec=.ddla-overrides https://github.com/DataDog/dd-license-attribution > ddla-output.txt
+          if ! cmp -s ddla-output.txt LICENSE-3rdparty.csv; then
+            echo "Error: ddla-output.txt differs from LICENSE-3rdparty.csv"
+            echo "Diff between files:"
+            diff ddla-output.txt LICENSE-3rdparty.csv || true
+            exit 1
+          fi
