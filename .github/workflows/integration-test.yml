@@ -49,6 +49,6 @@ jobs:
           if ! cmp -s ddla-output.txt LICENSE-3rdparty.csv; then
             echo "Error: ddla-output.txt differs from LICENSE-3rdparty.csv"
             echo "Diff between files:"
-            diff ddla-output.txt LICENSE-3rdparty.csv || true
+            diff -u --color ddla-output.txt LICENSE-3rdparty.csv || true
             exit 1
           fi
