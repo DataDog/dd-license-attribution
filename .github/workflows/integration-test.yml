@@ -46,9 +46,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           dd-license-attribution --override-spec=.ddla-overrides https://github.com/DataDog/dd-license-attribution > ddla-output.txt
-          if ! cmp -s ddla-output.txt LICENSE-3rdparty.csv; then
-            echo "Error: ddla-output.txt differs from LICENSE-3rdparty.csv"
+          if ! cmp -s LICENSE-3rdparty.csv ddla-output.txt; then
+            echo "Error: LICENSE-3rdparty.csv differs from ddla-output.txt"
             echo "Diff between files:"
-            diff -u --color ddla-output.txt LICENSE-3rdparty.csv || true
+            diff -u --color LICENSE-3rdparty.csv ddla-output.txt || true
             exit 1
           fi
