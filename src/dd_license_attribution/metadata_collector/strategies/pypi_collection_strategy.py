@@ -52,6 +52,8 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         if dependencies is None:
             return updated_metadata
         for dependency, version in dependencies:
+            logging.debug(f"dependency: {dependency}, version: {version}")
+
             # get the metadata from pypi API
             pypi_metadata = self._get_metadata_from_pypi(dependency, version)
             if pypi_metadata is None:
@@ -61,10 +63,13 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
             else:
                 pypi_info = {"name": dependency}
 
+            logging.debug(f"pypi_info: {pypi_info}")
+            logging.debug(f"pypi_metadata: {pypi_metadata}")
+
             origin = "pypi:" + dependency
             project_urls = {}
             # Depending on the pypi package, the GitHub URL is in different keys
-            if "project_urls" in pypi_info:
+            if "project_urls" in pypi_info and pypi_info["project_urls"] is not None:
                 project_urls = pypi_info["project_urls"]
 
             for key in project_urls:
