@@ -21,6 +21,23 @@
   {
     "override_type": "replace",
     "target": {
+      "origin": "https://github.com/beartype/beartype"
+    },
+    "replacement": {
+      "name": "beartype",
+      "origin": "https://github.com/beartype/beartype",
+      "version": "0.20.2",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "Beartype authors"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
       "origin": "https://github.com/pallets/markupsafe/"
     },
     "replacement": {
@@ -32,6 +49,142 @@
       ],
       "copyright": [
         "Pallets"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "origin": "https://github.com/aboutcode-org/extractcode"
+    },
+    "replacement": {
+      "name": "extractcode",
+      "origin": "https://github.com/aboutcode-org/extractcode",
+      "version": "31.0.0",
+      "license": [
+        "Apache-2.0"
+      ],
+      "copyright": [
+        "nexB. Inc. and others"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "origin": "https://github.com/python/importlib_metadata"
+    },
+    "replacement": {
+      "name": "importlib_metadata",
+      "origin": "https://github.com/python/importlib_metadata",
+      "version": "8.7.0",
+      "license": [
+        "Apache-2.0"
+      ],
+      "copyright": [
+        "Jason R. Coombs"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "origin": "https://github.com/jaraco/jaraco.functools"
+    },
+    "replacement": {
+      "name": "jaraco.functools",
+      "origin": "https://github.com/jaraco/jaraco.functools",
+      "version": "4.1.0",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "Jason R. Coombs"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "origin": "https://github.com/executablebooks/markdown-it-py"
+    },
+    "replacement": {
+      "name": "markdown-it-py",
+      "origin": "https://github.com/executablebooks/markdown-it-py",
+      "version": "3.0.0",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "ExecutableBookProject"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "origin": "https://github.com/nexB/scancode-toolkit"
+    },
+    "replacement": {
+      "name": "scancode-toolkit",
+      "origin": "https://github.com/nexB/scancode-toolkit",
+      "version": "32.3.2",
+      "license": [
+        "Apache-2.0 AND CC-BY-4.0"
+      ],
+      "copyright": [
+        "nexB Inc. and others"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "origin": "https://github.com/jaraco/zipp"
+    },
+    "replacement": {
+      "name": "zipp",
+      "origin": "https://github.com/jaraco/zipp",
+      "version": "3.21.0",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "Jason R. Coombs"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "origin": "pypi:pluggy"
+    },
+    "replacement": {
+      "name": "pluggy",
+      "origin": "https://github.com/pytest-dev/pluggy",
+      "version": "1.6.0",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "Holger Krekel"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "origin": "https://github.com/pypa/setuptools"
+    },
+    "replacement": {
+      "name": "setuptools",
+      "origin": "https://github.com/pypa/setuptools",
+      "version": "67.8.0",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "Python Packaging Authority"
       ]
     }
   },
