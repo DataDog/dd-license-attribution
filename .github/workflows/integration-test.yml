@@ -50,5 +50,15 @@ jobs:
             echo "Error: LICENSE-3rdparty.csv differs from ddla-output.txt"
             echo "Diff between files:"
             diff -u --color LICENSE-3rdparty.csv ddla-output.txt || true
+            # Upload the output file as an artifact
+            echo "Uploading ddla-output.txt as an artifact..."
             exit 1
           fi
+
+      - name: Upload ddla-output.txt on failure
+        if: failure()
+        uses: actions/upload-artifact@c7d193f32edcb7bfad88892161225aeda64e9392 # v4.3.3
+        with:
+          name: ddla-output
+          path: ddla-output.txt
+          if-no-files-found: error
