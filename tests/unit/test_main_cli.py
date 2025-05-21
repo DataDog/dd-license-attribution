@@ -4,6 +4,7 @@
 # Copyright 2024-present Datadog, Inc.
 
 import os
+from unittest.mock import Mock, patch
 
 from typer.testing import CliRunner
 
@@ -47,6 +48,71 @@ def test_missing_package() -> None:
     result = runner.invoke(app, color=False)
     assert result.exit_code == 2
     assert "Missing argument 'PACKAGE'." in result.stderr
+
+
+@patch("dd_license_attribution.cli.main_cli.open_file")
+@patch("dd_license_attribution.cli.main_cli.GitHub")
+@patch("dd_license_attribution.cli.main_cli.SourceCodeManager")
+@patch("dd_license_attribution.cli.main_cli.PythonEnvManager")
+@patch("dd_license_attribution.cli.main_cli.MetadataCollector")
+def test_use_mirrors_invalid_json(
+    mock_metadata_collector: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_open_file: Mock,
+) -> None:
+    mock_open_file.return_value = "invalid json"
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    result = runner.invoke(
+        app,
+        [
+            "--use-mirrors=test.json",
+            "--no-gh-auth",
+            "--log-level=DEBUG",
+            "--",
+            "https://github.com/DataDog/test",
+        ],
+        color=False,
+    )
+    assert result.exit_code == 1
+    assert "Failed to load mirror configurations" in result.stderr
+
+
+@patch("dd_license_attribution.cli.main_cli.open_file")
+@patch("dd_license_attribution.cli.main_cli.GitHub")
+@patch("dd_license_attribution.cli.main_cli.SourceCodeManager")
+@patch("dd_license_attribution.cli.main_cli.PythonEnvManager")
+@patch("dd_license_attribution.cli.main_cli.MetadataCollector")
+def test_use_mirrors_valid_config(
+    mock_metadata_collector: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_open_file: Mock,
+) -> None:
+    mock_open_file.return_value = """[
+        {
+            "original_url": "https://github.com/DataDog/test",
+            "mirror_url": "https://github.com/mirror/test",
+            "branch_mapping": {
+                "main": "master"
+            }
+        }
+    ]"""
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    result = runner.invoke(
+        app,
+        [
+            "--use-mirrors=test.json",
+            "--no-gh-auth",
+            "--log-level=DEBUG",
+            "--",
+            "https://github.com/DataDog/test",
+        ],
+        color=False,
+    )
+    assert result.exit_code == 0
 
 
 def test_cache_ttl_without_cache_dir() -> None:

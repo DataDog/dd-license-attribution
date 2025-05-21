@@ -5,6 +5,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Optional
 
 import pytz
 from giturlparse import parse as parse_git_url
@@ -50,7 +51,34 @@ def extract_ref(ref: str, url: str) -> str:
     return ""
 
 
+@dataclass
+class MirrorSpec:
+    """Specification for a mirror repository."""
+
+    original_url: str
+    mirror_url: str
+    branch_mapping: Optional[dict[str, str]] = None
+
+
 class SourceCodeManager(ArtifactManager):
+    def __init__(
+        self,
+        local_cache_dir: str,
+        local_cache_ttl: int = 86400,
+        mirrors: Optional[list[MirrorSpec]] = None,
+    ) -> None:
+        super().__init__(local_cache_dir, local_cache_ttl)
+        self.mirrors = mirrors or []
+
+    def _get_mirror_url(self, original_url: str, branch: str) -> tuple[str, str]:
+        """Get the mirror URL and branch for a given original URL and branch."""
+        for mirror in self.mirrors:
+            if mirror.original_url == original_url:
+                if mirror.branch_mapping and branch in mirror.branch_mapping:
+                    return mirror.mirror_url, mirror.branch_mapping[branch]
+                return mirror.mirror_url, branch
+        return original_url, branch
+
     def get_code(
         self, resource_url: str, force_update: bool = False
     ) -> SourceCodeReference | None:
@@ -68,6 +96,10 @@ class SourceCodeManager(ArtifactManager):
             validated_ref = extract_ref(parsed_url.branch, repository_url)
             if validated_ref != "":
                 branch = validated_ref
+
+        # Get mirror URL and branch if available
+        repository_url, branch = self._get_mirror_url(repository_url, branch)
+
         if parsed_url.path_raw.startswith("/tree/"):
             path = parsed_url.path_raw.removeprefix(f"/tree/{branch}")
         elif parsed_url.path_raw.startswith("/blob/"):

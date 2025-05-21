@@ -17,7 +17,7 @@ import typer
 from agithub.GitHub import GitHub
 
 import dd_license_attribution.config.cli_configs as cli_config
-from dd_license_attribution.adaptors.os import create_dirs, path_exists
+from dd_license_attribution.adaptors.os import create_dirs, open_file, path_exists
 from dd_license_attribution.artifact_management.artifact_manager import (
     validate_cache_dir,
 )
@@ -26,6 +26,7 @@ from dd_license_attribution.artifact_management.python_env_manager import (
     PythonEnvManager,
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
+    MirrorSpec,
     NonAccessibleRepository,
     SourceCodeManager,
     UnauthorizedRepository,
@@ -180,7 +181,10 @@ github_token_callback = github_token_conditional_group()
 @app.command()
 def main(
     package: Annotated[
-        str, typer.Argument(help="The package to generate the report for.")
+        str,
+        typer.Argument(
+            help="The package to analyze. This has to be a GitHub repository URL."
+        ),
     ],
     deep_scanning: Annotated[
         bool,
@@ -228,7 +232,7 @@ def main(
         str | None,
         typer.Option(
             "--cache-dir",
-            help="A directory to save artifacts, as cloned repositories, to reuse between runs. By default, nothing is reused and a new temp directory is created per run.",
+            help="Directory to store cached artifacts. If not provided, a temporary directory will be used.",
             rich_help_panel="Cache Configuration",
             callback=cache_validation_callback,
         ),
@@ -246,7 +250,7 @@ def main(
         int | None,
         typer.Option(
             "--cache-ttl",
-            help="The time in seconds to keep the cache. Default is 86400 seconds (1 day).",
+            help="Time to live for cached artifacts in seconds. Default is 86400 (24 hours).",
             rich_help_panel="Cache Configuration",
             callback=cache_validation_callback,
         ),
@@ -293,6 +297,12 @@ def main(
             rich_help_panel="Logging Options",
         ),
     ] = "INFO",
+    use_mirrors: Annotated[
+        str | None,
+        typer.Option(
+            help="Path to a JSON file containing mirror specifications for repositories."
+        ),
+    ] = None,
 ) -> None:
     """
     Generate a CSV report of third party dependencies for a given open source repository.
@@ -332,6 +342,23 @@ def main(
     else:
         temp_dir = None
 
+    # Load mirror configurations if provided
+    mirrors = None
+    if use_mirrors:
+        try:
+            mirror_configs = json.loads(open_file(use_mirrors))
+            mirrors = [
+                MirrorSpec(
+                    original_url=config["original_url"],
+                    mirror_url=config["mirror_url"],
+                    branch_mapping=config.get("branch_mapping"),
+                )
+                for config in mirror_configs
+            ]
+        except Exception as e:
+            logging.error(f"Failed to load mirror configurations: {str(e)}")
+            sys.exit(1)
+
     if debug:
         debug_info = json.loads(debug)
         if "enabled_strategies" in debug_info:
@@ -370,7 +397,7 @@ def main(
         )
 
     try:
-        source_code_manager = SourceCodeManager(cache_dir, cache_ttl)
+        source_code_manager = SourceCodeManager(cache_dir, cache_ttl, mirrors)
     except ValueError as e:
         logging.error(str(e))
         sys.exit(1)
