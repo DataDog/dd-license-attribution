@@ -95,8 +95,8 @@ def test_use_mirrors_valid_config(
         {
             "original_url": "https://github.com/DataDog/test",
             "mirror_url": "https://github.com/mirror/test",
-            "branch_mapping": {
-                "main": "master"
+            "ref_mapping": {
+                "branch:main": "branch:development"
             }
         }
     ]"""

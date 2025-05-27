@@ -351,7 +351,7 @@ def main(
                 MirrorSpec(
                     original_url=config["original_url"],
                     mirror_url=config["mirror_url"],
-                    branch_mapping=config.get("branch_mapping"),
+                    ref_mapping=config.get("ref_mapping", None),
                 )
                 for config in mirror_configs
             ]

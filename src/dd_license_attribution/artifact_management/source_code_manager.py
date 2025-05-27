@@ -5,6 +5,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum
 from typing import Optional
 
 import pytz
@@ -51,13 +52,41 @@ def extract_ref(ref: str, url: str) -> str:
     return ""
 
 
+class RefType(Enum):
+    BRANCH = "branch"
+    TAG = "tag"
+    COMMIT = "commit"
+
+
 @dataclass
 class MirrorSpec:
-    """Specification for a mirror repository."""
+    """Specification for a mirror repository.
+    original_url: The original repository URL.
+    mirror_url: The URL of the mirror repository.
+    ref_mapping: Optional mapping of references.
+    This maps (ref_type, ref_name) from the original repository to (ref_type, ref_name) in the mirror.
+    It is used to determine how branches, tags, or commits in the original repository map to the mirror.
+    For example, if a branch in the original repository is named "main" and in the mirror it is "master",
+    the mapping would be {("branch", "main"): ("branch", "master")}.
+    This is useful for repositories that have different naming conventions or structures in their mirrors.
+    The mapping is optional, and if not provided, the original URL ref spec will be reused as the mirror URL ref spec.
+    The ref_mapping is a dictionary where the keys are tuples of (RefType, str) representing the type and name of the
+    reference in the original repository,and the values are tuples of (RefType, str) representing the type and name
+    of the reference in the mirror.
+    Example:
+    {
+        ("branch", "main"): ("tag", "v0.9"),
+        ("tag", "v1.0"): ("branch", "development")
+    }
+    This means that the "main" branch in the original repository maps to the "v0.9" tag in the mirror, and
+    the "v1.0" tag in the original repository maps to the "development" branch in the mirror.
+    """
 
     original_url: str
     mirror_url: str
-    branch_mapping: Optional[dict[str, str]] = None
+    ref_mapping: Optional[dict[tuple[RefType, str], tuple[RefType, str]]] = (
+        None  # Maps (ref_type, ref_name) to (ref_type, ref_name)
+    )
 
 
 class SourceCodeManager(ArtifactManager):
@@ -70,14 +99,27 @@ class SourceCodeManager(ArtifactManager):
         super().__init__(local_cache_dir, local_cache_ttl)
         self.mirrors = mirrors or []
 
-    def _get_mirror_url(self, original_url: str, branch: str) -> tuple[str, str]:
+    def _get_mirror_url(
+        self, original_url: str, original_ref_type: RefType, original_ref_name: str
+    ) -> tuple[str, RefType, str]:
         """Get the mirror URL and branch for a given original URL and branch."""
-        for mirror in self.mirrors:
-            if mirror.original_url == original_url:
-                if mirror.branch_mapping and branch in mirror.branch_mapping:
-                    return mirror.mirror_url, mirror.branch_mapping[branch]
-                return mirror.mirror_url, branch
-        return original_url, branch
+        for mirror_map in self.mirrors:
+            if mirror_map.original_url == original_url:
+                mirror_url = mirror_map.mirror_url
+                if (
+                    mirror_map.ref_mapping
+                    and (original_ref_type, original_ref_name) in mirror_map.ref_mapping
+                ):
+                    ref_type, ref_name = mirror_map.ref_mapping[
+                        (original_ref_type, original_ref_name)
+                    ]
+                    if ref_type != RefType.BRANCH:
+                        raise NotImplementedError(
+                            f"Mirror reference type {ref_type} is not yet implemented. Only branch-to-branch mapping is supported."
+                        )
+                    return mirror_url, ref_type, ref_name
+                return mirror_url, original_ref_type, original_ref_name
+        return original_url, original_ref_type, original_ref_name
 
     def get_code(
         self, resource_url: str, force_update: bool = False
@@ -96,10 +138,6 @@ class SourceCodeManager(ArtifactManager):
             validated_ref = extract_ref(parsed_url.branch, repository_url)
             if validated_ref != "":
                 branch = validated_ref
-
-        # Get mirror URL and branch if available
-        repository_url, branch = self._get_mirror_url(repository_url, branch)
-
         if parsed_url.path_raw.startswith("/tree/"):
             path = parsed_url.path_raw.removeprefix(f"/tree/{branch}")
         elif parsed_url.path_raw.startswith("/blob/"):
@@ -110,12 +148,22 @@ class SourceCodeManager(ArtifactManager):
                 path = path.removeprefix(f"{branch}")
         else:
             path = ""
+
+        # Get mirror URL and branch if available
+        effective_repository_url, _, effective_branch = self._get_mirror_url(
+            repository_url, RefType.BRANCH, branch
+        )
+
         if branch == "default_branch":
             branch = (
-                output_from_command(f"git ls-remote --symref {repository_url} HEAD")
+                output_from_command(
+                    f"git ls-remote --symref {effective_repository_url} HEAD"
+                )
                 .split()[1]
                 .removeprefix("refs/heads/")
             )
+            effective_branch = branch
+
         cached_timestamps = list_dir(self.local_cache_dir)
         cached_timestamps.sort(reverse=True)
         if not force_update:
@@ -143,7 +191,7 @@ class SourceCodeManager(ArtifactManager):
 
         create_dirs(local_branch_path)
         run_command(
-            f"git clone -c advice.detachedHead=False --depth 1 --branch={branch} {repository_url} {local_branch_path}"
+            f"git clone -c advice.detachedHead=False --depth 1 --branch={effective_branch} {effective_repository_url} {local_branch_path}"
         )
 
         return SourceCodeReference(
