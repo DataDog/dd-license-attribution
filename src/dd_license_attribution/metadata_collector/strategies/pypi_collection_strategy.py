@@ -72,7 +72,7 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
             if "project_urls" in pypi_info and pypi_info["project_urls"] is not None:
                 project_urls = pypi_info["project_urls"]
 
-            for key in project_urls:
+            for key in list(project_urls):
                 if project_urls[key] is None:
                     logging.debug(
                         f"Project URL for key '{key}' is None in package {dependency}"

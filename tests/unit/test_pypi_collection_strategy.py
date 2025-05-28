@@ -492,3 +492,97 @@ def test_dependency_in_initial_metadata_is_augmented_the_right_github_url_is_fou
         "/path/to/top_package"
     )
     mock_request.assert_called_once_with("https://pypi.org/pypi/pytest/21.4.0/json")
+
+
+def test_pypi_collection_strategy_ignores_none_project_urls(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/package1",
+        branch="main",
+        local_root_path="cache_dir/20220101_000000Z/org-package1/main",
+        local_full_path="cache_dir/20220101_000000Z/org-package1/main",
+    )
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = (
+        "cache_dir/20220101_000000Z/org_package1_virtualenv"
+    )
+    get_dependencies_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[
+            ("package3", "1.2.3"),
+        ],
+    )
+
+    mock_request = mocker.patch("requests.get")
+    mock_request.side_effect = [
+        MockedRequestsResponse(
+            200,
+            {
+                "info": {
+                    "license": "MIT",
+                    "author": "Datadog Inc.",
+                    "name": "package3",
+                    "version": "1.2.3",
+                    "project_urls": {
+                        "Homepage": "https://example.com",
+                        "Source": None,
+                        "Repository": "https://github.com/org/package3",
+                    },
+                }
+            },
+        ),
+    ]
+
+    strategy = PypiMetadataCollectionStrategy(
+        "github.com/org/package1",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    expected_metadata = [
+        Metadata(
+            name="github.com/org/package1",
+            origin="https://github.com/org/package1",
+            local_src_path="cache_dir/20220101_000000Z/org-package1/main",
+            version=None,
+            license=[],
+            copyright=[],
+        ),
+        Metadata(
+            name="package3",
+            origin="https://github.com/org/package3",
+            local_src_path=None,
+            version="1.2.3",
+            license=["MIT"],
+            copyright=["Datadog Inc."],
+        ),
+    ]
+
+    assert result == expected_metadata
+
+    source_code_manager_mock.get_code.assert_called_once_with(
+        "https://github.com/org/package1"
+    )
+    python_env_manager_mock.get_environment.assert_called_once_with(
+        "cache_dir/20220101_000000Z/org-package1/main"
+    )
+    get_dependencies_mock.assert_called_once_with(
+        "cache_dir/20220101_000000Z/org_package1_virtualenv"
+    )
+    mock_request.assert_called_once_with("https://pypi.org/pypi/package3/1.2.3/json")
