@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "Datadog (alpha1)": {
+      "command": "/Users/ara.pulido/.cursor/extensions/datadog.datadog-vscode-2.4.1/resources/scripts/mcp/stdio-app.mjs",
+      "args": [
+        "52737"
+      ]
+    }
+  }
+}
