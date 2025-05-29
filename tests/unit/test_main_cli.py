@@ -76,7 +76,7 @@ def test_use_mirrors_invalid_json(
         color=False,
     )
     assert result.exit_code == 1
-    assert "Failed to load mirror configurations" in result.stderr
+    assert "Invalid JSON in mirror configuration file: test.json" in result.stderr
 
 
 @patch("dd_license_attribution.cli.main_cli.open_file")
