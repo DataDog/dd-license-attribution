@@ -6,7 +6,7 @@
 """Here we collect a set of OS wrappers and adaptors to be easily replaced during testing and debugging."""
 
 import os
-from typing import Iterator
+from typing import IO, AnyStr, Iterator
 
 
 def list_dir(path: str) -> list[str]:
