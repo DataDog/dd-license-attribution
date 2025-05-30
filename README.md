@@ -9,6 +9,21 @@ It supports gathering data from various repositories to generate a comprehensive
 
 Runs may take minutes or hours depending on the size of the project dependency tree and the depth of the scanning.
 
+### Getting Started
+
+1. Install the required dependencies (see Requirements section below)
+2. Clone this repository
+3. Install the package:
+```bash
+pip install .
+```
+4. Run the tool on a GitHub repository:
+```bash
+dd-license-attribution https://github.com/owner/repo > LICENSE-3rdparty.csv
+```
+
+For more advanced usage, see the sections below.
+
 ### Requirements
 
 - python3.11+ - [Python install instructions](https://www.python.org/downloads/)
@@ -33,9 +48,12 @@ The following optional parameters are available:
 
 #### Scanning Options
 
-- `--deep-scanning`: Parses license and copyright information from full package source code using [scancode-toolkit](). This is a intensive task, that depending in the package size, may take hours or even days to process.
+##### Scope Control
 - `--only-transitive-dependencies`: Extracts license and copyright from the passed package, only its dependencies.
 - `--only-root-project`: Extracts information from the licenses and copyright of the passed package, not its dependencies.
+
+##### Strategy Selection
+- `--deep-scanning`: Enables intensive source code analysis using [scancode-toolkit](). This will parse license and copyright information from full package source code. Note: This is a resource-intensive task that may take hours or days to process depending on package size.
 - `--skip-pypi-strategy`: Skips the strategy that collects dependencies from PyPI.
 - `--skip-gopkg-strategy`: Skips the strategy that collects dependencies from GoPkg.
 
@@ -46,7 +64,49 @@ The following optional parameters are available:
 
 For more details about optional parameters pass `--help` to the command.
 
-#### Manual override configuration
+#### Output Format
+
+The tool generates a CSV file with the following columns:
+- `Component`: The name of the dependency
+- `Origin`: The source URL of the dependency
+- `License`: The detected license(s)
+- `Copyright`: Copyright attribution(s) if found
+
+Example output:
+```csv
+Component,Origin,License,Copyright
+aiohttp,https://github.com/aio-libs/aiohttp,Apache-2.0,"Copyright (c) 2013-present aio-libs"
+requests,https://github.com/psf/requests,Apache-2.0,"Copyright 2019 Kenneth Reitz"
+```
+
+#### Manual repository override configuration
+
+In some cases, the code we want to scan is not in the main branch of a github repository or we do not have access to it. For example, when we are reviewing a PR, or preparing one in our local machine. Or when we are evaluating alternative dependency sources. In those cases, we would like to replace what is used to be scanned for a particular github URL.
+
+To do so, we can create a json file where we map full repositories to a mirror repository, and, optionally, remap internal references, as for example, to use my PR branch in place of the main branch.
+
+- `--use-mirrors`: Path to a JSON file containing mirror specifications for repositories. This is useful when you need to use alternative repository URLs to fetch source code. The JSON file should contain an array of mirror configurations, where each configuration has:
+  - `original_url`: The original repository URL
+  - `mirror_url`: The URL of the mirror repository
+  - `ref_mapping` (optional): A mapping of references between the original and mirror repositories
+
+Example mirror configuration file:
+```json
+[
+    {
+        "original_url": "https://github.com/DataDog/test",
+        "mirror_url": "https://github.com/mirror/test",
+        "ref_mapping": {
+            "branch:main": "branch:development",
+            "tag:v1.0": "branch:development"
+        }
+    }
+]
+```
+
+Note: Currently, only branch-to-branch mapping is supported. The mirror URLs must also be GitHub repositories.
+
+#### Manual output override configuration
 
 In some cases, `dd-license-attribution` is not be able to extract a particular dependency information, or the information is not be available in the dependency itself to extract.
 For those cases, there is an option to override, remove, or manually inject the information needed.
@@ -84,6 +144,30 @@ Origin refers to the purl used to find the dependency by package management tool
 
 If a override is never used, then a warning will be emitted at the end of execution.
 The warnings allow users to identify unexpected target matching failures.
+
+### Common Use Cases
+
+#### Basic License Attribution
+```bash
+dd-license-attribution https://github.com/owner/repo > LICENSE-3rdparty.csv
+```
+
+#### Deep Scanning with Caching
+```bash
+dd-license-attribution --deep-scanning --cache-dir ./cache https://github.com/owner/repo > LICENSE-3rdparty.csv
+```
+
+#### Working with Private Repositories
+```bash
+export GITHUB_TOKEN=your_token
+dd-license-attribution https://github.com/owner/private-repo > LICENSE-3rdparty.csv
+```
+
+#### Using Mirror Repositories
+```bash
+# Create mirrors.json with your mirror configurations
+dd-license-attribution --use-mirrors=mirrors.json https://github.com/owner/repo > LICENSE-3rdparty.csv
+```
 
 ### Development and Contributing
 
