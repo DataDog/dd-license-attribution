@@ -751,6 +751,75 @@ def test_source_code_manager_with_unsupported_ref_type(
     )
 
 
+def test_source_code_manager_with_mirror_url_and_ref_mapping_for_the_default_branch(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    get_datetime_now_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
+        return_value=datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
+    )
+    request_url = "https://github.com/test_owner/test_repo"
+    git_url_parse_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.parse_git_url",
+        return_value=GitUrlParseMock(
+            valid=True,
+            owner="test_owner",
+            repo="test_repo",
+            branch="",
+            path="",
+            path_raw="",
+        ),
+    )
+    path_exists_artifact_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
+        return_value=True,
+    )
+    path_exists_source_code_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.path_exists",
+        return_value=False,
+    )
+    run_command_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.run_command",
+        return_value=0,
+    )
+    output_from_command_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.output_from_command",
+        return_value="ref: refs/heads/main\tHEAD\n72a11341aa684010caf1ca5dee779f0e7e84dfe9\tHEAD\n",
+    )
+    mock_create_dirs = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.create_dirs"
+    )
+
+    mirror_spec = MirrorSpec(
+        original_url="https://github.com/test_owner/test_repo",
+        mirror_url="https://github.com/mirror_owner/mirror_repo",
+        ref_mapping={(RefType.BRANCH, "main"): (RefType.BRANCH, "development")},
+    )
+    source_code_manager = SourceCodeManager("cache_dir", 86400, mirrors=[mirror_spec])
+    code_ref = source_code_manager.get_code(request_url)
+
+    expected_source_code_reference = SourceCodeReference(
+        repo_url="https://github.com/test_owner/test_repo",
+        branch="main",
+        local_root_path="cache_dir/20220101_000000Z/test_owner-test_repo/main",
+        local_full_path="cache_dir/20220101_000000Z/test_owner-test_repo/main",
+    )
+    expected_cache_dir = "cache_dir/20220101_000000Z/test_owner-test_repo/main"
+
+    assert code_ref == expected_source_code_reference
+    get_datetime_now_mock.assert_called_once()
+    git_url_parse_mock.assert_called_once_with(request_url)
+    path_exists_artifact_mock.assert_called_once_with("cache_dir")
+    path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
+    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    output_from_command_mock.assert_called_once_with(
+        f"git ls-remote --symref {expected_source_code_reference.repo_url} HEAD"
+    )
+    run_command_mock.assert_called_once_with(
+        f"git clone -c advice.detachedHead=False --depth 1 --branch=development https://github.com/mirror_owner/mirror_repo {expected_cache_dir}"
+    )
+
+
 def test_source_code_manager_with_multiple_mirrors(
     mocker: pytest_mock.MockFixture,
 ) -> None:

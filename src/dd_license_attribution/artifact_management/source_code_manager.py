@@ -107,33 +107,91 @@ class SourceCodeManager(ArtifactManager):
             f"SourceCodeManager initialized with {len(self.mirrors)} mirror(s) with {self.local_cache_ttl} seconds TTL."
         )
 
+    def _discover_default_branch(self, url: str) -> str:
+        """Discover the default branch for a repository.
+        Args:
+            url: The URL of the repository to check
+        Returns:
+            The name of the default branch
+        Raises:
+            NonAccessibleRepository: If the default branch cannot be discovered
+        """
+        try:
+            discovered_branch = (
+                output_from_command(f"git ls-remote --symref {url} HEAD")
+                .split()[1]
+                .removeprefix("refs/heads/")
+            )
+            logging.debug(
+                f"Discovered default branch in repository: {discovered_branch}"
+            )
+            return discovered_branch
+        except Exception as e:
+            raise NonAccessibleRepository(
+                f"Could not discover default branch for {url}"
+            ) from e
+
     def _get_mirror_url_and_ref(
         self, original_url: str, original_ref_type: RefType, original_ref_name: str
-    ) -> tuple[str, RefType, str]:
-        """Get the mirror URL and reference for a given original URL and reference."""
+    ) -> tuple[str, RefType, str, str]:
+        """Get the mirror URL and reference for a given original URL and reference.
+        Returns a tuple of (mirror_url, ref_type, effective_ref_name, discovered_branch) where discovered_branch
+        is the original branch name if it was discovered, or the original_ref_name if no discovery was needed.
+        """
+        if original_ref_name == "default_branch":
+            try:
+                original_ref_name = self._discover_default_branch(original_url)
+            except NonAccessibleRepository as e:
+                # ignoring the failure, we will try with the mirror url if found next
+                logging.debug(
+                    f"Failed to discover default branch for original repository {original_url}: {str(e)}"
+                )
+
         for mirror_map in self.mirrors:
             if mirror_map.original_url == original_url:
                 logging.debug(
                     f"Found mirror definition for {original_url}: {mirror_map.mirror_url}"
                 )
                 mirror_url = mirror_map.mirror_url
+                if original_ref_name == "default_branch":
+                    try:
+                        original_ref_name = self._discover_default_branch(mirror_url)
+                    except NonAccessibleRepository as e:
+                        # ignoring the failure, we will try with the mirror url if found next
+                        logging.error(
+                            f"Failed to discover default branch for mirror repository {mirror_url}: {str(e)}"
+                        )
+                        raise NonAccessibleRepository(
+                            f"Could not discover default branch for neither original repository {original_url} nor mirror repository {mirror_url}"
+                        ) from e
+
                 if (
                     mirror_map.ref_mapping
                     and (original_ref_type, original_ref_name) in mirror_map.ref_mapping
                 ):
-                    ref_type, ref_name = mirror_map.ref_mapping[
+                    effective_ref_type, effective_ref_name = mirror_map.ref_mapping[
                         (original_ref_type, original_ref_name)
                     ]
                     logging.debug(
-                        f"Mapped {original_ref_type}:{original_ref_name} to mirror {ref_type}:{ref_name} in {mirror_url}"
+                        f"Mapped {original_ref_type}:{original_ref_name} to mirror {effective_ref_type}:{effective_ref_name} in {mirror_url}"
                     )
-                    if ref_type != RefType.BRANCH:
+                    if effective_ref_type != RefType.BRANCH:
                         raise NotImplementedError(
-                            f"Mirror reference type {ref_type} is not yet implemented. Only branch-to-branch mapping is supported."
+                            f"Mirror reference type {effective_ref_type} is not yet implemented. Only branch-to-branch mapping is supported."
                         )
-                    return mirror_url, ref_type, ref_name
-                return mirror_url, original_ref_type, original_ref_name
-        return original_url, original_ref_type, original_ref_name
+                    return (
+                        mirror_url,
+                        effective_ref_type,
+                        effective_ref_name,
+                        original_ref_name,
+                    )
+                return (
+                    mirror_url,
+                    original_ref_type,
+                    original_ref_name,
+                    original_ref_name,
+                )
+        return original_url, original_ref_type, original_ref_name, original_ref_name
 
     def get_code(
         self, resource_url: str, force_update: bool = False
@@ -170,23 +228,12 @@ class SourceCodeManager(ArtifactManager):
             f"Using branch: {branch} and path: {path} for repository URL: {repository_url}"
         )
         # Get mirror URL and branch if available
-        effective_repository_url, _, effective_branch = self._get_mirror_url_and_ref(
-            repository_url, RefType.BRANCH, branch
+        effective_repository_url, _, effective_branch, branch = (
+            self._get_mirror_url_and_ref(repository_url, RefType.BRANCH, branch)
         )
         logging.debug(
             f"Effective repository URL: {effective_repository_url}, effective branch: {effective_branch}"
         )
-        if branch == "default_branch":
-            logging.debug("No branch specified, trying to discover the default branch.")
-            branch = (
-                output_from_command(
-                    f"git ls-remote --symref {effective_repository_url} HEAD"
-                )
-                .split()[1]
-                .removeprefix("refs/heads/")
-            )
-            effective_branch = branch
-            logging.debug(f"Discovered default branch to be: {effective_branch}")
 
         cached_timestamps = list_dir(self.local_cache_dir)
         cached_timestamps.sort(reverse=True)
