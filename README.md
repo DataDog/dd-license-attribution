@@ -28,6 +28,7 @@ For more advanced usage, see the sections below.
 
 - python3.11+ - [Python install instructions](https://www.python.org/downloads/)
 - gopkg - [GoLang and GoPkg install instructions](https://go.dev/doc/install)
+- Node.js (v14 or newer) and npm (v6 or newer) - [Node.js install instructions](https://nodejs.org/en/download/)
 - libmagic (only on mac):
   - `brew install libmagic`
 

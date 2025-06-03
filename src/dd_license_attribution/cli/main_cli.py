@@ -55,6 +55,9 @@ from dd_license_attribution.metadata_collector.strategies.pypi_collection_strate
 from dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
     ScanCodeToolkitMetadataCollectionStrategy,
 )
+from dd_license_attribution.metadata_collector.strategies.npm_collection_strategy import (
+    NpmMetadataCollectionStrategy,
+)
 from dd_license_attribution.report_generator.report_generator import ReportGenerator
 from dd_license_attribution.report_generator.writters.csv_reporting_writter import (
     CSVReportingWritter,
@@ -236,6 +239,14 @@ def main(
             rich_help_panel="Scanning Options",
         ),
     ] = False,
+    skip_npm: Annotated[
+        bool,
+        typer.Option(
+            "--no-npm-strategy",
+            help="Skip the NPM collection strategy.",
+            rich_help_panel="Scanning Options",
+        ),
+    ] = False,
     cache_dir: Annotated[
         str | None,
         typer.Option(
@@ -338,6 +349,7 @@ def main(
         "GitHubSbomMetadataCollectionStrategy": True,
         "GoPkgsMetadataCollectionStrategy": True,
         "PythonPipMetadataCollectionStrategy": True,
+        "NpmMetadataCollectionStrategy": True,
         "ScanCodeToolkitMetadataCollectionStrategy": True,
         "GitHubRepositoryMetadataCollectionStrategy": True,
     }
@@ -401,6 +413,9 @@ def main(
     if skip_github_sbom:
         enabled_strategies["GitHubSbomMetadataCollectionStrategy"] = False
 
+    if skip_npm:
+        enabled_strategies["NpmMetadataCollectionStrategy"] = False
+
     if not github_token:
         github_client = GitHub()
     else:
@@ -430,6 +445,15 @@ def main(
         strategies.append(
             PypiMetadataCollectionStrategy(
                 package, source_code_manager, python_env_manager, project_scope
+            )
+        )
+
+    if enabled_strategies["NpmMetadataCollectionStrategy"]:
+        strategies.append(
+            NpmMetadataCollectionStrategy(
+                package,
+                source_code_manager,
+                project_scope,
             )
         )
 
