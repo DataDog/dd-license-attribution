@@ -44,6 +44,70 @@ def test_github_auth_env() -> None:
     assert result.exit_code == 0
 
 
+@patch("dd_license_attribution.cli.main_cli.GitHub")
+@patch("dd_license_attribution.cli.main_cli.SourceCodeManager")
+@patch("dd_license_attribution.cli.main_cli.PythonEnvManager")
+@patch("dd_license_attribution.cli.main_cli.MetadataCollector")
+def test_skip_strategies_options(
+    mock_metadata_collector: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+
+    test_cases = [
+        (
+            ["--no-pypi-strategy"],
+            "PythonPipMetadataCollectionStrategy",
+        ),
+        (
+            ["--no-gopkg-strategy"],
+            "GoPkgsMetadataCollectionStrategy",
+        ),
+        (
+            ["--no-github-sbom-strategy"],
+            "GitHubSbomMetadataCollectionStrategy",
+        ),
+    ]
+
+    for arg, strategy_name in test_cases:
+        mock_metadata_collector.reset_mock()
+
+        args = ["https://github.com/org/repo", "--no-gh-auth"] + arg
+        result = runner.invoke(
+            app,
+            args,
+            color=False,
+        )
+        assert result.exit_code == 0
+
+        strategies = mock_metadata_collector.call_args[0][0]
+
+        strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
+        assert strategy_name not in strategy_classes
+
+    result = runner.invoke(
+        app,
+        [
+            "https://github.com/org/repo",
+            "--no-gh-auth",
+            "--no-pypi-strategy",
+            "--no-gopkg-strategy",
+            "--no-github-sbom-strategy",
+        ],
+    )
+    assert result.exit_code == 0
+
+    strategies = mock_metadata_collector.call_args[0][0]
+    strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
+
+    assert "PythonPipMetadataCollectionStrategy" not in strategy_classes
+    assert "GoPkgsMetadataCollectionStrategy" not in strategy_classes
+    assert "GitHubSbomMetadataCollectionStrategy" not in strategy_classes
+
+
 def test_missing_package() -> None:
     result = runner.invoke(app, color=False)
     assert result.exit_code == 2

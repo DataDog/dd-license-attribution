@@ -53,9 +53,10 @@ The following optional parameters are available:
 - `--only-root-project`: Extracts information from the licenses and copyright of the passed package, not its dependencies.
 
 ##### Strategy Selection
-- `--deep-scanning`: Enables intensive source code analysis using [scancode-toolkit](). This will parse license and copyright information from full package source code. Note: This is a resource-intensive task that may take hours or days to process depending on package size.
-- `--skip-pypi-strategy`: Skips the strategy that collects dependencies from PyPI.
-- `--skip-gopkg-strategy`: Skips the strategy that collects dependencies from GoPkg.
+- `--deep-scanning`: Enables intensive source code analysis using [scancode-toolkit](https://scancode-toolkit.readthedocs.io/en/latest/getting-started/home.html). This will parse license and copyright information from full package source code. Note: This is a resource-intensive task that may take hours or days to process depending on package size.
+- `--no-pypi-strategy`: Skips the strategy that collects dependencies from PyPI.
+- `--no-gopkg-strategy`: Skips the strategy that collects dependencies from GoPkg.
+- `--no-github-sbom-strategy`: Skips the strategy that gets the dependency tree from GitHub.
 
 #### Cache Configuration
 
