@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ### Added
 - `--use-mirrors` parameter to support alternative repository URLs for source code fetching
 - Support for reference mapping for mirror declarations
+- `--no-github-sbom-strategy` parameter to skip the GitHub SBOM strategy
 
 ### Changed
 - Improved PyPI strategy metadata extraction

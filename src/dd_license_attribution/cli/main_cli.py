@@ -228,6 +228,14 @@ def main(
             rich_help_panel="Scanning Options",
         ),
     ] = False,
+    skip_github_sbom: Annotated[
+        bool,
+        typer.Option(
+            "--no-github-sbom-strategy",
+            help="Skip the GitHub SBOM collection strategy.",
+            rich_help_panel="Scanning Options",
+        ),
+    ] = False,
     cache_dir: Annotated[
         str | None,
         typer.Option(
@@ -389,6 +397,9 @@ def main(
 
     if skip_gopkg:
         enabled_strategies["GoPkgsMetadataCollectionStrategy"] = False
+
+    if skip_github_sbom:
+        enabled_strategies["GitHubSbomMetadataCollectionStrategy"] = False
 
     if not github_token:
         github_client = GitHub()
