@@ -4,9 +4,9 @@
 # Copyright 2024-present Datadog, Inc.
 
 import os
-import pytest
 from unittest.mock import Mock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from dd_license_attribution.cli.main_cli import app
