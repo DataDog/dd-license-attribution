@@ -4,6 +4,7 @@
 # Copyright 2024-present Datadog, Inc.
 
 import os
+import pytest
 from unittest.mock import Mock, patch
 
 from typer.testing import CliRunner
@@ -44,6 +45,14 @@ def test_github_auth_env() -> None:
     assert result.exit_code == 0
 
 
+@pytest.mark.parametrize(
+    "arg, strategy_name",
+    [
+        (["--no-pypi-strategy"], "PythonPipMetadataCollectionStrategy"),
+        (["--no-gopkg-strategy"], "GoPkgsMetadataCollectionStrategy"),
+        (["--no-github-sbom-strategy"], "GitHubSbomMetadataCollectionStrategy"),
+    ],
+)
 @patch("dd_license_attribution.cli.main_cli.GitHub")
 @patch("dd_license_attribution.cli.main_cli.SourceCodeManager")
 @patch("dd_license_attribution.cli.main_cli.PythonEnvManager")
@@ -53,40 +62,35 @@ def test_skip_strategies_options(
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
+    arg: list[str],
+    strategy_name: str,
 ) -> None:
-
     mock_metadata_collector.return_value.collect_metadata.return_value = []
 
-    test_cases = [
-        (
-            ["--no-pypi-strategy"],
-            "PythonPipMetadataCollectionStrategy",
-        ),
-        (
-            ["--no-gopkg-strategy"],
-            "GoPkgsMetadataCollectionStrategy",
-        ),
-        (
-            ["--no-github-sbom-strategy"],
-            "GitHubSbomMetadataCollectionStrategy",
-        ),
-    ]
+    args = ["--no-gh-auth"] + arg
+    result = runner.invoke(
+        app,
+        ["https://github.com/org/repo"] + args,
+    )
+    assert result.exit_code == 0
 
-    for arg, strategy_name in test_cases:
-        mock_metadata_collector.reset_mock()
+    strategies = mock_metadata_collector.call_args[0][0]
 
-        args = ["https://github.com/org/repo", "--no-gh-auth"] + arg
-        result = runner.invoke(
-            app,
-            args,
-            color=False,
-        )
-        assert result.exit_code == 0
+    strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
+    assert strategy_name not in strategy_classes
 
-        strategies = mock_metadata_collector.call_args[0][0]
 
-        strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
-        assert strategy_name not in strategy_classes
+@patch("dd_license_attribution.cli.main_cli.GitHub")
+@patch("dd_license_attribution.cli.main_cli.SourceCodeManager")
+@patch("dd_license_attribution.cli.main_cli.PythonEnvManager")
+@patch("dd_license_attribution.cli.main_cli.MetadataCollector")
+def test_skip_all_strategies(
+    mock_metadata_collector: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
 
     result = runner.invoke(
         app,
