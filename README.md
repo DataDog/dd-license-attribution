@@ -1,5 +1,15 @@
 # Datadog License Attribution Tracker
 
+[![CI](https://github.com/DataDog/dd-license-attribution/actions/workflows/integration-test.yml/badge.svg)](https://github.com/DataDog/dd-license-attribution/actions/workflows/integration-test.yml)
+[![Linters](https://github.com/DataDog/dd-license-attribution/actions/workflows/linters.yml/badge.svg)](https://github.com/DataDog/dd-license-attribution/actions/workflows/linters.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/DataDog/dd-license-attribution/badge)](https://api.securityscorecards.dev/projects/github.com/DataDog/dd-license-attribution)
+[![Coverage](https://img.shields.io/badge/coverage-90%25+-brightgreen)](https://github.com/DataDog/dd-license-attribution)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
+[![Type checker: mypy](https://img.shields.io/badge/type%20checker-mypy-blue.svg)](https://mypy-lang.org/)
+
 Datadog License Attribution Tracker is a tool that collects license and copyright information for third party dependencies of a project and returns a list of said dependencies and their licenses and copyright attributions, if found.
 
 As of today, Datadog License Attribution Tracker supports Go and Python projects. It will be extended in the future to support more languages.
