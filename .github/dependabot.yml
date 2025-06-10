@@ -1,0 +1,36 @@
+version: 2
+updates:
+  # Enable version updates for Python dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    reviewers:
+      - "DataDog/ospo"
+    labels:
+      - "dependencies"
+      - "python"
+
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "DataDog/ospo"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "security"
+    # Enhanced commit messages for Actions
+    commit-message:
+      prefix: "deps(actions)"
+      prefix-development: "deps(actions)"
+      include: "scope"
+    # Rebase strategy for cleaner history
+    rebase-strategy: "auto"
+    # Include security advisories in PR descriptions
+    pull-request-branch-name:
+      separator: "-" 
