@@ -24,7 +24,7 @@ dependencies = [
     "pytz",
     "giturlparse",
     "requests",
-    "beautifulsoup4==4.12.3" # Not a direct dependency but needs to be pin since newer versions are broken
+    "beautifulsoup4==4.13.4" # Not a direct dependency but needs to be pin since newer versions are broken
 ]
 
 [project.optional-dependencies]
