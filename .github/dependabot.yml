@@ -31,6 +31,3 @@ updates:
       include: "scope"
     # Rebase strategy for cleaner history
     rebase-strategy: "auto"
-    # Include security advisories in PR descriptions
-    pull-request-branch-name:
-      separator: "-" 
