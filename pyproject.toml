@@ -23,8 +23,7 @@ dependencies = [
     "typer",
     "pytz",
     "giturlparse",
-    "requests",
-    "beautifulsoup4==4.13.4" # Not a direct dependency but needs to be pin since newer versions are broken
+    "requests"
 ]
 
 [project.optional-dependencies]
