@@ -3,10 +3,9 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2025-present Datadog, Inc.
 
-import json
 import pytest_mock
 from unittest import mock
-from typing import Any
+from typing import Any, Dict, List
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
@@ -17,18 +16,75 @@ from dd_license_attribution.metadata_collector.strategies.npm_collection_strateg
 )
 
 
-def test_npm_collection_strategy_no_package_lock(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    source_code_manager_mock = mocker.Mock()
+def create_source_code_manager_mock() -> mock.Mock:
+    """Create a mock source code manager with standard return values."""
+    source_code_manager_mock = mock.Mock()
     source_code_manager_mock.get_code.return_value = SourceCodeReference(
         repo_url="https://github.com/org/package1",
         branch="main",
         local_root_path="cache_dir/org_package1",
         local_full_path="cache_dir/org_package1",
     )
-    mocker.patch("dd_license_attribution.adaptors.os.path_exists", return_value=False)
-    mocker.patch("dd_license_attribution.adaptors.os.output_from_command")
+    return source_code_manager_mock
+
+
+def setup_npm_strategy_mocks(
+    mocker: pytest_mock.MockFixture,
+    package_lock: Dict[str, Any],
+    requests_responses: List[mock.Mock],
+) -> None:
+    """Setup common mocks for npm collection strategy tests."""
+
+    def fake_exists(path: str) -> bool:
+        if path.endswith("package-lock.json"):
+            return True
+        return False
+
+    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
+        if "package-lock.json" in path:
+            return package_lock
+        raise FileNotFoundError
+
+    def fake_path_join(*args):
+        result = "/".join(args)
+        return result
+
+    def fake_output_from_command(command: str) -> str:
+        return "npm install completed successfully"
+
+    # Mock all the required functions
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output_from_command,
+    )
+    mocker.patch("requests.get", side_effect=requests_responses)
+
+
+def test_npm_collection_strategy_no_package_lock(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = create_source_code_manager_mock()
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        return_value=False,
+    )
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
     )
@@ -49,19 +105,14 @@ def test_npm_collection_strategy_no_package_lock(
 def test_npm_collection_strategy_is_bypassed_if_only_root_project(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    source_code_manager_mock = mocker.Mock()
-    source_code_manager_mock.get_code.return_value = SourceCodeReference(
-        repo_url="https://github.com/org/package1",
-        branch="main",
-        local_root_path="cache_dir/org_package1",
-        local_full_path="cache_dir/org_package1",
-    )
-    mocker.patch("dd_license_attribution.adaptors.os.path_exists", return_value=True)
-    mocker.patch("dd_license_attribution.adaptors.os.output_from_command")
-    mocker.patch(
-        "dd_license_attribution.adaptors.os.open_file",
-        mock.mock_open(read_data=json.dumps({"packages": {"": {"dependencies": {}}}})),
-    )
+    source_code_manager_mock = create_source_code_manager_mock()
+    package_lock = {
+        "packages": {
+            "": {"dependencies": {}},
+        }
+    }
+    requests_responses = []
+    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ONLY_ROOT_PROJECT
     )
@@ -82,13 +133,7 @@ def test_npm_collection_strategy_is_bypassed_if_only_root_project(
 def test_npm_collection_strategy_adds_npm_metadata(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    source_code_manager_mock = mocker.Mock()
-    source_code_manager_mock.get_code.return_value = SourceCodeReference(
-        repo_url="https://github.com/org/package1",
-        branch="main",
-        local_root_path="cache_dir/org_package1",
-        local_full_path="cache_dir/org_package1",
-    )
+    source_code_manager_mock = create_source_code_manager_mock()
     package_lock = {
         "packages": {
             "": {"dependencies": {"dep1": "1.0.0", "dep2": "2.0.0"}},
@@ -97,54 +142,14 @@ def test_npm_collection_strategy_adds_npm_metadata(
         }
     }
 
-    def fake_exists(path: str) -> bool:
-        if path.endswith("package-lock.json"):
-            return True
-        return False
+    requests_responses = [
+        mock.Mock(status_code=200, json=lambda: {"license": "MIT", "author": "Alice"}),
+        mock.Mock(
+            status_code=200, json=lambda: {"license": "Apache-2.0", "author": "Bob"}
+        ),
+    ]
 
-    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
-        if "package-lock.json" in path:
-            return package_lock
-        raise FileNotFoundError
-
-    def fake_path_join(*args):
-        result = "/".join(args)
-        return result
-
-    def fake_output_from_command(command: str) -> str:
-        return "npm install completed successfully"
-
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.path_exists",
-        side_effect=fake_exists,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.path_join",
-        side_effect=fake_path_join,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.output_from_command",
-        side_effect=fake_output_from_command,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.open_file",
-        side_effect=fake_open,
-    )
-    mocker.patch(
-        "requests.get",
-        side_effect=[
-            mock.Mock(
-                status_code=200, json=lambda: {"license": "MIT", "author": "Alice"}
-            ),
-            mock.Mock(
-                status_code=200, json=lambda: {"license": "Apache-2.0", "author": "Bob"}
-            ),
-        ],
-    )
+    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -192,13 +197,7 @@ def test_npm_collection_strategy_adds_npm_metadata(
 def test_npm_collection_strategy_extracts_transitive_dependencies(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    source_code_manager_mock = mocker.Mock()
-    source_code_manager_mock.get_code.return_value = SourceCodeReference(
-        repo_url="https://github.com/org/package1",
-        branch="main",
-        local_root_path="cache_dir/org_package1",
-        local_full_path="cache_dir/org_package1",
-    )
+    source_code_manager_mock = create_source_code_manager_mock()
     package_lock = {
         "packages": {
             "": {"dependencies": {"dep1": "1.0.0"}},
@@ -215,61 +214,21 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
         }
     }
 
-    def fake_exists(path: str) -> bool:
-        if "package-lock.json" in path:
-            return True
-        return False
+    requests_responses = [
+        mock.Mock(status_code=200, json=lambda: {"license": "MIT", "author": "Alice"}),
+        mock.Mock(
+            status_code=200, json=lambda: {"license": "Apache-2.0", "author": "Bob"}
+        ),
+        mock.Mock(
+            status_code=200,
+            json=lambda: {"license": "BSD-3-Clause", "author": "Charlie"},
+        ),
+        mock.Mock(
+            status_code=200, json=lambda: {"license": "GPL-3.0", "author": "David"}
+        ),
+    ]
 
-    def fake_path_join(*args):
-        result = "/".join(args)
-        return result
-
-    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
-        if "package-lock.json" in path:
-            return package_lock
-        raise FileNotFoundError
-
-    def fake_output_from_command(command: str) -> str:
-        return "npm install completed successfully"
-
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.path_exists",
-        side_effect=fake_exists,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.path_join",
-        side_effect=fake_path_join,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.open_file",
-        side_effect=fake_open,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.output_from_command",
-        side_effect=fake_output_from_command,
-    )
-    mocker.patch(
-        "requests.get",
-        side_effect=[
-            mock.Mock(
-                status_code=200, json=lambda: {"license": "MIT", "author": "Alice"}
-            ),
-            mock.Mock(
-                status_code=200, json=lambda: {"license": "Apache-2.0", "author": "Bob"}
-            ),
-            mock.Mock(
-                status_code=200,
-                json=lambda: {"license": "BSD-3-Clause", "author": "Charlie"},
-            ),
-            mock.Mock(
-                status_code=200, json=lambda: {"license": "GPL-3.0", "author": "David"}
-            ),
-        ],
-    )
+    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -334,13 +293,7 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
 def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    source_code_manager_mock = mocker.Mock()
-    source_code_manager_mock.get_code.return_value = SourceCodeReference(
-        repo_url="https://github.com/org/package1",
-        branch="main",
-        local_root_path="cache_dir/org_package1",
-        local_full_path="cache_dir/org_package1",
-    )
+    source_code_manager_mock = create_source_code_manager_mock()
     package_lock = {
         "packages": {
             "": {"dependencies": {"dep1": "1.0.0"}},
@@ -348,51 +301,11 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
         }
     }
 
-    def fake_exists(path: str) -> bool:
-        if "package-lock.json" in path:
-            return True
-        return False
+    requests_responses = [
+        mock.Mock(status_code=200, json=lambda: {"license": "MIT", "author": "Alice"})
+    ]
 
-    def fake_path_join(*args):
-        result = "/".join(args)
-        return result
-
-    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
-        if "package-lock.json" in path:
-            return package_lock
-        raise FileNotFoundError
-
-    def fake_output_from_command(command: str) -> str:
-        return "npm install completed successfully"
-
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.path_exists",
-        side_effect=fake_exists,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.path_join",
-        side_effect=fake_path_join,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.open_file",
-        side_effect=fake_open,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.output_from_command",
-        side_effect=fake_output_from_command,
-    )
-    mocker.patch(
-        "requests.get",
-        side_effect=[
-            mock.Mock(
-                status_code=200, json=lambda: {"license": "MIT", "author": "Alice"}
-            )
-        ],
-    )
+    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
@@ -405,6 +318,14 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
             license=[],
             version=None,
             copyright=[],
+        ),
+        Metadata(
+            name="dep1",
+            version="1.0.0",
+            origin="npm:dep1",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["Alice"],
         ),
     ]
     result = strategy.augment_metadata(initial_metadata)
@@ -424,56 +345,16 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
 def test_npm_collection_strategy_handles_missing_packages_key(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    source_code_manager_mock = mocker.Mock()
-    source_code_manager_mock.get_code.return_value = SourceCodeReference(
-        repo_url="https://github.com/org/package1",
-        branch="main",
-        local_root_path="cache_dir/org_package1",
-        local_full_path="cache_dir/org_package1",
-    )
+    source_code_manager_mock = create_source_code_manager_mock()
     package_lock = {
         "dependencies": {
             "dep1": {"version": "1.0.0", "resolved": "https://npmjs.com/dep1"},
         }
     }
 
-    def fake_exists(path: str) -> bool:
-        if "package-lock.json" in path:
-            return True
-        return False
+    requests_responses = []
 
-    def fake_path_join(*args):
-        result = "/".join(args)
-        return result
-
-    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
-        if "package-lock.json" in path:
-            return package_lock
-        raise FileNotFoundError
-
-    def fake_output_from_command(command: str) -> str:
-        return "npm install completed successfully"
-
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.path_exists",
-        side_effect=fake_exists,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.path_join",
-        side_effect=fake_path_join,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.open_file",
-        side_effect=fake_open,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.output_from_command",
-        side_effect=fake_output_from_command,
-    )
+    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -496,56 +377,15 @@ def test_npm_collection_strategy_handles_missing_packages_key(
 def test_npm_collection_strategy_handles_missing_root_package(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    source_code_manager_mock = mocker.Mock()
-    source_code_manager_mock.get_code.return_value = SourceCodeReference(
-        repo_url="https://github.com/org/package1",
-        branch="main",
-        local_root_path="cache_dir/org_package1",
-        local_full_path="cache_dir/org_package1",
-    )
+    source_code_manager_mock = create_source_code_manager_mock()
     package_lock = {
         "packages": {"node_modules/dep1": {"version": "1.0.0", "dependencies": {}}}
     }
 
-    def fake_exists(path: str) -> bool:
-        if "package-lock.json" in path:
-            return True
-        return False
+    requests_responses = []
 
-    def fake_path_join(*args):
-        result = "/".join(args)
-        return result
+    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
 
-    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
-        if "package-lock.json" in path:
-            return package_lock
-        raise FileNotFoundError
-
-    def fake_output_from_command(command: str) -> str:
-        return "npm install completed successfully"
-
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.path_exists",
-        side_effect=fake_exists,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.path_join",
-        side_effect=fake_path_join,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.open_file",
-        side_effect=fake_open,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.output_from_command",
-        side_effect=fake_output_from_command,
-    )
-
-    mocker.patch("dd_license_attribution.adaptors.os.output_from_command")
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
     )
@@ -567,13 +407,7 @@ def test_npm_collection_strategy_handles_missing_root_package(
 def test_npm_collection_strategy_handles_registry_api_failures(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    source_code_manager_mock = mocker.Mock()
-    source_code_manager_mock.get_code.return_value = SourceCodeReference(
-        repo_url="https://github.com/org/package1",
-        branch="main",
-        local_root_path="cache_dir/org_package1",
-        local_full_path="cache_dir/org_package1",
-    )
+    source_code_manager_mock = create_source_code_manager_mock()
     package_lock = {
         "packages": {
             "": {"dependencies": {"dep1": "1.0.0", "dep2": "2.0.0"}},
@@ -582,53 +416,14 @@ def test_npm_collection_strategy_handles_registry_api_failures(
         }
     }
 
-    def fake_exists(path: str) -> bool:
-        if "package-lock.json" in path:
-            return True
-        return False
+    requests_responses = [
+        mock.Mock(status_code=404),  # dep1 not found
+        mock.Mock(
+            status_code=200, json=lambda: {"license": "Apache-2.0", "author": "Bob"}
+        ),
+    ]
 
-    def fake_path_join(*args):
-        result = "/".join(args)
-        return result
-
-    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
-        if "package-lock.json" in path:
-            return package_lock
-        raise FileNotFoundError
-
-    def fake_output_from_command(command: str) -> str:
-        return "npm install completed successfully"
-
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.path_exists",
-        side_effect=fake_exists,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.path_join",
-        side_effect=fake_path_join,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.open_file",
-        side_effect=fake_open,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.output_from_command",
-        side_effect=fake_output_from_command,
-    )
-
-    mocker.patch(
-        "requests.get",
-        side_effect=[
-            mock.Mock(status_code=404),  # dep1 not found
-            mock.Mock(
-                status_code=200, json=lambda: {"license": "Apache-2.0", "author": "Bob"}
-            ),
-        ],
-    )
+    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -645,10 +440,8 @@ def test_npm_collection_strategy_handles_registry_api_failures(
     ]
     result = strategy.augment_metadata(initial_metadata)
 
-    # Should have both dependencies, but dep1 with empty license/copyright
-    assert len(result) == 3  # package1 + dep1 + dep2
+    assert len(result) == 3
 
-    # Find dep1 and dep2 in results
     dep1_meta = next((m for m in result if m.name == "dep1"), None)
     dep2_meta = next((m for m in result if m.name == "dep2"), None)
 
