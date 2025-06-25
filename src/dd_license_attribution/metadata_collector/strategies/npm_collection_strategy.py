@@ -8,7 +8,7 @@
 import json
 import logging
 import requests
-from typing import List
+from typing import List, Dict, Any
 from giturlparse import validate as validate_git_url
 
 from dd_license_attribution.artifact_management.source_code_manager import (
@@ -43,8 +43,8 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             project_scope == ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
         )
 
-    def _extract_all_dependencies(self, lock_data: dict) -> dict[str, str]:
-        all_deps = {}
+    def _extract_all_dependencies(self, lock_data: Dict[str, Any]) -> Dict[str, str]:
+        all_deps: Dict[str, str] = {}
 
         if "packages" not in lock_data:
             logging.warning("No 'packages' key found in package-lock.json.")
@@ -64,7 +64,9 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         self._extract_transitive_dependencies(packages, all_deps)
         return all_deps
 
-    def _extract_transitive_dependencies(self, packages: dict, all_deps: dict) -> None:
+    def _extract_transitive_dependencies(
+        self, packages: Dict[str, Any], all_deps: Dict[str, str]
+    ) -> None:
 
         processed_packages = set()
 
@@ -104,11 +106,12 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             logging.warning(f"Failed to run npm install for {self.top_package}: {e}")
             return updated_metadata
         lock_path = path_join(project_path, "package-lock.json")
+        lock_data = {}
         if not path_exists(lock_path):
             logging.warning(f"No package-lock.json found in {project_path}")
             return updated_metadata
         try:
-            lock_data = open_file(lock_path)
+            lock_data = json.loads(open_file(lock_path))
         except Exception as e:
             logging.warning(f"Failed to read package-lock.json: {e}")
             return updated_metadata

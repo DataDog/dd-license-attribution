@@ -5,7 +5,7 @@
 
 import pytest_mock
 from unittest import mock
-from typing import Any, Dict, List
+from typing import Any
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
@@ -14,6 +14,7 @@ from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.npm_collection_strategy import (
     NpmMetadataCollectionStrategy,
 )
+import json
 
 
 def create_source_code_manager_mock() -> mock.Mock:
@@ -30,8 +31,8 @@ def create_source_code_manager_mock() -> mock.Mock:
 
 def setup_npm_strategy_mocks(
     mocker: pytest_mock.MockFixture,
-    package_lock: Dict[str, Any],
-    requests_responses: List[mock.Mock],
+    package_lock: dict[str, Any],
+    requests_responses: list[mock.Mock],
 ) -> None:
     """Setup common mocks for npm collection strategy tests."""
 
@@ -42,10 +43,10 @@ def setup_npm_strategy_mocks(
 
     def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
         if "package-lock.json" in path:
-            return package_lock
+            return json.dumps(package_lock)
         raise FileNotFoundError
 
-    def fake_path_join(*args):
+    def fake_path_join(*args: Any) -> str:
         result = "/".join(args)
         return result
 
@@ -106,12 +107,12 @@ def test_npm_collection_strategy_is_bypassed_if_only_root_project(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
-    package_lock = {
+    package_lock: dict[str, Any] = {
         "packages": {
             "": {"dependencies": {}},
         }
     }
-    requests_responses = []
+    requests_responses: list[mock.Mock] = []
     setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ONLY_ROOT_PROJECT
@@ -134,7 +135,7 @@ def test_npm_collection_strategy_adds_npm_metadata(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
-    package_lock = {
+    package_lock: dict[str, Any] = {
         "packages": {
             "": {"dependencies": {"dep1": "1.0.0", "dep2": "2.0.0"}},
             "node_modules/dep1": {"version": "1.0.0", "dependencies": {}},
@@ -142,7 +143,7 @@ def test_npm_collection_strategy_adds_npm_metadata(
         }
     }
 
-    requests_responses = [
+    requests_responses: list[mock.Mock] = [
         mock.Mock(status_code=200, json=lambda: {"license": "MIT", "author": "Alice"}),
         mock.Mock(
             status_code=200, json=lambda: {"license": "Apache-2.0", "author": "Bob"}
@@ -198,7 +199,7 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
-    package_lock = {
+    package_lock: dict[str, Any] = {
         "packages": {
             "": {"dependencies": {"dep1": "1.0.0"}},
             "node_modules/dep1": {
@@ -214,7 +215,7 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
         }
     }
 
-    requests_responses = [
+    requests_responses: list[mock.Mock] = [
         mock.Mock(status_code=200, json=lambda: {"license": "MIT", "author": "Alice"}),
         mock.Mock(
             status_code=200, json=lambda: {"license": "Apache-2.0", "author": "Bob"}
@@ -346,13 +347,13 @@ def test_npm_collection_strategy_handles_missing_packages_key(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
-    package_lock = {
+    package_lock: dict[str, Any] = {
         "dependencies": {
             "dep1": {"version": "1.0.0", "resolved": "https://npmjs.com/dep1"},
         }
     }
 
-    requests_responses = []
+    requests_responses: list[mock.Mock] = []
 
     setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
 
@@ -378,11 +379,11 @@ def test_npm_collection_strategy_handles_missing_root_package(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
-    package_lock = {
+    package_lock: dict[str, Any] = {
         "packages": {"node_modules/dep1": {"version": "1.0.0", "dependencies": {}}}
     }
 
-    requests_responses = []
+    requests_responses: list[mock.Mock] = []
 
     setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
 
