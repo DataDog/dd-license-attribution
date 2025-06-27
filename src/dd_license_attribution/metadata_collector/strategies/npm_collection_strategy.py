@@ -7,10 +7,17 @@
 
 import json
 import logging
+from typing import Any, Dict, List
+
 import requests
-from typing import List, Dict, Any
 from giturlparse import validate as validate_git_url
 
+from dd_license_attribution.adaptors.os import (
+    open_file,
+    output_from_command,
+    path_exists,
+    path_join,
+)
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
 )
@@ -20,12 +27,6 @@ from dd_license_attribution.metadata_collector.project_scope import (
 )
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
-)
-from dd_license_attribution.adaptors.os import (
-    path_exists,
-    path_join,
-    open_file,
-    output_from_command,
 )
 
 

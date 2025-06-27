@@ -46,6 +46,9 @@ from dd_license_attribution.metadata_collector.strategies.github_sbom_collection
 from dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy import (
     GoPkgMetadataCollectionStrategy,
 )
+from dd_license_attribution.metadata_collector.strategies.npm_collection_strategy import (
+    NpmMetadataCollectionStrategy,
+)
 from dd_license_attribution.metadata_collector.strategies.override_strategy import (
     OverrideCollectionStrategy,
 )
@@ -54,9 +57,6 @@ from dd_license_attribution.metadata_collector.strategies.pypi_collection_strate
 )
 from dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
     ScanCodeToolkitMetadataCollectionStrategy,
-)
-from dd_license_attribution.metadata_collector.strategies.npm_collection_strategy import (
-    NpmMetadataCollectionStrategy,
 )
 from dd_license_attribution.report_generator.report_generator import ReportGenerator
 from dd_license_attribution.report_generator.writters.csv_reporting_writter import (

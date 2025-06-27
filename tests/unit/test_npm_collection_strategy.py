@@ -3,9 +3,12 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2025-present Datadog, Inc.
 
-import pytest_mock
-from unittest import mock
+import json
 from typing import Any
+from unittest import mock
+
+import pytest_mock
+
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
@@ -14,7 +17,6 @@ from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.npm_collection_strategy import (
     NpmMetadataCollectionStrategy,
 )
-import json
 
 
 def create_source_code_manager_mock() -> mock.Mock:
