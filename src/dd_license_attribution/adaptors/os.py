@@ -44,3 +44,7 @@ def get_current_working_directory() -> str:
 def open_file(file_path: str) -> str:
     with open(file_path, "r") as file:
         return file.read()
+
+
+def path_join(path: str, *paths: str) -> str:
+    return os.path.join(path, *paths)
