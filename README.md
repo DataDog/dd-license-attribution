@@ -2,18 +2,19 @@
 
 Datadog License Attribution Tracker is a tool that collects license and copyright information for third party dependencies of a project and returns a list of said dependencies and their licenses and copyright attributions, if found.
 
-As of today, Datadog License Attribution Tracker supports Go and Python projects. It will be extended in the future to support more languages.
+As of today, Datadog License Attribution Tracker supports Go, Python, and NodeJS projects. It will be extended in the future to support more languages.
 
-The tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, the go-pkg list command output, and the metadata collected from successful dependency installation via PyPI.
+The tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, the go-pkg list command output, and metadata collected from PyPI and NPM.
 It supports gathering data from various repositories to generate a comprehensive list of third party dependencies.
 
 Runs may take minutes or hours depending on the size of the project dependency tree and the depth of the scanning.
 
 ### Getting Started
 
-1. Install the required dependencies (see Requirements section below)
+1. Install the required dependencies (see the [Requirements](#requirements) section below)
 2. Clone this repository
 3. Install the package:
+
 ```bash
 pip install .
 ```
@@ -28,7 +29,7 @@ For more advanced usage, see the sections below.
 
 - python3.11+ - [Python install instructions](https://www.python.org/downloads/)
 - gopkg - [GoLang and GoPkg install instructions](https://go.dev/doc/install)
-- Node.js (v14 or newer) and npm (v6 or newer) - [Node.js install instructions](https://nodejs.org/en/download/)
+- Node.js (v14 or newer) and npm (v7 or newer) - [Node.js install instructions](https://nodejs.org/en/download/)
 - libmagic (only on mac):
   - `brew install libmagic`
 
@@ -58,6 +59,7 @@ The following optional parameters are available:
 - `--no-pypi-strategy`: Skips the strategy that collects dependencies from PyPI.
 - `--no-gopkg-strategy`: Skips the strategy that collects dependencies from GoPkg.
 - `--no-github-sbom-strategy`: Skips the strategy that gets the dependency tree from GitHub.
+- `--no-npm-strategy`: Skips the strategy that collects dependencies from NPM.
 
 #### Cache Configuration
 
