@@ -500,3 +500,39 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
     assert dep_meta.version == "1.0.0"
     assert dep_meta.license == []
     assert dep_meta.copyright == []
+
+
+def test_npm_collection_strategy_handles_npm_install_failure(
+    mocker: pytest_mock.MockFixture,
+    caplog: LogCaptureFixture,
+) -> None:
+    source_code_manager_mock = create_source_code_manager_mock()
+
+    # Mock output_from_command to raise an exception
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=Exception("npm not found"),
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        result = strategy.augment_metadata(initial_metadata)
+
+    expected_warning = "Failed to run npm install for package1: npm not found"
+    assert any(expected_warning in record.message for record in caplog.records)
+
+    assert result == initial_metadata
