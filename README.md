@@ -33,7 +33,7 @@ For more advanced usage, see the sections below.
 
 #### Optional Requirements
 
-- gopkg - [GoLang and GoPkg install instructions](https://go.dev/doc/install). Not required when skipping the GoPkg strategy (--no-gopkg-strateg)
+- gopkg - [GoLang and GoPkg install instructions](https://go.dev/doc/install). Not required when skipping the GoPkg strategy (--no-gopkg-strategy)
 - Node.js (v14 or newer) and npm (v7 or newer) - [Node.js install instructions](https://nodejs.org/en/download/). Not required when skipping the NPM strategy (--no-npm-strategy)
 
 ### Usage
