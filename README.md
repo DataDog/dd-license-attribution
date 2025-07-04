@@ -28,10 +28,13 @@ For more advanced usage, see the sections below.
 ### Requirements
 
 - python3.11+ - [Python install instructions](https://www.python.org/downloads/)
-- gopkg - [GoLang and GoPkg install instructions](https://go.dev/doc/install)
-- Node.js (v14 or newer) and npm (v7 or newer) - [Node.js install instructions](https://nodejs.org/en/download/)
-- libmagic (only on mac):
+- libmagic (only on MacOS):
   - `brew install libmagic`
+
+#### Optional Requirements
+
+- gopkg - [GoLang and GoPkg install instructions](https://go.dev/doc/install). Not required when skipping the GoPkg strategy (--no-gopkg-strateg)
+- Node.js (v14 or newer) and npm (v7 or newer) - [Node.js install instructions](https://nodejs.org/en/download/). Not required when skipping the NPM strategy (--no-npm-strategy)
 
 ### Usage
 
