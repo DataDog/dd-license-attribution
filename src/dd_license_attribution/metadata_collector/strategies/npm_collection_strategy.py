@@ -55,7 +55,9 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         # Find the root package key
         root_key = "" if "" in packages else "./" if "./" in packages else None
         if root_key is None:
-            logging.warning("Root package not found in lockfile 'packages'.")
+            logging.warning(
+                "A root package wasn't found. Collecting NodeJS dependencies from none NodeJS projects is not supported yet."
+            )
             return all_deps
 
         root_pkg = packages[root_key]
