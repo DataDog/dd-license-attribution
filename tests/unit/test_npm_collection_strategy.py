@@ -4,10 +4,12 @@
 # Copyright 2025-present Datadog, Inc.
 
 import json
+import logging
 from typing import Any
 from unittest import mock
 
 import pytest_mock
+from pytest import LogCaptureFixture
 
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
@@ -452,3 +454,49 @@ def test_npm_collection_strategy_handles_registry_api_failures(
     assert dep2_meta is not None
     assert dep1_meta.license == []  # Should be empty due to 404
     assert dep2_meta.license == ["Apache-2.0"]  # Should have license
+
+
+def test_npm_collection_strategy_logs_warning_on_non_200_response(
+    mocker: pytest_mock.MockFixture,
+    caplog: LogCaptureFixture,
+) -> None:
+    source_code_manager_mock = create_source_code_manager_mock()
+    package_lock = {
+        "packages": {
+            "": {"dependencies": {"dep1": "1.0.0"}},
+            "node_modules/dep1": {"version": "1.0.0", "dependencies": {}},
+        }
+    }
+
+    requests_responses = [mock.Mock(status_code=404, text="Not Found")]
+
+    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        result = strategy.augment_metadata(initial_metadata)
+
+    expected_warning = (
+        "Failed to fetch npm registry metadata for dep1@1.0.0: 404, Not Found"
+    )
+    assert any(expected_warning in record.message for record in caplog.records)
+
+    assert len(result) == 2
+    dep_meta = next((m for m in result if m.name == "dep1"), None)
+    assert dep_meta is not None
+    assert dep_meta.version == "1.0.0"
+    assert dep_meta.license == []
+    assert dep_meta.copyright == []

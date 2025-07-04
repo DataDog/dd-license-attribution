@@ -167,6 +167,11 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                         and pkg_data["homepage"]
                     ):
                         homepage_url = pkg_data["homepage"]
+                else:
+                    logging.warning(
+                        f"Failed to fetch npm registry metadata for "
+                        f"{dep_name}@{version}: {resp.status_code}, {resp.text}"
+                    )
             except Exception as e:
                 logging.warning(
                     f"Failed to fetch npm registry metadata for "
