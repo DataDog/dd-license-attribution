@@ -37,7 +37,7 @@ def setup_npm_strategy_mocks(
     mocker: pytest_mock.MockFixture,
     package_lock: dict[str, Any],
     requests_responses: list[mock.Mock],
-) -> None:
+) -> tuple[mock.Mock, mock.Mock, mock.Mock, mock.Mock, mock.Mock]:
     """Setup common mocks for npm collection strategy tests."""
 
     def fake_exists(path: str) -> bool:
@@ -58,27 +58,35 @@ def setup_npm_strategy_mocks(
         return "npm install completed successfully"
 
     # Mock all the required functions
-    mocker.patch(
+    mock_exists = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.path_exists",
         side_effect=fake_exists,
     )
-    mocker.patch(
+    mock_path_join = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.path_join",
         side_effect=fake_path_join,
     )
-    mocker.patch(
+    mock_open = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.open_file",
         side_effect=fake_open,
     )
-    mocker.patch(
+    mock_output_from_command = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.output_from_command",
         side_effect=fake_output_from_command,
     )
-    mocker.patch("requests.get", side_effect=requests_responses)
+    mock_requests = mocker.patch("requests.get", side_effect=requests_responses)
+
+    return (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_requests,
+    )
 
 
 def test_npm_collection_strategy_no_package_lock(
@@ -117,7 +125,14 @@ def test_npm_collection_strategy_is_bypassed_if_only_root_project(
         }
     }
     requests_responses: list[mock.Mock] = []
-    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_requests,
+    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ONLY_ROOT_PROJECT
     )
@@ -133,6 +148,11 @@ def test_npm_collection_strategy_is_bypassed_if_only_root_project(
     ]
     result = strategy.augment_metadata(initial_metadata)
     assert result == initial_metadata
+    mock_output_from_command.assert_called_once()
+    mock_exists.assert_called_once()
+    mock_path_join.assert_called_once()
+    mock_open.assert_called_once()
+    mock_requests.assert_not_called()
 
 
 def test_npm_collection_strategy_adds_npm_metadata(
@@ -154,7 +174,13 @@ def test_npm_collection_strategy_adds_npm_metadata(
         ),
     ]
 
-    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_requests,
+    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -197,6 +223,11 @@ def test_npm_collection_strategy_adds_npm_metadata(
         ),
     ]
     assert result == expected_metadata
+    mock_output_from_command.assert_called_once()
+    mock_exists.assert_called_once()
+    mock_path_join.assert_called_once()
+    mock_open.assert_called_once()
+    assert mock_requests.call_count == 2
 
 
 def test_npm_collection_strategy_extracts_transitive_dependencies(
@@ -233,7 +264,13 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
         ),
     ]
 
-    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_requests,
+    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -293,6 +330,11 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
         ),
     ]
     assert result == expected_metadata
+    mock_output_from_command.assert_called_once()
+    mock_exists.assert_called_once()
+    mock_path_join.assert_called_once()
+    mock_open.assert_called_once()
+    assert mock_requests.call_count == 4
 
 
 def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
@@ -310,7 +352,13 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
         mock.Mock(status_code=200, json=lambda: {"license": "MIT", "author": "Alice"})
     ]
 
-    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_requests,
+    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
@@ -345,6 +393,11 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
         ),
     ]
     assert result == expected_metadata
+    mock_output_from_command.assert_called_once()
+    mock_exists.assert_called_once()
+    mock_path_join.assert_called_once()
+    mock_open.assert_called_once()
+    assert mock_requests.call_count == 1
 
 
 def test_npm_collection_strategy_handles_missing_packages_key(
@@ -359,7 +412,13 @@ def test_npm_collection_strategy_handles_missing_packages_key(
 
     requests_responses: list[mock.Mock] = []
 
-    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_requests,
+    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -376,6 +435,11 @@ def test_npm_collection_strategy_handles_missing_packages_key(
     ]
     result = strategy.augment_metadata(initial_metadata)
     # Should return original metadata when packages key is missing
+    mock_output_from_command.assert_called_once()
+    mock_exists.assert_called_once()
+    mock_path_join.assert_called_once()
+    mock_open.assert_called_once()
+    mock_requests.assert_not_called()
     assert result == initial_metadata
 
 
@@ -389,7 +453,13 @@ def test_npm_collection_strategy_handles_missing_root_package(
 
     requests_responses: list[mock.Mock] = []
 
-    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_requests,
+    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -407,6 +477,11 @@ def test_npm_collection_strategy_handles_missing_root_package(
     result = strategy.augment_metadata(initial_metadata)
     # Should return original metadata when root package is missing
     assert result == initial_metadata
+    mock_output_from_command.assert_called_once()
+    mock_exists.assert_called_once()
+    mock_path_join.assert_called_once()
+    mock_open.assert_called_once()
+    mock_requests.assert_not_called()
 
 
 def test_npm_collection_strategy_handles_registry_api_failures(
@@ -428,7 +503,13 @@ def test_npm_collection_strategy_handles_registry_api_failures(
         ),
     ]
 
-    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_requests,
+    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -454,6 +535,11 @@ def test_npm_collection_strategy_handles_registry_api_failures(
     assert dep2_meta is not None
     assert dep1_meta.license == []  # Should be empty due to 404
     assert dep2_meta.license == ["Apache-2.0"]  # Should have license
+    mock_output_from_command.assert_called_once()
+    mock_exists.assert_called_once()
+    mock_path_join.assert_called_once()
+    mock_open.assert_called_once()
+    assert mock_requests.call_count == 2
 
 
 def test_npm_collection_strategy_logs_warning_on_non_200_response(
@@ -470,7 +556,13 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
 
     requests_responses = [mock.Mock(status_code=404, text="Not Found")]
 
-    setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_requests,
+    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -500,6 +592,11 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
     assert dep_meta.version == "1.0.0"
     assert dep_meta.license == []
     assert dep_meta.copyright == []
+    mock_output_from_command.assert_called_once()
+    mock_exists.assert_called_once()
+    mock_path_join.assert_called_once()
+    mock_open.assert_called_once()
+    assert mock_requests.call_count == 1
 
 
 def test_npm_collection_strategy_handles_npm_install_failure(
@@ -509,7 +606,7 @@ def test_npm_collection_strategy_handles_npm_install_failure(
     source_code_manager_mock = create_source_code_manager_mock()
 
     # Mock output_from_command to raise an exception
-    mocker.patch(
+    mock_output_from_command = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.output_from_command",
         side_effect=Exception("npm not found"),
@@ -536,3 +633,4 @@ def test_npm_collection_strategy_handles_npm_install_failure(
     assert any(expected_warning in record.message for record in caplog.records)
 
     assert result == initial_metadata
+    mock_output_from_command.assert_called_once()
