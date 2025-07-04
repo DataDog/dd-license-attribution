@@ -148,7 +148,9 @@ def test_npm_collection_strategy_is_bypassed_if_only_root_project(
     ]
     result = strategy.augment_metadata(initial_metadata)
     assert result == initial_metadata
-    mock_output_from_command.assert_called_once()
+    mock_output_from_command.assert_called_once_with(
+        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    )
     mock_exists.assert_called_once()
     mock_path_join.assert_called_once()
     mock_open.assert_called_once()
@@ -223,7 +225,9 @@ def test_npm_collection_strategy_adds_npm_metadata(
         ),
     ]
     assert result == expected_metadata
-    mock_output_from_command.assert_called_once()
+    mock_output_from_command.assert_called_once_with(
+        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    )
     mock_exists.assert_called_once()
     mock_path_join.assert_called_once()
     mock_open.assert_called_once()
@@ -330,7 +334,9 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
         ),
     ]
     assert result == expected_metadata
-    mock_output_from_command.assert_called_once()
+    mock_output_from_command.assert_called_once_with(
+        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    )
     mock_exists.assert_called_once()
     mock_path_join.assert_called_once()
     mock_open.assert_called_once()
@@ -393,7 +399,9 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
         ),
     ]
     assert result == expected_metadata
-    mock_output_from_command.assert_called_once()
+    mock_output_from_command.assert_called_once_with(
+        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    )
     mock_exists.assert_called_once()
     mock_path_join.assert_called_once()
     mock_open.assert_called_once()
@@ -435,7 +443,9 @@ def test_npm_collection_strategy_handles_missing_packages_key(
     ]
     result = strategy.augment_metadata(initial_metadata)
     # Should return original metadata when packages key is missing
-    mock_output_from_command.assert_called_once()
+    mock_output_from_command.assert_called_once_with(
+        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    )
     mock_exists.assert_called_once()
     mock_path_join.assert_called_once()
     mock_open.assert_called_once()
@@ -477,7 +487,9 @@ def test_npm_collection_strategy_handles_missing_root_package(
     result = strategy.augment_metadata(initial_metadata)
     # Should return original metadata when root package is missing
     assert result == initial_metadata
-    mock_output_from_command.assert_called_once()
+    mock_output_from_command.assert_called_once_with(
+        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    )
     mock_exists.assert_called_once()
     mock_path_join.assert_called_once()
     mock_open.assert_called_once()
@@ -535,7 +547,9 @@ def test_npm_collection_strategy_handles_registry_api_failures(
     assert dep2_meta is not None
     assert dep1_meta.license == []  # Should be empty due to 404
     assert dep2_meta.license == ["Apache-2.0"]  # Should have license
-    mock_output_from_command.assert_called_once()
+    mock_output_from_command.assert_called_once_with(
+        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    )
     mock_exists.assert_called_once()
     mock_path_join.assert_called_once()
     mock_open.assert_called_once()
@@ -592,7 +606,9 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
     assert dep_meta.version == "1.0.0"
     assert dep_meta.license == []
     assert dep_meta.copyright == []
-    mock_output_from_command.assert_called_once()
+    mock_output_from_command.assert_called_once_with(
+        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    )
     mock_exists.assert_called_once()
     mock_path_join.assert_called_once()
     mock_open.assert_called_once()
@@ -633,4 +649,6 @@ def test_npm_collection_strategy_handles_npm_install_failure(
     assert any(expected_warning in record.message for record in caplog.records)
 
     assert result == initial_metadata
-    mock_output_from_command.assert_called_once()
+    mock_output_from_command.assert_called_once_with(
+        "CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    )
