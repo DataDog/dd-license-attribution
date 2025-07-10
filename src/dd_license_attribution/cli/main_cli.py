@@ -247,10 +247,10 @@ def main(
             rich_help_panel="Scanning Options",
         ),
     ] = False,
-    skip_scantoolkit: Annotated[
+    skip_scancode: Annotated[
         bool,
         typer.Option(
-            "--no-scantoolkit-strategy",
+            "--no-scancode-strategy",
             help="Skip the ScanCodeToolkit collection strategy.",
             rich_help_panel="Scanning Options",
         ),
@@ -424,7 +424,7 @@ def main(
     if skip_npm:
         enabled_strategies["NpmMetadataCollectionStrategy"] = False
 
-    if skip_scantoolkit:
+    if skip_scancode:
         enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"] = False
 
     if not github_token:

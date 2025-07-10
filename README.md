@@ -73,7 +73,7 @@ The following optional parameters are available:
 - `--no-gopkg-strategy`: Skips the strategy that collects dependencies from GoPkg.
 - `--no-github-sbom-strategy`: Skips the strategy that gets the dependency tree from GitHub.
 - `--no-npm-strategy`: Skips the strategy that collects dependencies from NPM.
-- `--no-scantoolkit-strategy`: Skips the strategy that gets licenses and copyright attribution using ScanCode-Toolkit.
+- `--no-scancode-strategy`: Skips the strategy that gets licenses and copyright attribution using ScanCode Toolkit.
 
 #### Cache Configuration
 

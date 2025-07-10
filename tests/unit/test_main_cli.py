@@ -51,7 +51,7 @@ def test_github_auth_env() -> None:
         (["--no-pypi-strategy"], "PythonPipMetadataCollectionStrategy"),
         (["--no-gopkg-strategy"], "GoPkgsMetadataCollectionStrategy"),
         (["--no-github-sbom-strategy"], "GitHubSbomMetadataCollectionStrategy"),
-        (["--no-scantoolkit-strategy"], "ScanCodeToolkitMetadataCollectionStrategy"),
+        (["--no-scancode-strategy"], "ScanCodeToolkitMetadataCollectionStrategy"),
     ],
 )
 @patch("dd_license_attribution.cli.main_cli.GitHub")
@@ -101,7 +101,7 @@ def test_skip_all_strategies(
             "--no-pypi-strategy",
             "--no-gopkg-strategy",
             "--no-github-sbom-strategy",
-            "--no-scantoolkit-strategy",
+            "--no-scancode-strategy",
         ],
     )
     assert result.exit_code == 0
