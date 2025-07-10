@@ -51,6 +51,7 @@ def test_github_auth_env() -> None:
         (["--no-pypi-strategy"], "PythonPipMetadataCollectionStrategy"),
         (["--no-gopkg-strategy"], "GoPkgsMetadataCollectionStrategy"),
         (["--no-github-sbom-strategy"], "GitHubSbomMetadataCollectionStrategy"),
+        (["--no-scantoolkit-strategy"], "ScanCodeToolkitMetadataCollectionStrategy"),
     ],
 )
 @patch("dd_license_attribution.cli.main_cli.GitHub")
@@ -100,6 +101,7 @@ def test_skip_all_strategies(
             "--no-pypi-strategy",
             "--no-gopkg-strategy",
             "--no-github-sbom-strategy",
+            "--no-scantoolkit-strategy",
         ],
     )
     assert result.exit_code == 0
@@ -110,6 +112,7 @@ def test_skip_all_strategies(
     assert "PythonPipMetadataCollectionStrategy" not in strategy_classes
     assert "GoPkgsMetadataCollectionStrategy" not in strategy_classes
     assert "GitHubSbomMetadataCollectionStrategy" not in strategy_classes
+    assert "ScanCodeToolkitMetadataCollectionStrategy" not in strategy_classes
 
 
 def test_missing_package() -> None:
