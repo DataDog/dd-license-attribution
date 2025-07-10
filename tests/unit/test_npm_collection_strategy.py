@@ -41,9 +41,7 @@ def setup_npm_strategy_mocks(
     """Setup common mocks for npm collection strategy tests."""
 
     def fake_exists(path: str) -> bool:
-        if path.endswith("package-lock.json"):
-            return True
-        return False
+        return True
 
     def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
         if "package-lock.json" in path:
@@ -151,8 +149,8 @@ def test_npm_collection_strategy_is_bypassed_if_only_root_project(
     mock_output_from_command.assert_called_once_with(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
-    mock_exists.assert_called_once()
-    mock_path_join.assert_called_once()
+    assert mock_exists.call_count == 2
+    assert mock_path_join.call_count == 2
     mock_open.assert_called_once()
     mock_requests.assert_not_called()
 
@@ -228,8 +226,8 @@ def test_npm_collection_strategy_adds_npm_metadata(
     mock_output_from_command.assert_called_once_with(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
-    mock_exists.assert_called_once()
-    mock_path_join.assert_called_once()
+    assert mock_exists.call_count == 2
+    assert mock_path_join.call_count == 2
     mock_open.assert_called_once()
     assert mock_requests.call_count == 2
 
@@ -337,8 +335,8 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
     mock_output_from_command.assert_called_once_with(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
-    mock_exists.assert_called_once()
-    mock_path_join.assert_called_once()
+    assert mock_exists.call_count == 2
+    assert mock_path_join.call_count == 2
     mock_open.assert_called_once()
     assert mock_requests.call_count == 4
 
@@ -402,8 +400,8 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
     mock_output_from_command.assert_called_once_with(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
-    mock_exists.assert_called_once()
-    mock_path_join.assert_called_once()
+    assert mock_exists.call_count == 2
+    assert mock_path_join.call_count == 2
     mock_open.assert_called_once()
     assert mock_requests.call_count == 1
 
@@ -446,8 +444,8 @@ def test_npm_collection_strategy_handles_missing_packages_key(
     mock_output_from_command.assert_called_once_with(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
-    mock_exists.assert_called_once()
-    mock_path_join.assert_called_once()
+    assert mock_exists.call_count == 2
+    assert mock_path_join.call_count == 2
     mock_open.assert_called_once()
     mock_requests.assert_not_called()
     assert result == initial_metadata
@@ -490,8 +488,8 @@ def test_npm_collection_strategy_handles_missing_root_package(
     mock_output_from_command.assert_called_once_with(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
-    mock_exists.assert_called_once()
-    mock_path_join.assert_called_once()
+    assert mock_exists.call_count == 2
+    assert mock_path_join.call_count == 2
     mock_open.assert_called_once()
     mock_requests.assert_not_called()
 
@@ -550,8 +548,8 @@ def test_npm_collection_strategy_handles_registry_api_failures(
     mock_output_from_command.assert_called_once_with(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
-    mock_exists.assert_called_once()
-    mock_path_join.assert_called_once()
+    assert mock_exists.call_count == 2
+    assert mock_path_join.call_count == 2
     mock_open.assert_called_once()
     assert mock_requests.call_count == 2
 
@@ -609,8 +607,8 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
     mock_output_from_command.assert_called_once_with(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
-    mock_exists.assert_called_once()
-    mock_path_join.assert_called_once()
+    assert mock_exists.call_count == 2
+    assert mock_path_join.call_count == 2
     mock_open.assert_called_once()
     assert mock_requests.call_count == 1
 
@@ -621,6 +619,11 @@ def test_npm_collection_strategy_handles_npm_install_failure(
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
 
+    mock_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        return_value=True,
+    )
     # Mock output_from_command to raise an exception
     mock_output_from_command = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
@@ -649,6 +652,52 @@ def test_npm_collection_strategy_handles_npm_install_failure(
     assert any(expected_warning in record.message for record in caplog.records)
 
     assert result == initial_metadata
+    mock_exists.assert_called_once()
     mock_output_from_command.assert_called_once_with(
         "CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
+
+
+def test_npm_collection_strategy_no_package_json(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that strategy returns original metadata when package.json is not found."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    package_lock: dict[str, Any] = {}
+    requests_responses: list[mock.Mock] = []
+
+    def fake_exists(path: str) -> bool:
+        return False
+
+    (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_requests,
+    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+
+    mock_exists.side_effect = fake_exists
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin=None,
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+    result = strategy.augment_metadata(initial_metadata)
+    assert result == initial_metadata
+
+    # Verify path_exists was called with package.json path
+    mock_path_join.assert_called_once_with("cache_dir/org_package1", "package.json")
+    mock_exists.assert_called_once()
+    mock_output_from_command.assert_not_called()
+    mock_open.assert_not_called()
+    mock_requests.assert_not_called()
