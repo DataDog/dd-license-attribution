@@ -99,6 +99,11 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         if not source_code_ref:
             return updated_metadata
         project_path = source_code_ref.local_full_path
+
+        package_json_path = path_join(project_path, "package.json")
+        if not path_exists(package_json_path):
+            return updated_metadata
+
         # Run npm install --package-lock-only to generate package-lock.json
         try:
             output_from_command(
