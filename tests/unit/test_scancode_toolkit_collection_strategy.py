@@ -1137,6 +1137,84 @@ def test_scancode_toolkit_collection_strategy_extracts_copyright_and_license_fro
     )
 
 
+def test_scancode_toolkit_collection_strategy_extracts_only_copyright_when_license_already_exists(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that when a package has local_src_path and already has a license,
+    only copyright is extracted."""
+
+    listdir_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        return_value=["LICENSE", "COPYRIGHT"],
+    )
+
+    walk_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.walk_directory",
+        return_value=[
+            (
+                "/tmp/go/mod/github.com/org/package1@v1.0",
+                [],
+                ["LICENSE", "COPYRIGHT"],
+            )
+        ],
+    )
+
+    scancode_api_mock = mocker.patch("scancode.api")
+    # License should not be called since package already has license
+    scancode_api_mock.get_licenses.return_value = {
+        "detected_license_expression_spdx": "SHOULD_NOT_BE_CALLED"
+    }
+    scancode_api_mock.get_copyrights.return_value = {
+        "holders": [{"holder": "TEST_HOLDER"}],
+        "authors": [{"author": "TEST_AUTHOR"}],
+        "copyrights": [{"copyright": "TEST_COPY"}],
+    }
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            version="v1.0",
+            origin="package1",
+            local_src_path="/tmp/go/mod/github.com/org/package1@v1.0",
+            license=["EXISTING_LICENSE"],  # Already has license
+            copyright=[],  # Empty copyright - should be extracted
+        ),
+    ]
+
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        mocker.Mock(),  # source_code_manager not needed for local_src_path
+        license_source_files=["license"],
+        copyright_source_files=["copyright"],
+    )
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    expected_metadata = [
+        Metadata(
+            name="package1",
+            version="v1.0",
+            origin="package1",
+            local_src_path="/tmp/go/mod/github.com/org/package1@v1.0",
+            license=["EXISTING_LICENSE"],  # Should remain unchanged
+            copyright=["TEST_HOLDER"],  # Should be extracted
+        ),
+    ]
+
+    assert expected_metadata == updated_metadata
+
+    # Verify that license extraction was not called (since package already has license)
+    scancode_api_mock.get_licenses.assert_not_called()
+
+    # Verify that copyright extraction was called
+    scancode_api_mock.get_copyrights.assert_called_once_with(
+        "/tmp/go/mod/github.com/org/package1@v1.0/COPYRIGHT"
+    )
+
+    walk_mock.assert_called_once_with("/tmp/go/mod/github.com/org/package1@v1.0")
+    # list_dir should not be called since copyright extraction uses walk_directory (recurse=True)
+    listdir_mock.assert_not_called()
+
+
 def test_no_crash_on_wrong_path_being_infered_in_previous_step_if_the_local_src_dir_is_set(
     mocker: pytest_mock.MockFixture,
 ) -> None:
