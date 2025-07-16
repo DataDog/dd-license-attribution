@@ -1211,7 +1211,8 @@ def test_scancode_toolkit_collection_strategy_extracts_only_copyright_when_licen
     )
 
     walk_mock.assert_called_once_with("/tmp/go/mod/github.com/org/package1@v1.0")
-    # list_dir should not be called since copyright extraction uses walk_directory (recurse=True)
+    # list_dir should not be called because this test verifies copyright extraction using recursive directory traversal (walk_directory),
+    # which is appropriate for extracting copyright information from nested directories.
     listdir_mock.assert_not_called()
 
 
