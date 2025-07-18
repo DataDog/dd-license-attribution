@@ -121,7 +121,7 @@ def test_missing_package() -> None:
     assert "Missing argument 'PACKAGE'." in result.stderr
 
 
-@patch("dd_license_attribution.cli.main_cli.open_file")
+@patch("dd_license_attribution.config.json_config_parser.open_file")
 @patch("dd_license_attribution.cli.main_cli.GitHub")
 @patch("dd_license_attribution.cli.main_cli.SourceCodeManager")
 @patch("dd_license_attribution.cli.main_cli.PythonEnvManager")
@@ -150,7 +150,7 @@ def test_use_mirrors_invalid_json(
     assert "Invalid JSON in mirror configuration file: test.json" in result.stderr
 
 
-@patch("dd_license_attribution.cli.main_cli.open_file")
+@patch("dd_license_attribution.config.json_config_parser.open_file")
 @patch("dd_license_attribution.cli.main_cli.GitHub")
 @patch("dd_license_attribution.cli.main_cli.SourceCodeManager")
 @patch("dd_license_attribution.cli.main_cli.PythonEnvManager")

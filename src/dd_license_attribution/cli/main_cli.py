@@ -17,7 +17,7 @@ import typer
 from agithub.GitHub import GitHub
 
 import dd_license_attribution.config.cli_configs as cli_config
-from dd_license_attribution.adaptors.os import create_dirs, open_file, path_exists
+from dd_license_attribution.adaptors.os import create_dirs, path_exists
 from dd_license_attribution.artifact_management.artifact_manager import (
     validate_cache_dir,
 )
@@ -26,11 +26,11 @@ from dd_license_attribution.artifact_management.python_env_manager import (
     PythonEnvManager,
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
-    MirrorSpec,
     NonAccessibleRepository,
     SourceCodeManager,
     UnauthorizedRepository,
 )
+from dd_license_attribution.config import JsonConfigParser
 from dd_license_attribution.metadata_collector import MetadataCollector
 from dd_license_attribution.metadata_collector.license_checker import LicenseChecker
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
@@ -374,23 +374,9 @@ def main(
     mirrors = None
     if use_mirrors:
         try:
-            mirror_configs = json.loads(open_file(use_mirrors))
-            mirrors = [
-                MirrorSpec(
-                    original_url=config["original_url"],
-                    mirror_url=config["mirror_url"],
-                    ref_mapping=config.get("ref_mapping", None),
-                )
-                for config in mirror_configs
-            ]
-        except FileNotFoundError:
-            logging.error(f"Mirror configuration file not found: {use_mirrors}")
-            sys.exit(1)
-        except json.JSONDecodeError:
-            logging.error(f"Invalid JSON in mirror configuration file: {use_mirrors}")
-            sys.exit(1)
-        except Exception as e:
-            logging.error(f"Failed to load mirror configurations: {str(e)}")
+            mirrors = JsonConfigParser.load_mirror_configs(use_mirrors)
+        except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
+            logging.error(str(e))
             sys.exit(1)
 
     if debug:
@@ -488,10 +474,7 @@ def main(
     override_strategy = None
     if override_spec:
         try:
-            override_rules_json = json.loads(open_file(override_spec))
-            override_rules = OverrideCollectionStrategy.json_to_override_rules(
-                override_rules_json
-            )
+            override_rules = JsonConfigParser.load_override_configs(override_spec)
             # interleave the override rules between all the elements of strategies
             # this is done to make sure that the override rules are applied to all
             # dependencies as soon as they are added to the closure and prevent
@@ -499,14 +482,8 @@ def main(
             override_strategy = OverrideCollectionStrategy(override_rules)
             for i in range(len(strategies) - 1, -1, -1):
                 strategies.insert(i, override_strategy)
-        except FileNotFoundError:
-            logging.error(f"Override spec file not found: {override_spec}")
-            sys.exit(1)
-        except json.JSONDecodeError:
-            logging.error(f"Invalid JSON in override spec file: {override_spec}")
-            sys.exit(1)
-        except Exception as e:
-            logging.error(f"Error reading override spec file: {e}")
+        except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
+            logging.error(str(e))
             sys.exit(1)
 
     metadata_collector = MetadataCollector(strategies)
