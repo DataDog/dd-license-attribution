@@ -326,7 +326,7 @@ alwaysApply: false
 ### Pre-commit Checklist
 
 Before committing any code changes:
-- [ ] Run `mypy src/` and ensure no errors
+- [ ] Run `mypy src/ tests/` and ensure no errors
 - [ ] Verify all new functions have complete type annotations
 - [ ] Check that all variables have appropriate type hints
 - [ ] Ensure no `# type: ignore` comments were added without justification
