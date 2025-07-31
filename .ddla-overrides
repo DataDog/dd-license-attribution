@@ -222,5 +222,24 @@
         "Gregor Aisch"
       ]
     }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "origin": "https://github.com/opensanctions/fingerprints.git"
+    },
+    "replacement": {
+      "name": "fingerprints",
+      "origin": "https://github.com/opensanctions/fingerprints",
+      "version": "1.2.3",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "Friedrich Lindenberg",
+        "Journalism Development Network, Inc.",
+        "OpenSanctions Datenbanken GmbH"
+      ]
+    }
   }
 ]
