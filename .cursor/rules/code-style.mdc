@@ -89,7 +89,7 @@ alwaysApply: false
 - All new code must pass MyPy strict mode
 - Use `# type: ignore` comments only when absolutely necessary and document why
 - Prefer `# type: ignore[error-code]` over blanket ignores
-- Run MyPy locally before committing: `mypy src/`
+- Run MyPy locally before committing: `mypy src/ tests/`
 
 ### Common Typing Patterns
 
