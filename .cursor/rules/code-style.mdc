@@ -343,7 +343,7 @@ Before committing any code changes:
 ### Exceptions and Edge Cases
 
 - Use `Any` sparingly and only when the type truly cannot be determined
-- Use `Union[Type1, Type2]` or `Type1 | Type2` (Python 3.10+) for multiple possible types
+- Use `Type1 | Type2` for union of multiple possible types
 - Use `Literal` for string/enum-like values: `Literal["option1", "option2"]`
 - Use `TypedDict` for dictionary structures with known keys
 - **OS exceptions**: Only allowed in adaptor implementations themselves
