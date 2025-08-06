@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Improved error handling for repository access issues
 - Enhanced logging for better debugging
 - Better handling of GitHub API rate limits
+- Improved SBOM Strategy metadata extraction
 
 ### Fixed
 - Fixed issues with PyPI metadata extraction for packages with missing information explicitly declared
