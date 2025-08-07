@@ -325,7 +325,7 @@ alwaysApply: false
 
 ### Pre-commit Checklist
 
-Before committing any code changes:
+All code must be able to pass the following tests. Test these things before making your code suggestions:
 - [ ] Run `mypy src/ tests/` and ensure no errors
 - [ ] Verify all new functions have complete type annotations
 - [ ] Check that all variables have appropriate type hints
