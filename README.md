@@ -124,44 +124,39 @@ Example mirror configuration file:
 
 Note: Currently, only branch-to-branch mapping is supported. The mirror URLs must also be GitHub repositories.
 
-#### Manual output override configuration
+#### Override Configuration
 
-In some cases, `dd-license-attribution` is not be able to extract a particular dependency information, or the information is not be available in the dependency itself to extract.
-For those cases, there is an option to override, remove, or manually inject the information needed.
-When this parameter is used we recommend that a PR or feature request is created against this project -- if `dd-license-attribution` needs to be improved -- or to the target dependency -- to add the missing information. This overrides should be a temporary measure while the changes are upstreamed.
+Sometimes `dd-license-attribution` may not detect all dependencies correctly, or the detected license information may be inaccurate. For these cases, you can provide an override configuration file to:
 
-- `--override-spec`: a file with a override description.
+- **Fix incorrect license information** detected by automated tools
+- **Add related dependencies** that weren't automatically discovered
+- **Remove false positives** from your dependency report
+- **Update copyright information** when the detected data is wrong
 
-The override description file needs to be defined as a json file similar to the following example.
+Use the `--override-spec` parameter to specify your override configuration file:
 
+```bash
+dd-license-attribution --override-spec .ddla-overrides https://github.com/your-org/your-project
+```
+
+**Quick Example:**
 ```json
 [
   {
-    "override_type":"ADD",
-    "target":{"component":"aiohttp"},
+    "override_type": "replace",
+    "target": {"component": "package-name"},
     "replacement": {
-      "component": "httpref",
-      "origin":"https://github.com/http/ref",
-      "license": "APACHE-2.0",
-      "copyright": "testing inc."
+      "name": "package-name",
+      "license": ["MIT"],
+      "copyright": ["Copyright 2024 Author"]
     }
   }
 ]
 ```
 
-Each element of the array in the spec is a rule.
-Each rule has an override type:
+📖 **For complete documentation, examples, and best practices, see [Override Configuration Guide](overrides.md)**
 
-- `ADD` means that the override is a new dependency to be added to the closure as specified in the replacement field.
-- `REMOVE` means that the dependency needs to be removed from the closure.
-- `REPLACE` means that any data about the specified dependency needs to be replaced by the one passed in the replacement field.
-
-In all cases, the application depends on a matching condition specified as a `"field":"value"` where the field can be `component` or `origin`.
-Component refers to the canonical name of the dependency as reported by the tool.
-Origin refers to the purl used to find the dependency by package management tools.
-
-If a override is never used, then a warning will be emitted at the end of execution.
-The warnings allow users to identify unexpected target matching failures.
+> **Recommendation**: When using overrides, consider creating a PR or feature request to improve `dd-license-attribution` or the target dependency to add missing information upstream. Overrides should ideally be a temporary measure.
 
 ### Common Use Cases
 
