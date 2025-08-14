@@ -40,6 +40,8 @@ For more advanced usage, see the sections below.
 - python3.11+ - [Python install instructions](https://www.python.org/downloads/)
 - libmagic (only on MacOS):
   - `brew install libmagic`
+- libuci (only on MacOS)
+  - `brew install icu4c && brew link icu4c --force`
 
 #### Optional Requirements
 
