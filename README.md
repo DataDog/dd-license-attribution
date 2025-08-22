@@ -1,20 +1,52 @@
 # Datadog License Attribution Tracker
 
+[![CI](https://github.com/DataDog/dd-license-attribution/actions/workflows/integration-test.yml/badge.svg)](https://github.com/DataDog/dd-license-attribution/actions/workflows/integration-test.yml)
+[![Linters](https://github.com/DataDog/dd-license-attribution/actions/workflows/linters.yml/badge.svg)](https://github.com/DataDog/dd-license-attribution/actions/workflows/linters.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/DataDog/dd-license-attribution/badge)](https://api.securityscorecards.dev/projects/github.com/DataDog/dd-license-attribution)
+[![Coverage](https://img.shields.io/badge/coverage-90%25+-brightgreen)](https://github.com/DataDog/dd-license-attribution)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
+[![Type checker: mypy](https://img.shields.io/badge/type%20checker-mypy-blue.svg)](https://mypy-lang.org/)
+
 Datadog License Attribution Tracker is a tool that collects license and copyright information for third party dependencies of a project and returns a list of said dependencies and their licenses and copyright attributions, if found.
 
-As of today, Datadog License Attribution Tracker supports Go and Python projects. It will be extended in the future to support more languages.
+As of today, Datadog License Attribution Tracker supports Go, Python, and NodeJS projects. It will be extended in the future to support more languages.
 
-The tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, the go-pkg list command output, and the metadata collected from successful dependency installation via PyPI.
+The tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, the go-pkg list command output, and metadata collected from PyPI and NPM.
 It supports gathering data from various repositories to generate a comprehensive list of third party dependencies.
 
 Runs may take minutes or hours depending on the size of the project dependency tree and the depth of the scanning.
 
+### Getting Started
+
+1. Install the required dependencies (see the [Requirements](#requirements) section below)
+2. Clone this repository
+3. Install the package:
+
+```bash
+pip install .
+```
+4. Run the tool on a GitHub repository:
+```bash
+dd-license-attribution https://github.com/owner/repo > LICENSE-3rdparty.csv
+```
+
+For more advanced usage, see the sections below.
+
 ### Requirements
 
 - python3.11+ - [Python install instructions](https://www.python.org/downloads/)
-- gopkg - [GoLang and GoPkg install instructions](https://go.dev/doc/install)
-- libmagic (only on mac):
+- libmagic (only on MacOS):
   - `brew install libmagic`
+- libuci (only on MacOS)
+  - `brew install icu4c && brew link icu4c --force`
+
+#### Optional Requirements
+
+- gopkg - [GoLang and GoPkg install instructions](https://go.dev/doc/install). Not required when skipping the GoPkg strategy (--no-gopkg-strategy)
+- Node.js (v14 or newer) and npm (v7 or newer) - [Node.js install instructions](https://nodejs.org/en/download/). Not required when skipping the NPM strategy (--no-npm-strategy)
 
 ### Usage
 
@@ -33,11 +65,17 @@ The following optional parameters are available:
 
 #### Scanning Options
 
-- `--deep-scanning`: Parses license and copyright information from full package source code using [scancode-toolkit](). This is a intensive task, that depending in the package size, may take hours or even days to process.
+##### Scope Control
 - `--only-transitive-dependencies`: Extracts license and copyright from the passed package, only its dependencies.
 - `--only-root-project`: Extracts information from the licenses and copyright of the passed package, not its dependencies.
-- `--skip-pypi-strategy`: Skips the strategy that collects dependencies from PyPI.
-- `--skip-gopkg-strategy`: Skips the strategy that collects dependencies from GoPkg.
+
+##### Strategy Selection
+- `--deep-scanning`: Enables intensive source code analysis using [scancode-toolkit](https://scancode-toolkit.readthedocs.io/en/latest/getting-started/home.html). This will parse license and copyright information from full package source code. Note: This is a resource-intensive task that may take hours or days to process depending on package size.
+- `--no-pypi-strategy`: Skips the strategy that collects dependencies from PyPI.
+- `--no-gopkg-strategy`: Skips the strategy that collects dependencies from GoPkg.
+- `--no-github-sbom-strategy`: Skips the strategy that gets the dependency tree from GitHub.
+- `--no-npm-strategy`: Skips the strategy that collects dependencies from NPM.
+- `--no-scancode-strategy`: Skips the strategy that gets licenses and copyright attribution using ScanCode Toolkit.
 
 #### Cache Configuration
 
@@ -46,44 +84,105 @@ The following optional parameters are available:
 
 For more details about optional parameters pass `--help` to the command.
 
-#### Manual override configuration
+#### Output Format
 
-In some cases, `dd-license-attribution` is not be able to extract a particular dependency information, or the information is not be available in the dependency itself to extract.
-For those cases, there is an option to override, remove, or manually inject the information needed.
-When this parameter is used we recommend that a PR or feature request is created against this project -- if `dd-license-attribution` needs to be improved -- or to the target dependency -- to add the missing information. This overrides should be a temporary measure while the changes are upstreamed.
+The tool generates a CSV file with the following columns:
+- `Component`: The name of the dependency
+- `Origin`: The source URL of the dependency
+- `License`: The detected license(s)
+- `Copyright`: Copyright attribution(s) if found
 
-- `--override-spec`: a file with a override description.
+Example output:
+```csv
+Component,Origin,License,Copyright
+aiohttp,https://github.com/aio-libs/aiohttp,Apache-2.0,"Copyright (c) 2013-present aio-libs"
+requests,https://github.com/psf/requests,Apache-2.0,"Copyright 2019 Kenneth Reitz"
+```
 
-The override description file needs to be defined as a json file similar to the following example.
+#### Manual repository override configuration
 
+In some cases, the code we want to scan is not in the main branch of a github repository or we do not have access to it. For example, when we are reviewing a PR, or preparing one in our local machine. Or when we are evaluating alternative dependency sources. In those cases, we would like to replace what is used to be scanned for a particular github URL.
+
+To do so, we can create a json file where we map full repositories to a mirror repository, and, optionally, remap internal references, as for example, to use my PR branch in place of the main branch.
+
+- `--use-mirrors`: Path to a JSON file containing mirror specifications for repositories. This is useful when you need to use alternative repository URLs to fetch source code. The JSON file should contain an array of mirror configurations, where each configuration has:
+  - `original_url`: The original repository URL
+  - `mirror_url`: The URL of the mirror repository
+  - `ref_mapping` (optional): A mapping of references between the original and mirror repositories
+
+Example mirror configuration file:
+```json
+[
+    {
+        "original_url": "https://github.com/DataDog/test",
+        "mirror_url": "https://github.com/mirror/test",
+        "ref_mapping": {
+            "branch:main": "branch:development",
+            "tag:v1.0": "branch:development"
+        }
+    }
+]
+```
+
+Note: Currently, only branch-to-branch mapping is supported. The mirror URLs must also be GitHub repositories.
+
+#### Override Configuration
+
+Sometimes `dd-license-attribution` may not detect all dependencies correctly, or the detected license information may be inaccurate. For these cases, you can provide an override configuration file to:
+
+- **Fix incorrect license information** detected by automated tools
+- **Add related dependencies** that weren't automatically discovered
+- **Remove false positives** from your dependency report
+- **Update copyright information** when the detected data is wrong
+
+Use the `--override-spec` parameter to specify your override configuration file:
+
+```bash
+dd-license-attribution --override-spec .ddla-overrides https://github.com/your-org/your-project
+```
+
+**Quick Example:**
 ```json
 [
   {
-    "override_type":"ADD",
-    "target":{"component":"aiohttp"},
+    "override_type": "replace",
+    "target": {"component": "package-name"},
     "replacement": {
-      "component": "httpref",
-      "origin":"https://github.com/http/ref",
-      "license": "APACHE-2.0",
-      "copyright": "testing inc."
+      "name": "package-name",
+      "license": ["MIT"],
+      "copyright": ["Copyright 2024 Author"]
     }
   }
 ]
 ```
 
-Each element of the array in the spec is a rule.
-Each rule has an override type:
+📖 **For complete documentation, examples, and best practices, see [Override Configuration Guide](overrides.md)**
 
-- `ADD` means that the override is a new dependency to be added to the closure as specified in the replacement field.
-- `REMOVE` means that the dependency needs to be removed from the closure.
-- `REPLACE` means that any data about the specified dependency needs to be replaced by the one passed in the replacement field.
+> **Recommendation**: When using overrides, consider creating a PR or feature request to improve `dd-license-attribution` or the target dependency to add missing information upstream. Overrides should ideally be a temporary measure.
 
-In all cases, the application depends on a matching condition specified as a `"field":"value"` where the field can be `component` or `origin`.
-Component refers to the canonical name of the dependency as reported by the tool.
-Origin refers to the purl used to find the dependency by package management tools.
+### Common Use Cases
 
-If a override is never used, then a warning will be emitted at the end of execution.
-The warnings allow users to identify unexpected target matching failures.
+#### Basic License Attribution
+```bash
+dd-license-attribution https://github.com/owner/repo > LICENSE-3rdparty.csv
+```
+
+#### Deep Scanning with Caching
+```bash
+dd-license-attribution --deep-scanning --cache-dir ./cache https://github.com/owner/repo > LICENSE-3rdparty.csv
+```
+
+#### Working with Private Repositories
+```bash
+export GITHUB_TOKEN=your_token
+dd-license-attribution https://github.com/owner/private-repo > LICENSE-3rdparty.csv
+```
+
+#### Using Mirror Repositories
+```bash
+# Create mirrors.json with your mirror configurations
+dd-license-attribution --use-mirrors=mirrors.json https://github.com/owner/repo > LICENSE-3rdparty.csv
+```
 
 ### Development and Contributing
 

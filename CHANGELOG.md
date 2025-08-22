@@ -1,4 +1,3 @@
-
 # Change Log
 
 All notable changes to this project will be documented in this file.
@@ -8,9 +7,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
-### Changed
+### Added
+- `--use-mirrors` parameter to support alternative repository URLs for source code fetching
+- Support for reference mapping for mirror declarations
+- `--no-github-sbom-strategy` parameter to skip the GitHub SBOM strategy
 
-- The PyPI strategy now covers more cases.
+### Changed
+- Improved PyPI strategy metadata extraction
+- Improved error handling for repository access issues
+- Enhanced logging for better debugging
+- Better handling of GitHub API rate limits
+
+### Fixed
+- Fixed issues with PyPI metadata extraction for packages with missing information explicitly declared
+- Improved error handling for non-existent repositories
+
 
 ## [0.4.0-beta] - 2025-04-10
 

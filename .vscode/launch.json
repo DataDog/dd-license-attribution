@@ -8,14 +8,14 @@
             "name": "Python Debugger: dd-license-attribution",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/src/dd_license_attribution/cli/dd_license_attribution.py",
+            "program": "${workspaceFolder}/src/dd_license_attribution/cli/main_cli.py",
             "console": "integratedTerminal",
             "args": [
                 // "--only-transitive-dependencies",
                 // "--only-root-project",
                 "--cache-dir=/tmp/ospo-tools-tests/cache_test",
                 "--cache-ttl=1700000",
-                "https://github.com/DataDog/inject-browser-sdk",
+                "https://github.com/DataDog/dd-license-attribution",
             ],
             "env": {
                 // Set the GITHUB_TOKEN environment variable before opening vscode.

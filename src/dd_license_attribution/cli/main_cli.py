@@ -30,6 +30,7 @@ from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
     UnauthorizedRepository,
 )
+from dd_license_attribution.config import JsonConfigParser
 from dd_license_attribution.metadata_collector import MetadataCollector
 from dd_license_attribution.metadata_collector.license_checker import LicenseChecker
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
@@ -44,6 +45,9 @@ from dd_license_attribution.metadata_collector.strategies.github_sbom_collection
 )
 from dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy import (
     GoPkgMetadataCollectionStrategy,
+)
+from dd_license_attribution.metadata_collector.strategies.npm_collection_strategy import (
+    NpmMetadataCollectionStrategy,
 )
 from dd_license_attribution.metadata_collector.strategies.override_strategy import (
     OverrideCollectionStrategy,
@@ -180,7 +184,10 @@ github_token_callback = github_token_conditional_group()
 @app.command()
 def main(
     package: Annotated[
-        str, typer.Argument(help="The package to generate the report for.")
+        str,
+        typer.Argument(
+            help="The package to analyze. This has to be a GitHub repository URL."
+        ),
     ],
     deep_scanning: Annotated[
         bool,
@@ -224,11 +231,35 @@ def main(
             rich_help_panel="Scanning Options",
         ),
     ] = False,
+    skip_github_sbom: Annotated[
+        bool,
+        typer.Option(
+            "--no-github-sbom-strategy",
+            help="Skip the GitHub SBOM collection strategy.",
+            rich_help_panel="Scanning Options",
+        ),
+    ] = False,
+    skip_npm: Annotated[
+        bool,
+        typer.Option(
+            "--no-npm-strategy",
+            help="Skip the NPM collection strategy.",
+            rich_help_panel="Scanning Options",
+        ),
+    ] = False,
+    skip_scancode: Annotated[
+        bool,
+        typer.Option(
+            "--no-scancode-strategy",
+            help="Skip the ScanCodeToolkit collection strategy.",
+            rich_help_panel="Scanning Options",
+        ),
+    ] = False,
     cache_dir: Annotated[
         str | None,
         typer.Option(
             "--cache-dir",
-            help="A directory to save artifacts, as cloned repositories, to reuse between runs. By default, nothing is reused and a new temp directory is created per run.",
+            help="Directory to store cached artifacts. If not provided, a temporary directory will be used.",
             rich_help_panel="Cache Configuration",
             callback=cache_validation_callback,
         ),
@@ -246,7 +277,7 @@ def main(
         int | None,
         typer.Option(
             "--cache-ttl",
-            help="The time in seconds to keep the cache. Default is 86400 seconds (1 day).",
+            help="Time to live for cached artifacts in seconds. Default is 86400 (24 hours).",
             rich_help_panel="Cache Configuration",
             callback=cache_validation_callback,
         ),
@@ -293,6 +324,12 @@ def main(
             rich_help_panel="Logging Options",
         ),
     ] = "INFO",
+    use_mirrors: Annotated[
+        str | None,
+        typer.Option(
+            help="Path to a JSON file containing mirror specifications for repositories."
+        ),
+    ] = None,
 ) -> None:
     """
     Generate a CSV report of third party dependencies for a given open source repository.
@@ -320,6 +357,7 @@ def main(
         "GitHubSbomMetadataCollectionStrategy": True,
         "GoPkgsMetadataCollectionStrategy": True,
         "PythonPipMetadataCollectionStrategy": True,
+        "NpmMetadataCollectionStrategy": True,
         "ScanCodeToolkitMetadataCollectionStrategy": True,
         "GitHubRepositoryMetadataCollectionStrategy": True,
     }
@@ -331,6 +369,15 @@ def main(
         cache_dir = temp_dir.name
     else:
         temp_dir = None
+
+    # Load mirror configurations if provided
+    mirrors = None
+    if use_mirrors:
+        try:
+            mirrors = JsonConfigParser.load_mirror_configs(use_mirrors)
+        except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
+            logging.error(str(e))
+            sys.exit(1)
 
     if debug:
         debug_info = json.loads(debug)
@@ -357,6 +404,15 @@ def main(
     if skip_gopkg:
         enabled_strategies["GoPkgsMetadataCollectionStrategy"] = False
 
+    if skip_github_sbom:
+        enabled_strategies["GitHubSbomMetadataCollectionStrategy"] = False
+
+    if skip_npm:
+        enabled_strategies["NpmMetadataCollectionStrategy"] = False
+
+    if skip_scancode:
+        enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"] = False
+
     if not github_token:
         github_client = GitHub()
     else:
@@ -370,7 +426,7 @@ def main(
         )
 
     try:
-        source_code_manager = SourceCodeManager(cache_dir, cache_ttl)
+        source_code_manager = SourceCodeManager(cache_dir, cache_ttl, mirrors)
     except ValueError as e:
         logging.error(str(e))
         sys.exit(1)
@@ -386,6 +442,15 @@ def main(
         strategies.append(
             PypiMetadataCollectionStrategy(
                 package, source_code_manager, python_env_manager, project_scope
+            )
+        )
+
+    if enabled_strategies["NpmMetadataCollectionStrategy"]:
+        strategies.append(
+            NpmMetadataCollectionStrategy(
+                package,
+                source_code_manager,
+                project_scope,
             )
         )
 
@@ -409,26 +474,16 @@ def main(
     override_strategy = None
     if override_spec:
         try:
-            with open(override_spec, "r") as file:
-                override_rules_json = json.load(file)
-                override_rules = OverrideCollectionStrategy.json_to_override_rules(
-                    override_rules_json
-                )
-                # interleave the override rules between all the elements of strategies
-                # this is done to make sure that the override rules are applied to all
-                # dependencies as soon as they are added to the closure and prevent
-                # failures of fetching non available data
-                override_strategy = OverrideCollectionStrategy(override_rules)
-                for i in range(len(strategies) - 1, -1, -1):
-                    strategies.insert(i, override_strategy)
-        except FileNotFoundError:
-            logging.error(f"Override spec file not found: {override_spec}")
-            sys.exit(1)
-        except json.JSONDecodeError:
-            logging.error(f"Invalid JSON in override spec file: {override_spec}")
-            sys.exit(1)
-        except Exception as e:
-            logging.error(f"Error reading override spec file: {e}")
+            override_rules = JsonConfigParser.load_override_configs(override_spec)
+            # interleave the override rules between all the elements of strategies
+            # this is done to make sure that the override rules are applied to all
+            # dependencies as soon as they are added to the closure and prevent
+            # failures of fetching non available data
+            override_strategy = OverrideCollectionStrategy(override_rules)
+            for i in range(len(strategies) - 1, -1, -1):
+                strategies.insert(i, override_strategy)
+        except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
+            logging.error(str(e))
             sys.exit(1)
 
     metadata_collector = MetadataCollector(strategies)

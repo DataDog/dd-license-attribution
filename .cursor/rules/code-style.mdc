@@ -1,0 +1,469 @@
+---
+description: This rule sets the general code style to use in dd-license-attribution
+globs:
+alwaysApply: false
+---
+
+## Typing Coverage Must Be Maintained at 100%
+
+**CRITICAL**: This project maintains 100% typing coverage validated by MyPy in CI. Any reduction in typing coverage will block CI/CD pipelines.
+
+### Mandatory Typing Requirements
+
+1. **All functions must have complete type annotations**:
+   ```python
+   # ✅ Correct
+   def process_data(data: List[str], config: Dict[str, Any]) -> Optional[ProcessedResult]:
+       pass
+   
+   # ❌ Incorrect - missing return type
+   def process_data(data: List[str], config: Dict[str, Any]):
+       pass
+   ```
+
+2. **All variables must have explicit type annotations when not obvious**:
+   ```python
+   # ✅ Correct
+   result: Optional[str] = None
+   items: List[Dict[str, Any]] = []
+   
+   # ✅ Also correct - type is obvious from assignment
+   name = "example"
+   count = 42
+   ```
+
+3. **Use proper generic types**:
+   ```python
+   # ✅ Correct
+   from typing import Dict, List, Optional, Union, Any
+   
+   def handle_data(data: Union[str, bytes]) -> Dict[str, Any]:
+       pass
+   
+   # ❌ Incorrect - avoid bare types
+   def handle_data(data) -> dict:
+       pass
+   ```
+
+4. **Class attributes must be typed**:
+   ```python
+   # ✅ Correct
+   class DataProcessor:
+       def __init__(self, config: Dict[str, Any]) -> None:
+           self.config: Dict[str, Any] = config
+           self.cache: Dict[str, Any] = {}
+   
+   # ❌ Incorrect
+   class DataProcessor:
+       def __init__(self, config):
+           self.config = config  # No type annotation
+   ```
+
+5. **Use Protocol classes for structural typing**:
+   ```python
+   # ✅ Correct
+   from typing import Protocol
+   
+   class DataHandler(Protocol):
+       def process(self, data: str) -> str: ...
+   
+   def use_handler(handler: DataHandler) -> None:
+       pass
+   ```
+
+6. **Handle Optional types properly**:
+   ```python
+   # ✅ Correct
+   def process_optional(value: Optional[str]) -> str:
+       if value is None:
+           return "default"
+       return value.upper()
+   
+   # ❌ Incorrect - potential None access
+   def process_optional(value: Optional[str]) -> str:
+       return value.upper()  # Could fail if value is None
+   ```
+
+### MyPy Configuration Requirements
+
+- All new code must pass MyPy strict mode
+- Use `# type: ignore` comments only when absolutely necessary and document why
+- Prefer `# type: ignore[error-code]` over blanket ignores
+- Run MyPy locally before committing: `mypy src/ tests/`
+
+### Common Typing Patterns
+
+1. **Async functions**:
+   ```python
+   async def fetch_data(url: str) -> Dict[str, Any]:
+       pass
+   ```
+
+2. **Class methods**:
+   ```python
+   class MyClass:
+       def instance_method(self, param: str) -> int:
+           pass
+       
+       @classmethod
+       def class_method(cls, param: str) -> "MyClass":
+           pass
+       
+       @staticmethod
+       def static_method(param: str) -> bool:
+           pass
+   ```
+
+3. **Type aliases for complex types**:
+   ```python
+   from typing import TypeAlias
+   
+   ConfigDict: TypeAlias = Dict[str, Union[str, int, bool]]
+   ResultList: TypeAlias = List[Dict[str, Any]]
+   ```
+
+## OS Operations Must Use Adaptors
+
+**CRITICAL**: Never use OS operations directly in `src/` code. Always use adaptors for better testability and maintainability.
+
+### OS Adaptor Requirements
+
+1. **Use existing adaptors in `src/dd_license_attribution/adaptors/`**:
+   ```python
+   # ✅ Correct
+   from dd_license_attribution.adaptors.os import OSAdaptor
+   
+   class FileProcessor:
+       def __init__(self, os_adaptor: OSAdaptor) -> None:
+           self.os_adaptor = os_adaptor
+       
+       def process_file(self, path: str) -> str:
+           if self.os_adaptor.path_exists(path):
+               return self.os_adaptor.read_file(path)
+           return ""
+   
+   # ❌ Incorrect - direct OS usage
+   import os
+   
+   class FileProcessor:
+       def process_file(self, path: str) -> str:
+           if os.path.exists(path):  # Direct OS usage
+               with open(path) as f:  # Direct OS usage
+                   return f.read()
+           return ""
+   ```
+
+2. **Create new adaptors when needed**:
+   ```python
+   # ✅ Correct - new adaptor
+   from abc import ABC, abstractmethod
+   from typing import Protocol
+   
+   class NetworkAdaptor(Protocol):
+       def make_request(self, url: str) -> str: ...
+   
+   class RealNetworkAdaptor:
+       def make_request(self, url: str) -> str:
+           import requests
+           return requests.get(url).text
+   
+   class MockNetworkAdaptor:
+       def make_request(self, url: str) -> str:
+           return "mocked_response"
+   ```
+
+3. **Easy mocking pattern**:
+   ```python
+   # ✅ Correct - easy to mock
+   class Service:
+       def __init__(self) -> None:
+           self.os_adaptor = OSAdaptor()
+           self.network_adaptor = NetworkAdaptor()
+   
+   # Easy to mock in tests
+   with patch('dd_license_attribution.adaptors.os.OSAdaptor') as mock_os:
+       mock_os.return_value.read_file.return_value = "test content"
+       service = Service()
+       result = service.process_file("test.txt")
+   ```
+
+### Forbidden Direct Imports in `src/`
+
+- ❌ `import os`
+- ❌ `import sys`
+- ❌ `import subprocess`
+- ❌ `import pathlib` (use adaptors instead)
+- ❌ `import shutil` (use adaptors instead)
+- ❌ `import tempfile` (use adaptors instead)
+
+## Contract Tests for External Libraries
+
+**REQUIRED**: All external library integrations must have contract tests to ensure compatibility and prevent breaking changes.
+
+### Contract Test Requirements
+
+**Test external API contracts**:
+   ```python
+   # tests/contract/test_github_api.py
+   class TestGitHubAPIContract:
+       def test_repository_endpoint_structure(self) -> None:
+           """Ensure GitHub API returns expected structure."""
+           # Mock or real API call
+           response = github_api.get_repository("owner/repo")
+           assert "name" in response
+           assert "full_name" in response
+           assert isinstance(response["name"], str)
+   ```
+
+### Contract Test Best Practices
+
+- Test against the **real external library** to validate assumptions
+- Focus on **actual usage patterns** from your codebase
+- Test **real API calls** and **data structures** returned
+- Validate that **your specific usage** still works after library updates
+- Use **rate limiting** for external API calls to avoid hitting limits
+- Document **breaking changes** when they occur in external libraries
+- Test **version compatibility** by running against pinned versions
+
+## Unit Test Coverage Must Be Above 95%
+
+**CRITICAL**: Unit test coverage must never fall below 95%. CI will block any PR that reduces coverage.
+
+### Test Coverage Requirements
+
+1. **Coverage targets by module type**:
+   - **Core business logic**: 100% line coverage, 90% branch coverage
+   - **Adaptors**: Not tested (simple wrappers with side effects)
+   - **CLI interfaces**: 100% line coverage, 85% branch coverage (user interaction parts)
+   - **Configuration**: Not unit tested (tested in integration tests to validate default parameters)
+
+2. **Coverage measurement**:
+   ```bash
+   # Run coverage locally with detailed reporting
+   pytest --cov=src/dd_license_attribution --cov-report=html --cov-report=term-missing --cov-report=term-missing:skip-covered
+   
+   # Ensure 95% line coverage
+   pytest --cov=src/dd_license_attribution --cov-fail-under=95
+   
+   # Check branch coverage separately (should be above 90% overall)
+   pytest --cov=src/dd_license_attribution --cov-branch --cov-report=term-missing
+   ```
+
+3. **Test structure requirements**:
+   ```python
+   # tests/unit/test_example.py
+   import pytest
+   from unittest.mock import Mock, patch
+   from dd_license_attribution.example import ExampleClass
+   
+   class TestExampleClass:
+       def setup_method(self) -> None:
+           """Setup test fixtures."""
+           self.os_adaptor = Mock()
+           self.example = ExampleClass(self.os_adaptor)
+       
+       def test_success_case(self) -> None:
+           """Test normal operation."""
+           self.os_adaptor.read_file.return_value = "test content"
+           result = self.example.process_file("test.txt")
+           assert result == "processed: test content"
+       
+       def test_error_handling(self) -> None:
+           """Test error scenarios."""
+           self.os_adaptor.read_file.side_effect = FileNotFoundError()
+           with pytest.raises(FileNotFoundError):
+               self.example.process_file("nonexistent.txt")
+       
+       def test_edge_cases(self) -> None:
+           """Test boundary conditions."""
+           self.os_adaptor.read_file.return_value = ""
+           result = self.example.process_file("empty.txt")
+           assert result == "processed: "
+   ```
+
+### Test Quality Requirements
+
+**Note**: Configuration modules that only provide default parameters are tested in integration tests, not unit tests, to ensure default parameters work correctly in real usage scenarios.
+
+1. **Use descriptive test names**:
+   ```python
+   # ✅ Good
+   def test_process_file_returns_processed_content_when_file_exists(self) -> None:
+   
+   # ❌ Bad
+   def test_process_file(self) -> None:
+   ```
+
+2. **Test both success and failure cases**:
+   ```python
+   def test_success_scenario(self) -> None:
+       # Test normal operation
+       pass
+   
+   def test_failure_scenario(self) -> None:
+       # Test error handling
+       pass
+   
+   def test_edge_cases(self) -> None:
+       # Test boundary conditions
+       pass
+   ```
+
+3. **Use proper mocking**:
+   ```python
+   # ✅ Correct - mock adaptors
+   @patch('dd_license_attribution.adaptors.os.OSAdaptor')
+   def test_with_mocked_adaptor(self, mock_adaptor: Mock) -> None:
+       mock_adaptor.return_value.read_file.return_value = "test"
+       # Test implementation
+   
+   # ❌ Incorrect - mock internal implementation
+   @patch('dd_license_attribution.example.ExampleClass._internal_method')
+   def test_with_mocked_internal(self, mock_internal: Mock) -> None:
+       # Don't mock internal implementation details
+   ```
+
+### Pre-commit Checklist
+
+All code must be able to pass the following tests. Test these things before making your code suggestions:
+- [ ] Run `mypy src/ tests/` and ensure no errors
+- [ ] Verify all new functions have complete type annotations
+- [ ] Check that all variables have appropriate type hints
+- [ ] Ensure no `# type: ignore` comments were added without justification
+- [ ] Verify no direct OS imports in `src/` code
+- [ ] Create contract tests for any new external library usage
+- [ ] Run `pytest --cov=src/dd_license_attribution --cov-fail-under=95`
+- [ ] Ensure all new code has corresponding unit tests
+- [ ] Update CHANGELOG.md with any user-facing changes
+- [ ] Run `isort --check-only src/ tests/` and `black --check src/ tests/`
+- [ ] Test that CI MyPy check passes
+- [ ] Test that CI coverage check passes
+- [ ] Test that CI formatting check passes
+
+### Exceptions and Edge Cases
+
+- Use `Any` sparingly and only when the type truly cannot be determined
+- Use `Type1 | Type2` for union of multiple possible types
+- Use `Literal` for string/enum-like values: `Literal["option1", "option2"]`
+- Use `TypedDict` for dictionary structures with known keys
+- **OS exceptions**: Only allowed in adaptor implementations themselves
+- **Coverage exceptions**: Must be documented and approved by team lead
+
+## Code Formatting Requirements
+
+**CRITICAL**: All code must be formatted using isort and black. CI will block any PR that doesn't comply with these formatting standards.
+
+### Formatting Tools
+
+1. **isort**: Organizes imports automatically
+   ```bash
+   # Format imports
+   isort src/ tests/
+   
+   # Check if imports are properly sorted
+   isort --check-only src/ tests/
+   ```
+
+2. **black**: Formats Python code automatically
+   ```bash
+   # Format code
+   black src/ tests/
+   
+   # Check if code is properly formatted
+   black --check src/ tests/
+   ```
+
+3. **Pre-commit formatting**:
+   ```bash
+   # Format all code before committing
+   isort src/ tests/ && black src/ tests/
+   ```
+
+### Formatting Standards
+
+- **Import organization**: isort groups and sorts imports automatically
+- **Code style**: black enforces consistent formatting (line length, spacing, etc.)
+- **No manual formatting**: Let the tools handle all formatting decisions
+- **CI enforcement**: Both tools run in CI and will block PRs if code isn't formatted
+
+### IDE Integration
+
+Configure your IDE to run isort and black on save:
+- **VS Code**: Install Python extension and configure auto-formatting
+- **PyCharm**: Enable isort and black in external tools
+- **Cursor**: Should automatically apply formatting rules
+
+## CHANGELOG Requirements
+
+**REQUIRED**: The CHANGELOG.md file must be kept updated with all changes. Follow the Keep a Changelog standard.
+
+### CHANGELOG Standards
+
+Follow the [Keep a Changelog](https://keepachangelog.com/) format:
+
+```markdown
+# Changelog
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+## [1.0.0] - 2024-01-15
+
+### Added
+- New feature for license attribution
+- Support for GitHub repositories
+
+### Changed
+- Updated dependency versions
+- Improved error handling
+
+### Deprecated
+- Old configuration format (will be removed in 2.0.0)
+
+### Removed
+- Deprecated API endpoints
+
+### Fixed
+- Bug in license detection
+- Memory leak in large repositories
+
+### Security
+- Updated vulnerable dependencies
+```
+
+### CHANGELOG Requirements
+
+1. **Document only user-relevant changes**:
+   - **Include**: New features, bug fixes, breaking changes, security updates
+   - **Exclude**: Internal refactoring, code style changes, test improvements, documentation updates
+   - Focus on **what users will notice**, not implementation details
+
+2. **Use clear, descriptive language**:
+   ```markdown
+   # ✅ Good - User-relevant
+   - Added support for Python 3.12
+   - Fixed memory leak when processing large repositories
+   - Improved error messages for invalid license files
+
+   # ❌ Bad - Internal noise
+   - Refactored internal data structures
+   - Updated test coverage to 95%
+   - Fixed typo in comments
+   - Improved code formatting
+   ```
+
+3. **Link to issues and PRs** when relevant:
+   ```markdown
+   - Fixed license detection bug (#123)
+   - Added GitHub integration (PR #456)
+   ```
+
+4. **Keep Unreleased section updated**:
+   - Add changes to `## [Unreleased]` section
+   - Move to versioned section when releasing
+
+Remember: **Type safety, OS abstraction, comprehensive testing, proper formatting, and changelog maintenance are not optional in this project. Every line of code must be properly typed, use adaptors for OS operations, be thoroughly tested, formatted with isort and black, and all changes must be documented in the CHANGELOG.**
+

@@ -172,3 +172,8 @@ cython_debug/
 
 #Apple
 .DS_Store
+
+# Cursor
+!.cursor/rules/*
+.cursor/
+

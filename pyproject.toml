@@ -23,8 +23,7 @@ dependencies = [
     "typer",
     "pytz",
     "giturlparse",
-    "requests",
-    "beautifulsoup4==4.12.3" # Not a direct dependency but needs to be pin since newer versions are broken
+    "requests"
 ]
 
 [project.optional-dependencies]
@@ -41,7 +40,7 @@ dev = [
 ]
 
 [project.scripts]
-dd-license-attribution = "dd_license_attribution.cli.dd_license_attribution:app"
+dd-license-attribution = "dd_license_attribution.cli.main_cli:app"
 
 [tool.setuptools.packages.find]
 where = ["src"]
