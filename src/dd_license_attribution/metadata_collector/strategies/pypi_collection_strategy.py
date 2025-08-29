@@ -4,6 +4,9 @@
 # Copyright 2024-present Datadog, Inc.
 
 import logging
+
+# Get application-specific logger
+logger = logging.getLogger("dd_license_attribution")
 from typing import Any, Dict, Optional
 
 import requests
@@ -52,7 +55,7 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         if dependencies is None:
             return updated_metadata
         for dependency, version in dependencies:
-            logging.debug(f"dependency: {dependency}, version: {version}")
+            logger.debug(f"dependency: {dependency}, version: {version}")
 
             # get the metadata from pypi API
             pypi_metadata = self._get_metadata_from_pypi(dependency, version)
@@ -63,8 +66,8 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
             else:
                 pypi_info = {"name": dependency}
 
-            logging.debug(f"pypi_info: {pypi_info}")
-            logging.debug(f"pypi_metadata: {pypi_metadata}")
+            logger.debug(f"pypi_info: {pypi_info}")
+            logger.debug(f"pypi_metadata: {pypi_metadata}")
 
             origin = "pypi:" + dependency
             project_urls = {}
@@ -74,7 +77,7 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
 
             for key in list(project_urls):
                 if project_urls[key] is None:
-                    logging.debug(
+                    logger.debug(
                         f"Project URL for key '{key}' is None in package {dependency}"
                     )
                     del project_urls[key]
@@ -168,10 +171,10 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         request_uri = f"https://pypi.org/pypi/{package}/{version}/json"
         response = requests.get(request_uri)
         if response.status_code == 404:
-            logging.warning(f"pypi.org is returning a 404 for {package}. Skipping.")
+            logger.warning(f"pypi.org is returning a 404 for {package}. Skipping.")
             return None
         if response.status_code == 503:
-            logging.warning(f"pypi.org is returning a 503 for{package}. Skipping.")
+            logger.warning(f"pypi.org is returning a 503 for{package}. Skipping.")
             return None
         return response.json()  # type: ignore
 

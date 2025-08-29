@@ -1,6 +1,8 @@
-# Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
+# Unless explicitly stated otherwise all files in this repository are licensed
+# under the Apache License Version 2.0.
 #
-# This product includes software developed at Datadog (https://www.datadoghq.com/).
+# This product includes software developed at Datadog
+# (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 import logging
 import sys
@@ -37,10 +39,13 @@ def setup_logging(level: int) -> None:
     console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setFormatter(formatter)
 
-    # Configure root logger
+    # Configure root logger - set to INFO to suppress third-party debug logs
     root_logger = logging.getLogger()
-    root_logger.setLevel(level)
+    root_logger.setLevel(logging.INFO if level == logging.DEBUG else level)
     root_logger.addHandler(console_handler)
+
+    app_logger = logging.getLogger("dd_license_attribution")
+    app_logger.setLevel(level)
 
     # Prevent propagation to avoid duplicate logs
     root_logger.propagate = False
