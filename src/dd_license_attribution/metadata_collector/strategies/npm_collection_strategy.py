@@ -107,6 +107,13 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         if not path_exists(package_json_path):
             return updated_metadata
 
+        package_json_data = json.loads(open_file(package_json_path))
+        if "workspaces" in package_json_data:
+            logger.warning(
+                f"Node projects using workspaces are not supported yet by the NPM collection strategy."
+            )
+            return updated_metadata
+
         # Run npm install --package-lock-only to generate package-lock.json
         try:
             output_from_command(
