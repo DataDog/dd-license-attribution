@@ -5,6 +5,9 @@
 
 import json
 import logging
+
+# Get application-specific logger
+logger = logging.getLogger("dd_license_attribution")
 from typing import Optional
 
 from dd_license_attribution.adaptors.os import open_file
@@ -106,15 +109,15 @@ class JsonConfigParser:
                 )
             return mirrors
         except FileNotFoundError:
-            logging.error(f"Mirror configuration file not found: {mirror_file_path}")
+            logger.error(f"Mirror configuration file not found: {mirror_file_path}")
             raise
         except json.JSONDecodeError:
-            logging.error(
+            logger.error(
                 f"Invalid JSON in mirror configuration file: {mirror_file_path}"
             )
             raise
         except Exception as e:
-            logging.error(f"Failed to load mirror configurations: {str(e)}")
+            logger.error(f"Failed to load mirror configurations: {str(e)}")
             raise
 
     @staticmethod
@@ -139,11 +142,11 @@ class JsonConfigParser:
             )
             return override_rules
         except FileNotFoundError:
-            logging.error(f"Override spec file not found: {override_file_path}")
+            logger.error(f"Override spec file not found: {override_file_path}")
             raise
         except json.JSONDecodeError:
-            logging.error(f"Invalid JSON in override spec file: {override_file_path}")
+            logger.error(f"Invalid JSON in override spec file: {override_file_path}")
             raise
         except Exception as e:
-            logging.error(f"Error reading override spec file: {e}")
+            logger.error(f"Error reading override spec file: {e}")
             raise

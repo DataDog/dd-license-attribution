@@ -7,6 +7,9 @@
 
 import json
 import logging
+
+# Get application-specific logger
+logger = logging.getLogger("dd_license_attribution")
 from typing import Any, Dict, List
 
 import requests
@@ -48,14 +51,14 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         all_deps: Dict[str, str] = {}
 
         if "packages" not in lock_data:
-            logging.warning("No 'packages' key found in package-lock.json.")
+            logger.warning("No 'packages' key found in package-lock.json.")
             return all_deps
 
         packages = lock_data["packages"]
         # Find the root package key
         root_key = "" if "" in packages else "./" if "./" in packages else None
         if root_key is None:
-            logging.warning(
+            logger.warning(
                 "A root package wasn't found. Collecting NodeJS dependencies from none NodeJS projects is not supported yet."
             )
             return all_deps
@@ -111,17 +114,17 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 "npm install --package-lock-only --force; cd $CWD"
             )
         except Exception as e:
-            logging.warning(f"Failed to run npm install for {self.top_package}: {e}")
+            logger.warning(f"Failed to run npm install for {self.top_package}: {e}")
             return updated_metadata
         lock_path = path_join(project_path, "package-lock.json")
         lock_data = {}
         if not path_exists(lock_path):
-            logging.warning(f"No package-lock.json found in {project_path}")
+            logger.warning(f"No package-lock.json found in {project_path}")
             return updated_metadata
         try:
             lock_data = json.loads(open_file(lock_path))
         except Exception as e:
-            logging.warning(f"Failed to read package-lock.json: {e}")
+            logger.warning(f"Failed to read package-lock.json: {e}")
             return updated_metadata
 
         all_deps = self._extract_all_dependencies(lock_data)
@@ -173,12 +176,12 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     ):
                         homepage_url = pkg_data["homepage"]
                 else:
-                    logging.warning(
+                    logger.warning(
                         f"Failed to fetch npm registry metadata for "
                         f"{dep_name}@{version}: {resp.status_code}, {resp.text}"
                     )
             except Exception as e:
-                logging.warning(
+                logger.warning(
                     f"Failed to fetch npm registry metadata for "
                     f"{dep_name}@{version}: {e}"
                 )

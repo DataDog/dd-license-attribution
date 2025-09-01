@@ -4,6 +4,9 @@
 # Copyright 2024-present Datadog, Inc.
 
 import logging
+
+# Get application-specific logger
+logger = logging.getLogger("dd_license_attribution")
 import warnings
 
 # Suppress the libmagic warning from typecode
@@ -82,7 +85,7 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                         or not path_exists(source_code_reference.local_root_path)
                     )
                 ):
-                    logging.warning(
+                    logger.warning(
                         f"{source_code_reference.local_full_path} does not exist, skipping. "
                         f"This may be due to the package manager not providing the correct source code location on {package.local_src_path}."
                     )

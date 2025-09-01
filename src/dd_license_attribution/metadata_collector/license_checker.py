@@ -4,6 +4,9 @@
 # Copyright 2024-present Datadog, Inc.
 
 import logging
+
+# Get application-specific logger
+logger = logging.getLogger("dd_license_attribution")
 from typing import List
 
 from dd_license_attribution.metadata_collector.metadata import Metadata
@@ -25,7 +28,7 @@ class LicenseChecker:
                     msg = "Package {} has a license ({}) that is in the list of cautionary licenses. Double check that the license is compatible with your project.".format(
                         metadata.name, license_text
                     )
-                    logging.warning(msg)
+                    logger.warning(msg)
 
     def _is_cautionary_license(self, license_text: str) -> bool:
         license_text_upper = license_text.upper()
