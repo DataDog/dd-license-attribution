@@ -36,6 +36,7 @@ def create_source_code_manager_mock() -> mock.Mock:
 def setup_npm_strategy_mocks(
     mocker: pytest_mock.MockFixture,
     package_lock: dict[str, Any],
+    package_json: dict[str, Any],
     requests_responses: list[mock.Mock],
 ) -> tuple[mock.Mock, mock.Mock, mock.Mock, mock.Mock, mock.Mock]:
     """Setup common mocks for npm collection strategy tests."""
@@ -46,6 +47,8 @@ def setup_npm_strategy_mocks(
     def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
         if "package-lock.json" in path:
             return json.dumps(package_lock)
+        elif "package.json" in path:
+            return json.dumps(package_json)
         raise FileNotFoundError
 
     def fake_path_join(*args: Any) -> str:
@@ -117,6 +120,7 @@ def test_npm_collection_strategy_is_bypassed_if_only_root_project(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {}
     package_lock: dict[str, Any] = {
         "packages": {
             "": {"dependencies": {}},
@@ -129,7 +133,7 @@ def test_npm_collection_strategy_is_bypassed_if_only_root_project(
         mock_open,
         mock_output_from_command,
         mock_requests,
-    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ONLY_ROOT_PROJECT
@@ -151,7 +155,7 @@ def test_npm_collection_strategy_is_bypassed_if_only_root_project(
     )
     assert mock_exists.call_count == 2
     assert mock_path_join.call_count == 2
-    mock_open.assert_called_once()
+    assert mock_open.call_count == 2
     mock_requests.assert_not_called()
 
 
@@ -159,6 +163,7 @@ def test_npm_collection_strategy_adds_npm_metadata(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {}
     package_lock: dict[str, Any] = {
         "packages": {
             "": {"dependencies": {"dep1": "1.0.0", "dep2": "2.0.0"}},
@@ -180,7 +185,7 @@ def test_npm_collection_strategy_adds_npm_metadata(
         mock_open,
         mock_output_from_command,
         mock_requests,
-    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -228,7 +233,7 @@ def test_npm_collection_strategy_adds_npm_metadata(
     )
     assert mock_exists.call_count == 2
     assert mock_path_join.call_count == 2
-    mock_open.assert_called_once()
+    assert mock_open.call_count == 2
     assert mock_requests.call_count == 2
 
 
@@ -236,6 +241,7 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {}
     package_lock: dict[str, Any] = {
         "packages": {
             "": {"dependencies": {"dep1": "1.0.0"}},
@@ -272,7 +278,7 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
         mock_open,
         mock_output_from_command,
         mock_requests,
-    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -337,7 +343,7 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
     )
     assert mock_exists.call_count == 2
     assert mock_path_join.call_count == 2
-    mock_open.assert_called_once()
+    assert mock_open.call_count == 2
     assert mock_requests.call_count == 4
 
 
@@ -345,6 +351,7 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {}
     package_lock = {
         "packages": {
             "": {"dependencies": {"dep1": "1.0.0"}},
@@ -362,7 +369,7 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
         mock_open,
         mock_output_from_command,
         mock_requests,
-    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
@@ -402,7 +409,7 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
     )
     assert mock_exists.call_count == 2
     assert mock_path_join.call_count == 2
-    mock_open.assert_called_once()
+    assert mock_open.call_count == 2
     assert mock_requests.call_count == 1
 
 
@@ -410,6 +417,7 @@ def test_npm_collection_strategy_handles_missing_packages_key(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {}
     package_lock: dict[str, Any] = {
         "dependencies": {
             "dep1": {"version": "1.0.0", "resolved": "https://npmjs.com/dep1"},
@@ -424,7 +432,7 @@ def test_npm_collection_strategy_handles_missing_packages_key(
         mock_open,
         mock_output_from_command,
         mock_requests,
-    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -446,7 +454,7 @@ def test_npm_collection_strategy_handles_missing_packages_key(
     )
     assert mock_exists.call_count == 2
     assert mock_path_join.call_count == 2
-    mock_open.assert_called_once()
+    assert mock_open.call_count == 2
     mock_requests.assert_not_called()
     assert result == initial_metadata
 
@@ -455,6 +463,7 @@ def test_npm_collection_strategy_handles_missing_root_package(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {}
     package_lock: dict[str, Any] = {
         "packages": {"node_modules/dep1": {"version": "1.0.0", "dependencies": {}}}
     }
@@ -467,7 +476,7 @@ def test_npm_collection_strategy_handles_missing_root_package(
         mock_open,
         mock_output_from_command,
         mock_requests,
-    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -490,7 +499,7 @@ def test_npm_collection_strategy_handles_missing_root_package(
     )
     assert mock_exists.call_count == 2
     assert mock_path_join.call_count == 2
-    mock_open.assert_called_once()
+    assert mock_open.call_count == 2
     mock_requests.assert_not_called()
 
 
@@ -498,6 +507,7 @@ def test_npm_collection_strategy_handles_registry_api_failures(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {}
     package_lock = {
         "packages": {
             "": {"dependencies": {"dep1": "1.0.0", "dep2": "2.0.0"}},
@@ -519,7 +529,7 @@ def test_npm_collection_strategy_handles_registry_api_failures(
         mock_open,
         mock_output_from_command,
         mock_requests,
-    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -550,7 +560,7 @@ def test_npm_collection_strategy_handles_registry_api_failures(
     )
     assert mock_exists.call_count == 2
     assert mock_path_join.call_count == 2
-    mock_open.assert_called_once()
+    assert mock_open.call_count == 2
     assert mock_requests.call_count == 2
 
 
@@ -559,13 +569,13 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
     caplog: LogCaptureFixture,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {}
     package_lock = {
         "packages": {
             "": {"dependencies": {"dep1": "1.0.0"}},
             "node_modules/dep1": {"version": "1.0.0", "dependencies": {}},
         }
     }
-
     requests_responses = [mock.Mock(status_code=404, text="Not Found")]
 
     (
@@ -574,7 +584,7 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
         mock_open,
         mock_output_from_command,
         mock_requests,
-    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -609,7 +619,7 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
     )
     assert mock_exists.call_count == 2
     assert mock_path_join.call_count == 2
-    mock_open.assert_called_once()
+    assert mock_open.call_count == 2
     assert mock_requests.call_count == 1
 
 
@@ -618,18 +628,20 @@ def test_npm_collection_strategy_handles_npm_install_failure(
     caplog: LogCaptureFixture,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {"name": "test-project", "version": "1.0.0"}
+    package_lock: dict[str, Any] = {}
+    requests_responses: list[mock.Mock] = []
 
-    mock_exists = mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.path_exists",
-        return_value=True,
-    )
-    # Mock output_from_command to raise an exception
-    mock_output_from_command = mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies."
-        "npm_collection_strategy.output_from_command",
-        side_effect=Exception("npm not found"),
-    )
+    (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_requests,
+    ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
+
+    # Override output_from_command to raise an exception
+    mock_output_from_command.side_effect = Exception("npm not found")
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -652,10 +664,13 @@ def test_npm_collection_strategy_handles_npm_install_failure(
     assert any(expected_warning in record.message for record in caplog.records)
 
     assert result == initial_metadata
-    mock_exists.assert_called_once()
     mock_output_from_command.assert_called_once_with(
         "CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
+    mock_exists.assert_called_once()
+    mock_path_join.assert_called_once_with("cache_dir/org_package1", "package.json")
+    mock_open.assert_called_once()
+    mock_requests.assert_not_called()
 
 
 def test_npm_collection_strategy_no_package_json(
@@ -664,6 +679,7 @@ def test_npm_collection_strategy_no_package_json(
     """Test that strategy returns original metadata when package.json is not found."""
     source_code_manager_mock = create_source_code_manager_mock()
     package_lock: dict[str, Any] = {}
+    package_json: dict[str, Any] = {}
     requests_responses: list[mock.Mock] = []
 
     def fake_exists(path: str) -> bool:
@@ -675,7 +691,7 @@ def test_npm_collection_strategy_no_package_json(
         mock_open,
         mock_output_from_command,
         mock_requests,
-    ) = setup_npm_strategy_mocks(mocker, package_lock, requests_responses)
+    ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
 
     mock_exists.side_effect = fake_exists
 
@@ -700,4 +716,60 @@ def test_npm_collection_strategy_no_package_json(
     mock_exists.assert_called_once()
     mock_output_from_command.assert_not_called()
     mock_open.assert_not_called()
+    mock_requests.assert_not_called()
+
+
+def test_npm_collection_strategy_handles_workspaces(
+    mocker: pytest_mock.MockFixture,
+    caplog: LogCaptureFixture,
+) -> None:
+    """Test strategy handles workspaces with warning and unchanged metadata."""
+    source_code_manager_mock = create_source_code_manager_mock()
+
+    package_json: dict[str, Any] = {
+        "name": "test-workspace-project",
+        "version": "1.0.0",
+        "workspaces": ["packages/*", "apps/*"],
+    }
+
+    package_lock: dict[str, Any] = {}
+    requests_responses: list[mock.Mock] = []
+
+    (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_requests,
+    ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        result = strategy.augment_metadata(initial_metadata)
+
+    # Verify warning is logged
+    expected_warning = "Node projects using workspaces are not supported yet by the NPM collection strategy."
+    assert any(expected_warning in record.message for record in caplog.records)
+
+    # Verify original metadata is returned unchanged
+    assert result == initial_metadata
+
+    # Verify early return - npm install should not be called
+    mock_exists.assert_called_once()
+    mock_path_join.assert_called_once_with("cache_dir/org_package1", "package.json")
+    mock_open.assert_called_once()
+    mock_output_from_command.assert_not_called()
     mock_requests.assert_not_called()
