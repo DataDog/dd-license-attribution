@@ -150,12 +150,10 @@ def test_npm_collection_strategy_is_bypassed_if_only_root_project(
     ]
     result = strategy.augment_metadata(initial_metadata)
     assert result == initial_metadata
-    mock_output_from_command.assert_called_once_with(
-        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
-    )
-    assert mock_exists.call_count == 2
-    assert mock_path_join.call_count == 2
-    assert mock_open.call_count == 2
+    mock_output_from_command.assert_not_called()
+    assert mock_exists.call_count == 1
+    assert mock_path_join.call_count == 1
+    assert mock_open.call_count == 1
     mock_requests.assert_not_called()
 
 
