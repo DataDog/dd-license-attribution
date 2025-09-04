@@ -150,12 +150,10 @@ def test_npm_collection_strategy_is_bypassed_if_only_root_project(
     ]
     result = strategy.augment_metadata(initial_metadata)
     assert result == initial_metadata
-    mock_output_from_command.assert_called_once_with(
-        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
-    )
-    assert mock_exists.call_count == 2
-    assert mock_path_join.call_count == 2
-    assert mock_open.call_count == 2
+    mock_output_from_command.assert_not_called()
+    assert mock_exists.call_count == 1
+    assert mock_path_join.call_count == 1
+    assert mock_open.call_count == 1
     mock_requests.assert_not_called()
 
 
@@ -773,3 +771,82 @@ def test_npm_collection_strategy_handles_workspaces(
     mock_open.assert_called_once()
     mock_output_from_command.assert_not_called()
     mock_requests.assert_not_called()
+
+
+def test_clean_version_string() -> None:
+    """Test _clean_version_string with various version string formats."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    test_cases = {
+        # Basic prefix removals
+        "^1.2.3": "1.2.3",
+        "~1.2.3": "1.2.3",
+        ">1.2.3": "1.2.3",
+        ">=1.2.3": "1.2.3",
+        # Plain version unchanged
+        "1.2.3": "1.2.3",
+        # Empty string
+        "": "",
+        # Pre-release versions
+        "^1.2.3-alpha.1": "1.2.3-alpha.1",
+        "~2.0.0-beta": "2.0.0-beta",
+        # Build metadata
+        ">=1.0.0+build.1": "1.0.0+build.1",
+        # Edge cases with only prefixes
+        "^": "",
+        "~": "",
+        ">": "",
+        ">=": "",
+        # Priority test - >= should be handled first, not just >
+        ">=1.0.0": "1.0.0",
+    }
+
+    for input_version, expected_output in test_cases.items():
+        result = strategy._clean_version_string(input_version)
+        assert (
+            result == expected_output
+        ), f"Failed for '{input_version}': expected '{expected_output}', got '{result}'"
+
+
+def test_extract_copyright_from_pkg_data() -> None:
+    """Test _extract_copyright_from_pkg_data with various author formats."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    test_cases = {
+        # Author as string
+        '{"author": "John Doe"}': ["John Doe"],
+        '{"author": "Jane Smith <jane@example.com>"}': [
+            "Jane Smith <jane@example.com>"
+        ],
+        # Author as dict with name
+        '{"author": {"name": "Alice Cooper"}}': ["Alice Cooper"],
+        '{"author": {"name": "Bob Wilson", "email": "bob@example.com"}}': [
+            "Bob Wilson"
+        ],
+        # Missing author key
+        "{}": [],
+        '{"license": "MIT"}': [],
+        # Author is None or empty
+        '{"author": null}': [],
+        '{"author": ""}': [],
+        # Author as dict without name
+        '{"author": {"email": "test@example.com"}}': [],
+        '{"author": {"url": "https://example.com"}}': [],
+        # Author as other types
+        '{"author": []}': [],
+        '{"author": 123}': [],
+        '{"author": true}': [],
+    }
+
+    for test_input, expected_output in test_cases.items():
+        pkg_data = json.loads(test_input)
+        result = strategy._extract_copyright_from_pkg_data(pkg_data)
+        assert (
+            result == expected_output
+        ), f"Failed for '{test_input}': expected '{expected_output}', got '{result}'"
