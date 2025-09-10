@@ -3,7 +3,7 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
-from unittest.mock import call
+from unittest.mock import call, Mock
 
 import pytest
 import pytest_mock
@@ -588,3 +588,223 @@ def test_github_sbom_collection_strategy_uses_name_as_origin_if_download_locatio
 
     giturlparse_mock.assert_called_once_with("test_purl")
     sbom_mock.get.assert_called_once_with()
+
+
+def test_filter_sbom_empty_inputs() -> None:
+    """Test filtering with empty inputs"""
+    github_client_mock = Mock(spec_set=GitHub)
+    
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        project_scope=ProjectScope.ALL,
+    )
+    result = strategy._GitHubSbomMetadataCollectionStrategy__filter_sbom_to_include_only_dependencies_from_chosen_files(
+        [], [], "owner", "repo", []
+    )
+    assert result == []
+
+
+def test_filter_sbom_no_files_to_include() -> None:
+    """Test when no files are specified to include - should return all packages"""
+    github_client_mock = Mock(spec_set=GitHub)
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        project_scope=ProjectScope.ALL,
+    )
+    packages = [{"name": "pkg1", "SPDXID": "SPDXRef-1"}]
+    result = strategy._GitHubSbomMetadataCollectionStrategy__filter_sbom_to_include_only_dependencies_from_chosen_files(
+        [], packages, "owner", "repo", []
+    )
+    assert result == packages  # Should return all packages when no files specified
+
+
+def test_filter_sbom_with_specific_files(mocker: pytest_mock.MockFixture) -> None:
+    """Test filtering to include only dependencies from specific files"""
+    github_client_mock = Mock(spec_set=GitHub)
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        project_scope=ProjectScope.ALL,
+    )
+    packages = [
+        {"name": "pkg1", "SPDXID": "SPDXRef-1"},
+        {"name": "pkg2", "SPDXID": "SPDXRef-2"}
+    ]
+    
+    mocker.patch.object(
+        strategy,
+        '_GitHubSbomMetadataCollectionStrategy__get_list_of_packages_mapped_to_filename',
+        return_value={"pyproject.toml": ["pkg1"]}
+    )
+    
+    result = strategy._GitHubSbomMetadataCollectionStrategy__filter_sbom_to_include_only_dependencies_from_chosen_files(
+        ["pyproject.toml"], packages, "owner", "repo", []
+    )
+    
+    assert len(result) == 1
+    assert result[0]["name"] == "pkg1"
+
+
+def test_handle_transitive_inclusion() -> None:
+    """Test handling of transitive inclusion"""
+    github_client_mock = Mock(spec_set=GitHub)
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        project_scope=ProjectScope.ALL,
+    )
+    packages = [
+        {"name": "root", "SPDXID": "SPDXRef-1"},
+        {"name": "dep1", "SPDXID": "SPDXRef-2"},
+        {"name": "dep2", "SPDXID": "SPDXRef-3"}
+    ]
+    # Note: relationships show what depends on each package
+    relationships = [
+        {
+            "relationshipType": "DEPENDS_ON",
+            "spdxElementId": "SPDXRef-2",  # dep1 is depended on by root
+            "relatedSpdxElement": "SPDXRef-1"
+        },
+        {
+            "relationshipType": "DEPENDS_ON",
+            "spdxElementId": "SPDXRef-3",  # dep2 is depended on by dep1
+            "relatedSpdxElement": "SPDXRef-2"
+        }
+    ]
+    deps_to_include = ["dep2"]
+    
+    result = strategy._GitHubSbomMetadataCollectionStrategy__handle_transitive_inclusion(
+        packages, deps_to_include, relationships
+    )
+    
+    # Should include dep2 and everything that depends on it (dep1 and root)
+    assert len(result) == 3
+    assert {pkg["name"] for pkg in result} == {"root", "dep1", "dep2"}
+
+
+def test_handle_transitive_inclusion_with_cycles() -> None:
+    """Test handling of cyclic dependencies in inclusion mode"""
+    github_client_mock = Mock(spec_set=GitHub)
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        project_scope=ProjectScope.ALL,
+    )
+    packages = [
+        {"name": "pkg1", "SPDXID": "SPDXRef-1"},
+        {"name": "pkg2", "SPDXID": "SPDXRef-2"}
+    ]
+    relationships = [
+        {
+            "relationshipType": "DEPENDS_ON",
+            "spdxElementId": "SPDXRef-1",  # pkg1 is depended on by pkg2
+            "relatedSpdxElement": "SPDXRef-2"
+        },
+        {
+            "relationshipType": "DEPENDS_ON",
+            "spdxElementId": "SPDXRef-2",  # pkg2 is depended on by pkg1
+            "relatedSpdxElement": "SPDXRef-1"
+        }
+    ]
+    deps_to_include = ["pkg1"]
+    
+    result = strategy._GitHubSbomMetadataCollectionStrategy__handle_transitive_inclusion(
+        packages, deps_to_include, relationships
+    )
+    
+    # Should handle the cycle and include both packages since they depend on each other
+    assert len(result) == 2
+    assert {pkg["name"] for pkg in result} == {"pkg1", "pkg2"}
+
+
+def test_get_packages_mapped_to_filename(mocker: pytest_mock.MockFixture) -> None:
+    """Test mapping of packages to filenames"""
+    github_client_mock = Mock(spec_set=GitHub)
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        project_scope=ProjectScope.ALL,
+    )
+    
+    mocker.patch.object(
+        strategy,
+        '_GitHubSbomMetadataCollectionStrategy__get_info_from_graphql',
+        return_value={
+            "pyproject.toml": {"pkg1", "pkg2"},
+            "requirements.txt": {"pkg3", "pkg4"}
+        }
+    )
+    
+    result = strategy._GitHubSbomMetadataCollectionStrategy__get_list_of_packages_mapped_to_filename(
+        ["pyproject.toml"], "owner", "repo"
+    )
+    
+    assert result == {"pyproject.toml": ["pkg1", "pkg2"]}
+
+
+def test_get_info_from_graphql_pagination(mocker: pytest_mock.MockFixture) -> None:
+    """Test GraphQL pagination for both manifests and dependencies"""
+    github_client_mock = Mock(spec_set=GitHub)
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        project_scope=ProjectScope.ALL,
+    )
+    
+    # Mock environment variable
+    mocker.patch.dict('os.environ', {'GITHUB_TOKEN': 'fake-token'})
+    
+    mock_post = mocker.patch('requests.post')
+    # Mock first manifest page
+    mock_post.side_effect = [
+        Mock(
+            status_code=200,
+            json=lambda: {
+                "data": {
+                    "repository": {
+                        "dependencyGraphManifests": {
+                            "pageInfo": {"hasNextPage": True, "endCursor": "cursor1"},
+                            "nodes": [{
+                                "id": "manifest1",
+                                "filename": "pyproject.toml",
+                                "dependencies": {
+                                    "pageInfo": {"hasNextPage": True, "endCursor": "dep1"},
+                                    "nodes": [{"packageName": "pkg1"}]
+                                }
+                            }]
+                        }
+                    }
+                }
+            }
+        ),
+        # Mock dependency pagination
+        Mock(
+            status_code=200,
+            json=lambda: {
+                "data": {
+                    "node": {
+                        "dependencies": {
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                            "nodes": [{"packageName": "pkg2"}]
+                        }
+                    }
+                }
+            }
+        ),
+        # Mock second manifest page
+        Mock(
+            status_code=200,
+            json=lambda: {
+                "data": {
+                    "repository": {
+                        "dependencyGraphManifests": {
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                            "nodes": []
+                        }
+                    }
+                }
+            }
+        )
+    ]
+    
+    result = strategy._GitHubSbomMetadataCollectionStrategy__get_info_from_graphql(
+        "owner", "repo"
+    )
+    
+    assert result == {"pyproject.toml": {"pkg1", "pkg2"}}
+    assert mock_post.call_count == 3

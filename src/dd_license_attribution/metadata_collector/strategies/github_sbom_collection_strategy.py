@@ -54,11 +54,14 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
             sbom = self.__get_github_generated_sbom(owner, repo)
             packages_in_sbom = sbom.get("packages", [])  # Default to empty list if None
             relationships = sbom.get("relationships", [])
-            # filenames_tofilter_out = ["requirements.txt", "package.json", "go.mod"]  # example
-            filenames_to_filter_out = [".generator/poetry.lock"]  # example
+            # Example: only include dependencies from these files
+            filenames_to_include = []
+            # filenames_to_include = ["pyproject.toml"] # example
+            # filenames_to_include = ["requirements.txt", "package.json", "go.mod"]  # example
+            # filenames_to_include = [".generator/poetry.lock"]  # example
 
-            packages_in_sbom = self.__filter_unwanted_packages_out_of_SBOM(
-                filenames_to_filter_out, packages_in_sbom, owner, repo, relationships
+            packages_in_sbom = self.__filter_sbom_to_include_only_dependencies_from_chosen_files(
+                filenames_to_include, packages_in_sbom, owner, repo, relationships
             )
             if not self.with_root_project:
                 # Exclude the root project from the metadata
@@ -202,9 +205,9 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
     #
     # Private methods - Package filtering
     #
-    def __filter_unwanted_packages_out_of_SBOM(
+    def __filter_sbom_to_include_only_dependencies_from_chosen_files(
         self,
-        filenames_to_filter_out: list[str],
+        filenames_to_include: list[str],
         packages_in_sbom: list[dict],
         owner: str,
         repo: str,
@@ -213,48 +216,51 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
         # Defensive coding for None inputs
         if not packages_in_sbom:
             return []
-        if not filenames_to_filter_out:
-            return packages_in_sbom
+        if not filenames_to_include:
+            return packages_in_sbom  # If no files specified, return full SBOM without filtering
         relationships = relationships or []
 
         # Call the function to get file-to-dependencies mapping
         file_deps_map = self.__get_list_of_packages_mapped_to_filename(
-            filenames_to_filter_out, owner, repo
+            filenames_to_include, owner, repo
         )
 
-        # Collect dependency names to exclude from the specified files
-        depsToExclude = []
-        for filename in filenames_to_filter_out:
+        # Collect dependency names to include from the specified files
+        depsToInclude = []
+        for filename in filenames_to_include:
             if filename in file_deps_map:
-                depsToExclude.extend(file_deps_map[filename])
-        depsToExclude = list(set(depsToExclude))
+                depsToInclude.extend(file_deps_map[filename])
+        depsToInclude = list(set(depsToInclude))
 
-        # Handle transitive dependencies and filter packages
-        filtered_packages = self.__handle_transitive(
-            packages_in_sbom, depsToExclude, relationships
+        # Handle transitive dependencies and filter packages to include only these deps and their transitives
+        included_packages = self.__handle_transitive_inclusion(
+            packages_in_sbom, depsToInclude, relationships
         )
 
-        # print(filtered_packages)
-        # print("--------------------------------HIIIIIIIIIIIII")
-        return filtered_packages
+        # print(included_packages)
+        # print("-------------------------------------")
+        return included_packages
 
-    # Exclude transitive dependencies of any excluded package, based on SBOM relationships.
-    def __handle_transitive(
+    # Include transitive dependencies of any included package, based on SBOM relationships.
+    def __handle_transitive_inclusion(
         self,
         packages_in_sbom: list[dict],
-        depsToExclude: list[str],
+        depsToInclude: list[str],
         relationships: list[dict],
     ) -> list[dict]:
         # Build maps for graph traversal using SPDX IDs
         name_to_spdxids: dict[str, list[str]] = {}
+        spdxid_to_pkg: dict[str, dict] = {}  # Map to get back to packages from SPDX IDs
         for pkg in packages_in_sbom:
             name = pkg.get("name")
             spdx_id = pkg.get("SPDXID")
             if not name or not spdx_id:
                 continue
             name_to_spdxids.setdefault(name, []).append(spdx_id)
+            spdxid_to_pkg[spdx_id] = pkg
 
         # Build adjacency from relationships (subject DEPENDS_ON object)
+        # For inclusion, we need to traverse the graph in reverse
         adjacency: dict[str, set[str]] = {}
         for rel in relationships or []:
             if rel.get("relationshipType") != "DEPENDS_ON":
@@ -263,33 +269,34 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
             dst = rel.get("relatedSpdxElement")
             if not src or not dst:
                 continue
+            # Add the edge: if A is depended on by B, add edge A -> B
             adjacency.setdefault(src, set()).add(dst)
 
-        # Compute transitive closure of excluded SPDX IDs
-        excluded_spdx_ids: set[str] = set()
+        # Compute transitive closure of included SPDX IDs
+        included_spdx_ids: set[str] = set()
         queue: list[str] = []
-        for dep_name in depsToExclude:
+        for dep_name in depsToInclude:
             for sid in name_to_spdxids.get(dep_name, []):
-                if sid not in excluded_spdx_ids:
-                    excluded_spdx_ids.add(sid)
+                if sid not in included_spdx_ids:
+                    included_spdx_ids.add(sid)
                     queue.append(sid)
 
         while queue:
             current = queue.pop(0)
-            for neighbor in adjacency.get(current, set()):
-                if neighbor not in excluded_spdx_ids:
-                    excluded_spdx_ids.add(neighbor)
-                    queue.append(neighbor)
+            for dependent in adjacency.get(current, set()):
+                if dependent not in included_spdx_ids:
+                    included_spdx_ids.add(dependent)
+                    queue.append(dependent)
 
-        # Filter out any package whose SPDXID is in the excluded set
-        filtered_packages = [
+        # Include only packages whose SPDXID is in the included set or name is in depsToInclude
+        included_packages = [
             pkg
             for pkg in packages_in_sbom
-            if pkg.get("SPDXID") not in excluded_spdx_ids
-            and pkg.get("name") not in depsToExclude
+            if pkg.get("SPDXID") in included_spdx_ids
+            or pkg.get("name") in depsToInclude
         ]
 
-        return filtered_packages
+        return included_packages
 
     #
     # Private methods - GraphQL operations
