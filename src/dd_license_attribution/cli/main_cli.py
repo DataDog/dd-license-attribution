@@ -8,6 +8,10 @@
 
 import json
 import logging
+
+# Get application-specific logger
+logger = logging.getLogger("dd_license_attribution")
+
 import sys
 import tempfile
 from collections.abc import Callable
@@ -376,7 +380,7 @@ def main(
         try:
             mirrors = JsonConfigParser.load_mirror_configs(use_mirrors)
         except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
-            logging.error(str(e))
+            logger.error(str(e))
             sys.exit(1)
 
     if debug:
@@ -386,15 +390,15 @@ def main(
             for strategy in enabled_strategies:
                 if strategy not in debug_enabled_strategies:
                     enabled_strategies[strategy] = False
-            logging.debug(f"Enabled strategies: {enabled_strategies}")
+            logger.debug(f"Enabled strategies: {enabled_strategies}")
         else:
-            logging.debug(
+            logger.debug(
                 "No strategies enabled - if you wanted to enable strategies, provide a debug object with a list of them in the 'enabled_strategies' key."
             )
-            logging.debug(
+            logger.debug(
                 'Example: --debug \'{"enabled_strategies": ["GitHubSbomMetadataCollectionStrategy", "GoPkgMetadataCollectionStrategy"]}\''
             )
-            logging.debug(
+            logger.debug(
                 "Available strategies: GitHubSbomMetadataCollectionStrategy, GoPkgMetadataCollectionStrategy, ScanCodeToolkitMetadataCollectionStrategy, GitHubRepositoryMetadataCollectionStrategy"
             )
 
@@ -428,7 +432,7 @@ def main(
     try:
         source_code_manager = SourceCodeManager(cache_dir, cache_ttl, mirrors)
     except ValueError as e:
-        logging.error(str(e))
+        logger.error(str(e))
         sys.exit(1)
 
     if enabled_strategies["GoPkgsMetadataCollectionStrategy"]:
@@ -483,21 +487,21 @@ def main(
             for i in range(len(strategies) - 1, -1, -1):
                 strategies.insert(i, override_strategy)
         except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
-            logging.error(str(e))
+            logger.error(str(e))
             sys.exit(1)
 
     metadata_collector = MetadataCollector(strategies)
     try:
         metadata = metadata_collector.collect_metadata(package)
     except (NonAccessibleRepository, UnauthorizedRepository) as e:
-        logging.error(str(e))
+        logger.error(str(e))
         sys.exit(1)
     except PyEnvRuntimeError as e:
-        logging.error(str(e))
-        logging.error(
+        logger.error(str(e))
+        logger.error(
             "This error can be bypassed by skipping the PyPI strategy (--no-pypi-strategy)."
         )
-        logging.error(
+        logger.error(
             "When skipping this strategy, the tool will not try to extract dependencies or metadata from PyPI."
         )
         sys.exit(1)
@@ -512,8 +516,8 @@ def main(
         temp_dir.cleanup()
     print(output)
     if override_strategy is not None and len(override_strategy.unused_targets()) != 0:
-        logging.warning(f"Not all targets in the override spec file were used.")
-        logging.warning(
+        logger.warning(f"Not all targets in the override spec file were used.")
+        logger.warning(
             f"Unused targets: {override_strategy.unused_targets()}. Consider removing them."
         )
 

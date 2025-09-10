@@ -4,6 +4,9 @@
 # Copyright 2024-present Datadog, Inc.
 
 import logging
+
+# Get application-specific logger
+logger = logging.getLogger("dd_license_attribution")
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -38,7 +41,7 @@ class UnauthorizedRepository(Exception):
 
 
 def extract_ref(ref: str, url: str) -> str:
-    logging.debug(f"Extracting ref {ref} from {url}")
+    logger.debug(f"Extracting ref {ref} from {url}")
     split_ref = ref.split("/")
     for i in range(len(split_ref)):
         ref_guess = "/".join(split_ref[: i + 1])
@@ -46,13 +49,13 @@ def extract_ref(ref: str, url: str) -> str:
             f"git ls-remote {url} {ref_guess} | grep -q {ref_guess}"
         )
         if validated == 0:
-            logging.debug(f"Found valid ref: {ref_guess}")
+            logger.debug(f"Found valid ref: {ref_guess}")
             return ref_guess
     if len(split_ref) > 0:  # may be a hash
         ref_guess = split_ref[0]
         validated = run_command(f"git ls-remote {url} | grep -q {ref_guess}")
         if validated == 0:
-            logging.debug(f"Found valid ref from hash: {ref_guess}")
+            logger.debug(f"Found valid ref from hash: {ref_guess}")
             return ref_guess
     return ""
 
@@ -103,7 +106,7 @@ class SourceCodeManager(ArtifactManager):
     ) -> None:
         super().__init__(local_cache_dir, local_cache_ttl)
         self.mirrors = mirrors or []
-        logging.info(
+        logger.info(
             f"SourceCodeManager initialized with {len(self.mirrors)} mirror(s) with {self.local_cache_ttl} seconds TTL."
         )
 
@@ -122,7 +125,7 @@ class SourceCodeManager(ArtifactManager):
                 .split()[1]
                 .removeprefix("refs/heads/")
             )
-            logging.debug(
+            logger.debug(
                 f"Discovered default branch in repository: {discovered_branch}"
             )
             return discovered_branch
@@ -143,13 +146,13 @@ class SourceCodeManager(ArtifactManager):
                 original_ref_name = self._discover_default_branch(original_url)
             except NonAccessibleRepository as e:
                 # ignoring the failure, we will try with the mirror url if found next
-                logging.debug(
+                logger.debug(
                     f"Failed to discover default branch for original repository {original_url}: {str(e)}"
                 )
 
         for mirror_map in self.mirrors:
             if mirror_map.original_url == original_url:
-                logging.debug(
+                logger.debug(
                     f"Found mirror definition for {original_url}: {mirror_map.mirror_url}"
                 )
                 mirror_url = mirror_map.mirror_url
@@ -158,7 +161,7 @@ class SourceCodeManager(ArtifactManager):
                         original_ref_name = self._discover_default_branch(mirror_url)
                     except NonAccessibleRepository as e:
                         # ignoring the failure, we will try with the mirror url if found next
-                        logging.error(
+                        logger.error(
                             f"Failed to discover default branch for mirror repository {mirror_url}: {str(e)}"
                         )
                         raise NonAccessibleRepository(
@@ -172,7 +175,7 @@ class SourceCodeManager(ArtifactManager):
                     effective_ref_type, effective_ref_name = mirror_map.ref_mapping[
                         (original_ref_type, original_ref_name)
                     ]
-                    logging.debug(
+                    logger.debug(
                         f"Mapped {original_ref_type}:{original_ref_name} to mirror {effective_ref_type}:{effective_ref_name} in {mirror_url}"
                     )
                     if effective_ref_type != RefType.BRANCH:
@@ -196,7 +199,7 @@ class SourceCodeManager(ArtifactManager):
     def get_code(
         self, resource_url: str, force_update: bool = False
     ) -> SourceCodeReference | None:
-        logging.debug(f"Getting code for resource URL: {resource_url}")
+        logger.debug(f"Getting code for resource URL: {resource_url}")
         parsed_url = parse_git_url(resource_url)
         if not parsed_url.valid:
             return None
@@ -205,7 +208,7 @@ class SourceCodeManager(ArtifactManager):
         owner = parsed_url.owner
         repo = parsed_url.repo
         repository_url = f"{parsed_url.protocol}://{parsed_url.host}/{parsed_url.owner}/{parsed_url.repo}"
-        logging.debug(
+        logger.debug(
             f"Parsed repository URL: {repository_url} with owner: {owner}, repo: {repo}"
         )
         branch = "default_branch"
@@ -224,14 +227,14 @@ class SourceCodeManager(ArtifactManager):
                 path = path.removeprefix(f"{branch}")
         else:
             path = ""
-        logging.debug(
+        logger.debug(
             f"Using branch: {branch} and path: {path} for repository URL: {repository_url}"
         )
         # Get mirror URL and branch if available
         effective_repository_url, _, effective_branch, branch = (
             self._get_mirror_url_and_ref(repository_url, RefType.BRANCH, branch)
         )
-        logging.debug(
+        logger.debug(
             f"Effective repository URL: {effective_repository_url}, effective branch: {effective_branch}"
         )
 
@@ -239,9 +242,7 @@ class SourceCodeManager(ArtifactManager):
         cached_timestamps.sort(reverse=True)
         if not force_update:
             # check if there is a cache
-            logging.debug(
-                f"Checking local cache for {owner}/{repo} at branch {branch}."
-            )
+            logger.debug(f"Checking local cache for {owner}/{repo} at branch {branch}.")
             for time_copy_str in cached_timestamps:
                 time_copy = datetime.strptime(time_copy_str, "%Y%m%d_%H%M%SZ").replace(
                     tzinfo=pytz.UTC
@@ -252,7 +253,7 @@ class SourceCodeManager(ArtifactManager):
                     f"{self.local_cache_dir}/{time_copy_str}/{owner}-{repo}/{branch}"
                 )
                 if path_exists(local_branch_path):
-                    logging.debug(
+                    logger.debug(
                         f"Found cached branch {branch} for {owner}/{repo} at {local_branch_path}"
                     )
                     return SourceCodeReference(
@@ -267,14 +268,14 @@ class SourceCodeManager(ArtifactManager):
         )
 
         create_dirs(local_branch_path)
-        logging.debug(
+        logger.debug(
             f"Cloning repository {effective_repository_url} at branch {effective_branch} to {local_branch_path}"
         )
         run_command(
             f"git clone -c advice.detachedHead=False --depth 1 --branch={effective_branch} {effective_repository_url} {local_branch_path}"
         )
 
-        logging.debug(
+        logger.debug(
             f"Cloned repository {effective_repository_url} at branch {effective_branch} to {local_branch_path}"
         )
         return SourceCodeReference(

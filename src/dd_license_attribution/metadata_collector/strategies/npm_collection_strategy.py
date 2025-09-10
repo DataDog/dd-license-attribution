@@ -7,6 +7,9 @@
 
 import json
 import logging
+
+# Get application-specific logger
+logger = logging.getLogger("dd_license_attribution")
 from typing import Any, Dict, List
 
 import requests
@@ -44,18 +47,148 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             project_scope == ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
         )
 
+    def _clean_version_string(self, version: str) -> str:
+        if isinstance(version, str) and version:
+            if version.startswith(">="):
+                return version[2:]
+            elif version and version[0] in {"^", "~", ">"}:
+                return version[1:]
+        return version
+
+    def _extract_license_from_pkg_data(self, pkg_data: Dict[str, Any]) -> List[str]:
+        if "license" in pkg_data and pkg_data["license"]:
+            return [str(pkg_data["license"])]
+        return []
+
+    def _extract_copyright_from_pkg_data(self, pkg_data: Dict[str, Any]) -> List[str]:
+        if "author" not in pkg_data or not pkg_data["author"]:
+            return []
+
+        author = pkg_data["author"]
+        if isinstance(author, dict) and "name" in author:
+            return [str(author["name"])]
+        elif isinstance(author, str):
+            return [author]
+        return []
+
+    def _fetch_npm_registry_metadata(
+        self, dep_name: str, version: str
+    ) -> tuple[List[str], List[str], Dict[str, Any] | None]:
+        license = []
+        copyright = []
+        pkg_data = None
+
+        try:
+            resp = requests.get(
+                f"https://registry.npmjs.org/{dep_name}/{version}",
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                pkg_data = resp.json()
+                license = self._extract_license_from_pkg_data(pkg_data)
+                copyright = self._extract_copyright_from_pkg_data(pkg_data)
+            else:
+                logging.warning(
+                    "Failed to fetch npm registry metadata for "
+                    f"{dep_name}@{version}: {resp.status_code}, "
+                    f"{resp.text}"
+                )
+        except Exception as e:
+            logging.warning(
+                "Failed to fetch npm registry metadata for "
+                f"{dep_name}@{version}: {e}"
+            )
+
+        return license, copyright, pkg_data
+
+    def _determine_origin(
+        self,
+        pkg_data: Dict[str, Any] | None,
+        dep_name: str,
+    ) -> str:
+        if not pkg_data:
+            return f"npm:{dep_name}"
+
+        # Extract repository URL
+        repository_url = None
+        if "repository" in pkg_data and pkg_data["repository"]:
+            repo = pkg_data["repository"]
+            if isinstance(repo, dict) and "url" in repo:
+                repository_url = repo["url"]
+            elif isinstance(repo, str):
+                repository_url = repo
+
+        if repository_url:
+            return str(repository_url)
+
+        # Extract homepage URL as fallback
+        if "homepage" in pkg_data and pkg_data["homepage"]:
+            return str(pkg_data["homepage"])
+
+        return f"npm:{dep_name}"
+
+    def _enrich_metadata_with_npm_registry(
+        self, metadata: List[Metadata], dependencies: Dict[str, str]
+    ) -> List[Metadata]:
+        updated_metadata = metadata.copy()
+
+        # Apply project scope filters - filter transitive-only if needed
+        if self.only_transitive:
+            updated_metadata = [
+                m for m in updated_metadata if m.name != self.top_package
+            ]
+
+        for dep_name, version in dependencies.items():
+            clean_version = self._clean_version_string(version)
+
+            license, copyright, pkg_data = self._fetch_npm_registry_metadata(
+                dep_name, clean_version
+            )
+
+            origin = self._determine_origin(pkg_data, dep_name)
+
+            found = False
+            for meta in updated_metadata:
+                if meta.name == dep_name:
+                    found = True
+                    if (
+                        not meta.origin or not validate_git_url(meta.origin)
+                    ) and origin:
+                        meta.origin = origin
+                    if not meta.license and license:
+                        meta.license = license
+                    if not meta.copyright and copyright:
+                        meta.copyright = copyright
+                    if not meta.version and clean_version:
+                        meta.version = clean_version
+                    break
+
+            if not found:
+                updated_metadata.append(
+                    Metadata(
+                        name=dep_name,
+                        version=clean_version,
+                        origin=origin,
+                        local_src_path=None,
+                        license=license,
+                        copyright=copyright,
+                    )
+                )
+
+        return updated_metadata
+
     def _extract_all_dependencies(self, lock_data: Dict[str, Any]) -> Dict[str, str]:
         all_deps: Dict[str, str] = {}
 
         if "packages" not in lock_data:
-            logging.warning("No 'packages' key found in package-lock.json.")
+            logger.warning("No 'packages' key found in package-lock.json.")
             return all_deps
 
         packages = lock_data["packages"]
         # Find the root package key
         root_key = "" if "" in packages else "./" if "./" in packages else None
         if root_key is None:
-            logging.warning(
+            logger.warning(
                 "A root package wasn't found. Collecting NodeJS dependencies from none NodeJS projects is not supported yet."
             )
             return all_deps
@@ -104,6 +237,17 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         if not path_exists(package_json_path):
             return updated_metadata
 
+        package_json_data = json.loads(open_file(package_json_path))
+        if "workspaces" in package_json_data:
+            logger.warning(
+                f"Node projects using workspaces are not supported yet by the NPM collection strategy."
+            )
+            return updated_metadata
+
+        # Early return for ONLY_ROOT_PROJECT - no need to run npm install
+        if self.only_root_project:
+            return updated_metadata
+
         # Run npm install --package-lock-only to generate package-lock.json
         try:
             output_from_command(
@@ -111,109 +255,21 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 "npm install --package-lock-only --force; cd $CWD"
             )
         except Exception as e:
-            logging.warning(f"Failed to run npm install for {self.top_package}: {e}")
+            logger.warning(f"Failed to run npm install for {self.top_package}: {e}")
             return updated_metadata
         lock_path = path_join(project_path, "package-lock.json")
         lock_data = {}
         if not path_exists(lock_path):
-            logging.warning(f"No package-lock.json found in {project_path}")
+            logger.warning(f"No package-lock.json found in {project_path}")
             return updated_metadata
         try:
             lock_data = json.loads(open_file(lock_path))
         except Exception as e:
-            logging.warning(f"Failed to read package-lock.json: {e}")
+            logger.warning(f"Failed to read package-lock.json: {e}")
             return updated_metadata
 
         all_deps = self._extract_all_dependencies(lock_data)
 
-        if self.only_root_project:
-            return updated_metadata
-        if self.only_transitive:
-            updated_metadata = [
-                m for m in updated_metadata if m.name != self.top_package
-            ]
-        for dep_name, version in all_deps.items():
-            # Remove ^, ~, >, or >= from version if present
-            if isinstance(version, str) and version:
-                if version.startswith(">="):
-                    version = version[2:]
-                elif version[0] in {"^", "~", ">"}:
-                    version = version[1:]
-            # Fetch metadata from npmjs registry API
-            license = []
-            copyright = []
-            repository_url = None
-            homepage_url = None
-            try:
-                resp = requests.get(
-                    f"https://registry.npmjs.org/{dep_name}/{version}", timeout=5
-                )
-                if resp.status_code == 200:
-                    pkg_data = resp.json()
-                    if "license" in pkg_data and pkg_data["license"]:
-                        license = [str(pkg_data["license"])]
-                    if "author" in pkg_data and pkg_data["author"]:
-                        if (
-                            isinstance(pkg_data["author"], dict)
-                            and "name" in pkg_data["author"]
-                        ):
-                            copyright = [str(pkg_data["author"]["name"])]
-                        elif isinstance(pkg_data["author"], str):
-                            copyright = [pkg_data["author"]]
-                    if "repository" in pkg_data and pkg_data["repository"]:
-                        repo = pkg_data["repository"]
-                        if isinstance(repo, dict) and "url" in repo:
-                            repository_url = repo["url"]
-                        elif isinstance(repo, str):
-                            repository_url = repo
-                    if (
-                        not repository_url
-                        and "homepage" in pkg_data
-                        and pkg_data["homepage"]
-                    ):
-                        homepage_url = pkg_data["homepage"]
-                else:
-                    logging.warning(
-                        f"Failed to fetch npm registry metadata for "
-                        f"{dep_name}@{version}: {resp.status_code}, {resp.text}"
-                    )
-            except Exception as e:
-                logging.warning(
-                    f"Failed to fetch npm registry metadata for "
-                    f"{dep_name}@{version}: {e}"
-                )
-            # Set origin: prefer repository, then homepage, then npm:{name}
-            if repository_url:
-                origin = repository_url
-            elif homepage_url:
-                origin = homepage_url
-            else:
-                origin = f"npm:{dep_name}"
-            found = False
-            for meta in updated_metadata:
-                if meta.name == dep_name:
-                    found = True
-                    # Update origin if not a valid git url or missing
-                    if (
-                        not meta.origin or not validate_git_url(meta.origin)
-                    ) and origin:
-                        meta.origin = origin
-                    if not meta.license and license:
-                        meta.license = license
-                    if not meta.copyright and copyright:
-                        meta.copyright = copyright
-                    if not meta.version and version:
-                        meta.version = version
-                    break
-            if not found:
-                updated_metadata.append(
-                    Metadata(
-                        name=dep_name,
-                        version=version,
-                        origin=origin,
-                        local_src_path=None,
-                        license=license,
-                        copyright=copyright,
-                    )
-                )
-        return updated_metadata
+        # Use private method to enrich metadata with NPM registry data
+        # Handles scope filtering, version cleaning, fetching, and enrichment
+        return self._enrich_metadata_with_npm_registry(updated_metadata, all_deps)
