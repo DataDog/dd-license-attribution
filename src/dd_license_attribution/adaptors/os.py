@@ -42,8 +42,16 @@ def get_current_working_directory() -> str:
 
 
 def open_file(file_path: str) -> str:
-    with open(file_path, "r") as file:
-        return file.read()
+    try:
+        with open(file_path, "r", encoding="utf-8") as file:
+            return file.read()
+    except UnicodeDecodeError:
+        try:
+            with open(file_path, "r", encoding="utf-16") as file:
+                return file.read()
+        except UnicodeDecodeError:
+            with open(file_path, "r", encoding=None) as file:
+                return file.read()
 
 
 def path_join(path: str, *paths: str) -> str:
