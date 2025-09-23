@@ -11,7 +11,7 @@
 "binaryornot","https://github.com/audreyr/binaryornot","['BSD']","['Audrey Roy Greenfeld']"
 "boolean.py","https://github.com/bastikr/boolean.py","['BSD-2-Clause']","['Sebastian Kraemer']"
 "certifi","https://github.com/certifi/python-certifi","['MPL-2.0']","['Kenneth Reitz']"
-"cffi","https://github.com/python-cffi/cffi","['MIT']","[' Maciej Fijalkowski', 'Armin Rigo']"
+"cffi","https://github.com/python-cffi/cffi","['MIT-0']","[' Maciej Fijalkowski', 'Armin Rigo']"
 "chardet","https://github.com/chardet/chardet","['LGPL']","['Mark Pilgrim']"
 "charset-normalizer","https://github.com/jawah/charset_normalizer","['MIT']","['TAHRI Ahmed R.']"
 "click","https://github.com/pallets/click/","['BSD-3-Clause']","['Pallets']"
