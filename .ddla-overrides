@@ -270,7 +270,7 @@
         "Apache-2.0 OR BSD-3-Clause"
       ],
       "copyright": [
-        "'The cryptography developers <cryptography-dev@python.org>'"
+        "The cryptography developers <cryptography-dev@python.org>"
       ]
     }
   }
