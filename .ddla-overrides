@@ -241,5 +241,37 @@
         "OpenSanctions Datenbanken GmbH"
       ]
     }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "origin": "https://github.com/martinblech/xmltodict"
+    },
+    "replacement": {
+      "name": "xmltodict",
+      "origin": "https://github.com/martinblech/xmltodict",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "Martin Blech"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "origin": "pypi:cryptography"
+    },
+    "replacement": {
+      "name": "cryptography",
+      "origin": "pypi:cryptography",
+      "license": [
+        "Apache-2.0 OR BSD-3-Clause"
+      ],
+      "copyright": [
+        "The cryptography developers <cryptography-dev@python.org>"
+      ]
+    }
   }
 ]
