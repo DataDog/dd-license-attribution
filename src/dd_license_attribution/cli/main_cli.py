@@ -41,6 +41,9 @@ from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
+from dd_license_attribution.metadata_collector.strategies.cleanup_copyright_metadata_strategy import (
+    CleanupCopyrightMetadataStrategy,
+)
 from dd_license_attribution.metadata_collector.strategies.github_repository_collection_strategy import (
     GitHubRepositoryMetadataCollectionStrategy,
 )
@@ -364,6 +367,7 @@ def main(
         "NpmMetadataCollectionStrategy": True,
         "ScanCodeToolkitMetadataCollectionStrategy": True,
         "GitHubRepositoryMetadataCollectionStrategy": True,
+        "CleanupCopyrightMetadataStrategy": True,
     }
 
     if cache_ttl is None:
@@ -489,6 +493,10 @@ def main(
         except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
             logger.error(str(e))
             sys.exit(1)
+
+    # Add cleanup strategy at the very end after all other strategies including overrides
+    if enabled_strategies["CleanupCopyrightMetadataStrategy"]:
+        strategies.append(CleanupCopyrightMetadataStrategy())
 
     metadata_collector = MetadataCollector(strategies)
     try:
