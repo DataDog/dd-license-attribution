@@ -12,6 +12,9 @@ from dd_license_attribution.artifact_management.artifact_manager import (
 )
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
+from dd_license_attribution.metadata_collector.strategies.cleanup_copyright_metadata_strategy import (
+    CleanupCopyrightMetadataStrategy,
+)
 from dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy import (
     PypiMetadataCollectionStrategy,
 )
@@ -231,6 +234,119 @@ def test_pypi_collection_strategy_adds_pypi_metadata_to_list_of_dependencies(
             mocker.call("https://pypi.org/pypi/package5/3.4.5/json"),
         ]
     )
+
+
+def test_pypi_collection_strategy_handles_company_names_in_copyright_when_dependency_in_initial_metadata(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = "dummy_env"
+    mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[("test-package", "1.0.0")],
+    )
+
+    mock_request = mocker.patch("requests.get")
+    mock_request.return_value = MockedRequestsResponse(
+        200,
+        {
+            "info": {
+                "name": "test-package",
+                "version": "1.0.0",
+                "author": "Company A, Copyright 2024 Company B, Inc. and its affiliates, Company C, llc, Company Datadog",
+            }
+        },
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "test-package",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+    )
+    cleanup_copyright_metadata_strategy = CleanupCopyrightMetadataStrategy()
+
+    result = strategy.augment_metadata(
+        [
+            Metadata(
+                name="test-package",
+                version=None,
+                origin=None,
+                local_src_path="/dummy/path",
+                license=[],
+                copyright=[],
+            )
+        ]
+    )
+    cleaned_result = cleanup_copyright_metadata_strategy.augment_metadata(result)
+
+    assert cleaned_result[0].copyright == [
+        "Company A",
+        "Company B, Inc. and its affiliates",
+        "Company C, llc",
+        "Company Datadog",
+    ]
+
+
+def test_pypi_collection_strategy_handles_company_names_in_new_metadata_entry(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/test-org/top-package",
+        branch="main",
+        local_root_path="cache_dir/test-package",
+        local_full_path="cache_dir/test-package",
+    )
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = "dummy_env"
+    mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[("test-package", "1.0.0")],
+    )
+
+    mock_request = mocker.patch("requests.get")
+    mock_request.return_value = MockedRequestsResponse(
+        200,
+        {
+            "info": {
+                "name": "test-package",
+                "version": "1.0.0",
+                "author": "Company A, Copyright 2024 Company B, Inc. and its affiliates, Company C, llc, Company Datadog",
+            }
+        },
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "top-package",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+    )
+    cleanup_copyright_metadata_strategy = CleanupCopyrightMetadataStrategy()
+
+    initial_metadata_only_contains_top_package = [
+        Metadata(
+            name="top-package",
+            version=None,
+            origin="https://github.com/test-org/top-package",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        )
+    ]
+    result = strategy.augment_metadata(initial_metadata_only_contains_top_package)
+    cleaned_result = cleanup_copyright_metadata_strategy.augment_metadata(result)
+
+    assert len(cleaned_result) == 2
+    assert cleaned_result[0].name == "top-package"
+    assert cleaned_result[1].copyright == [
+        "Company A",
+        "Company B, Inc. and its affiliates",
+        "Company C, llc",
+        "Company Datadog",
+    ]
 
 
 def test_dependency_in_initial_metadata_is_augmented_and_not_duplicated_when_found_in_pyenv(
