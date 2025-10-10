@@ -18,11 +18,13 @@ from dd_license_attribution.artifact_management.python_env_manager import (
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
 )
+from dd_license_attribution.config import string_formatting_config
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
+from dd_license_attribution.utils.custom_splitting import CustomSplit
 
 
 class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
@@ -37,6 +39,12 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         self.source_code_manager = source_code_manager
         self.python_env_manager = python_env_manager
         self.only_root_project = project_scope == ProjectScope.ONLY_ROOT_PROJECT
+        self.company_suffixes_sometimes_used_after_commas = (
+            string_formatting_config.default_config.preset_company_suffixes
+        )
+        self.splitter = CustomSplit(
+            protected_terms=self.company_suffixes_sometimes_used_after_commas
+        )
 
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = metadata.copy()
@@ -132,7 +140,9 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
                     and "author" in pypi_info
                     and pypi_info["author"] is not None
                 ):
-                    find_pkg.copyright = pypi_info["author"].split(",")
+                    find_pkg.copyright = list(
+                        set(self.splitter.custom_split(pypi_info["author"], ","))
+                    )
 
             else:
                 extracted_license = []
@@ -148,7 +158,10 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
                     and pypi_info["author"] is not None
                     and len(pypi_info["author"]) != 0
                 ):
-                    extracted_copyright = pypi_info["author"].split(",")
+                    extracted_copyright = self.splitter.custom_split(
+                        pypi_info["author"], ","
+                    )
+
                 dep_metadata = Metadata(
                     name=pypi_info["name"],
                     origin=origin,

@@ -14,6 +14,9 @@ from dd_license_attribution.artifact_management.source_code_manager import (
     UnauthorizedRepository,
 )
 from dd_license_attribution.metadata_collector.metadata import Metadata
+from dd_license_attribution.metadata_collector.strategies.cleanup_copyright_metadata_strategy import (
+    CleanupCopyrightMetadataStrategy,
+)
 from dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy import (
     GitHubSbomMetadataCollectionStrategy,
     ProjectScope,
@@ -495,6 +498,62 @@ def test_strategy_does_not_keep_root_when_with_root_project_is_false(
 
     github_parse_mock.assert_called_once_with("test_purl")
     sbom_mock.get.assert_called_once_with()
+
+
+def test_github_sbom_collection_strategy_handles_company_names_in_copyright(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    sbom_mock = mocker.Mock()
+    sbom_mock.get.return_value = (
+        200,
+        {
+            "sbom": {
+                "packages": [
+                    {
+                        "name": "test-package",
+                        "copyrightText": "Company A, Copyright 2024 Company B, Inc. and its affiliates, Company C, llc, Company Datadog",
+                    }
+                ]
+            }
+        },
+    )
+    mock_client = mocker.Mock()
+    mock_client.repos = {
+        "test-owner": {"test-repo": {"dependency-graph": SbomMockWrapper(sbom_mock)}}
+    }
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(True, "github", "test-owner", "test-repo"),
+    )
+
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=mock_client,
+        project_scope=ProjectScope.ALL,
+    )
+    cleanup_copyright_metadata_strategy = CleanupCopyrightMetadataStrategy()
+
+    initial_metadata = [
+        Metadata(
+            name="test-package",
+            version=None,
+            origin="https://github.com/test-owner/test-repo",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        )
+    ]
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+    cleaned_updated_metadata = cleanup_copyright_metadata_strategy.augment_metadata(
+        updated_metadata
+    )
+
+    assert cleaned_updated_metadata[0].copyright == [
+        "Company A",
+        "Company B, Inc. and its affiliates",
+        "Company C, llc",
+        "Company Datadog",
+    ]
 
 
 def test_github_sbom_collection_strategy_uses_name_as_origin_if_download_location_is_empty_or_noassertion(

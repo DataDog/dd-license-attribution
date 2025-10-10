@@ -3,11 +3,13 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
+from dd_license_attribution.config import string_formatting_config
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
+from dd_license_attribution.utils.custom_splitting import CustomSplit
 
 __all__ = ["GitHubSbomMetadataCollectionStrategy", "ProjectScope"]
 
@@ -26,6 +28,12 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
     # constructor
     def __init__(self, github_client: GitHub, project_scope: ProjectScope) -> None:
         self.client = github_client
+        self.company_suffixes_sometimes_used_after_commas = (
+            string_formatting_config.default_config.preset_company_suffixes
+        )
+        self.splitter = CustomSplit(
+            protected_terms=self.company_suffixes_sometimes_used_after_commas
+        )
         if project_scope == ProjectScope.ONLY_ROOT_PROJECT:
             self.with_root_project = True
             self.with_transitive_dependencies = False
@@ -142,7 +150,13 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                         "copyrightText" in sbom_package
                         and sbom_package["copyrightText"] != "NOASSERTION"
                     ):
-                        copyright = list(set(sbom_package["copyrightText"].split(",")))
+                        copyright = list(
+                            set(
+                                self.splitter.custom_split(
+                                    sbom_package["copyrightText"], ","
+                                )
+                            )
+                        )
                     else:
                         copyright = []
 

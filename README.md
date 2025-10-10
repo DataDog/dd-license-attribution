@@ -95,9 +95,13 @@ The tool generates a CSV file with the following columns:
 Example output:
 ```csv
 Component,Origin,License,Copyright
-aiohttp,https://github.com/aio-libs/aiohttp,Apache-2.0,"Copyright (c) 2013-present aio-libs"
-requests,https://github.com/psf/requests,Apache-2.0,"Copyright 2019 Kenneth Reitz"
+aiohttp,https://github.com/aio-libs/aiohttp,Apache-2.0,"aio-libs"
+requests,https://github.com/psf/requests,Apache-2.0,"Kenneth Reitz"
 ```
+
+#### Output string configuration
+
+There's a file at `src/dd_license_attribution/config/string_formatting_config.py` that you can customize. It's used to help formatting of the "Copyright" part of the output. These are strings that often come after a comma (like the Inc in "Datadog, Inc.") that should be exceptions to splitting the string on the comma. 
 
 #### Manual repository override configuration
 

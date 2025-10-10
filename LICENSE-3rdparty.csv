@@ -52,7 +52,7 @@
 "pefile","https://github.com/erocarrera/pefile","['MIT']","['Ero Carrera']"
 "pip","https://github.com/pypa/pip","['MIT']","['Andrey Petrov and contributors', 'Corporation for National Research Initiatives', 'Eric Larson', 'INADA Naoki', 'Kim Davies and contributors', 'Python Software Foundation', 'Seth Michael Larson', 'Stephen Rosen', 'Stichting Mathematisch Centrum Amsterdam, The Netherlands', 'Taneli Hukkinen', 'The pip developers', 'The platformdirs developers', 'Thomas Kluyver', 'Tzu-ping Chung', 'Will McGugan']"
 "pip-requirements-parser","https://github.com/nexB/pip-requirements-parser","['MIT']","['The pip authors', 'nexB. Inc. and others']"
-"pkginfo2","https://github.com/nexB/pkginfo2","['MIT']","['Agendaless Consulting', 'Inc. Authored by Tres Seaver', 'Maintained by nexB']"
+"pkginfo2","https://github.com/nexB/pkginfo2","['MIT']","['Agendaless Consulting', 'Maintained by nexB, Inc. Authored by Tres Seaver']"
 "pluggy","https://github.com/pytest-dev/pluggy","['MIT']","['Holger Krekel']"
 "plugincode","https://github.com/nexB/plugincode","['Apache-2.0']","['nexB. Inc. and others']"
 "ply","https://www.dabeaz.com/ply/","['BSD']","['David Beazley']"
