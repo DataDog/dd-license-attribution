@@ -20,7 +20,7 @@ class CleanupCopyrightMetadataStrategy(MetadataCollectionStrategy):
 
         """
         return re.sub(
-            r"copyright|\(c\)|\b\d{4}(?:\s?-\s?(?:\d{4}|present))?\b",
+            r"copyright(?:ed)?|\(c\)|\b\d{4}(?:\s?-\s?(?:\d{4}|present))?\b",
             "",
             copyright_text,
             flags=re.IGNORECASE,

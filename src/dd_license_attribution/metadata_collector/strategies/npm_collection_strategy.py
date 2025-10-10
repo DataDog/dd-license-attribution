@@ -61,7 +61,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         return []
 
     def _extract_copyright_from_pkg_data(self, pkg_data: Dict[str, Any]) -> List[str]:
-        if "author" not in pkg_data or not pkg_data["author"]:
+        if not pkg_data.get("author"):
             return []
 
         author = pkg_data["author"]
