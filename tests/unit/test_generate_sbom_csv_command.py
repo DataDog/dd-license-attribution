@@ -54,10 +54,10 @@ def test_github_auth_env() -> None:
         (["--no-scancode-strategy"], "ScanCodeToolkitMetadataCollectionStrategy"),
     ],
 )
-@patch("dd_license_attribution.cli.main_cli.GitHub")
-@patch("dd_license_attribution.cli.main_cli.SourceCodeManager")
-@patch("dd_license_attribution.cli.main_cli.PythonEnvManager")
-@patch("dd_license_attribution.cli.main_cli.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
 def test_skip_strategies_options(
     mock_metadata_collector: Mock,
     mock_python_env_manager: Mock,
@@ -81,10 +81,10 @@ def test_skip_strategies_options(
     assert strategy_name not in strategy_classes
 
 
-@patch("dd_license_attribution.cli.main_cli.GitHub")
-@patch("dd_license_attribution.cli.main_cli.SourceCodeManager")
-@patch("dd_license_attribution.cli.main_cli.PythonEnvManager")
-@patch("dd_license_attribution.cli.main_cli.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
 def test_skip_all_strategies(
     mock_metadata_collector: Mock,
     mock_python_env_manager: Mock,
@@ -122,10 +122,10 @@ def test_missing_package() -> None:
 
 
 @patch("dd_license_attribution.config.json_config_parser.open_file")
-@patch("dd_license_attribution.cli.main_cli.GitHub")
-@patch("dd_license_attribution.cli.main_cli.SourceCodeManager")
-@patch("dd_license_attribution.cli.main_cli.PythonEnvManager")
-@patch("dd_license_attribution.cli.main_cli.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
 def test_use_mirrors_invalid_json(
     mock_metadata_collector: Mock,
     mock_python_env_manager: Mock,
@@ -151,10 +151,10 @@ def test_use_mirrors_invalid_json(
 
 
 @patch("dd_license_attribution.config.json_config_parser.open_file")
-@patch("dd_license_attribution.cli.main_cli.GitHub")
-@patch("dd_license_attribution.cli.main_cli.SourceCodeManager")
-@patch("dd_license_attribution.cli.main_cli.PythonEnvManager")
-@patch("dd_license_attribution.cli.main_cli.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
 def test_use_mirrors_valid_config(
     mock_metadata_collector: Mock,
     mock_python_env_manager: Mock,
