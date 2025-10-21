@@ -10,7 +10,7 @@ from dd_license_attribution.metadata_collector.strategies.override_strategy impo
 )
 
 
-class OverridesWritter(ABC):
+class OverridesWriter(ABC):
     @abstractmethod
     def write(self, override_rules: list[OverrideRule]) -> str:
         raise NotImplementedError

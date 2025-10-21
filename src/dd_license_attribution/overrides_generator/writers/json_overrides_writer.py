@@ -9,12 +9,12 @@ import json
 from dd_license_attribution.metadata_collector.strategies.override_strategy import (  # noqa: E501
     OverrideRule,
 )
-from dd_license_attribution.overrides_generator.writters.abstract_overrides_writter import (  # noqa: E501
-    OverridesWritter,
+from dd_license_attribution.overrides_generator.writers.abstract_overrides_writer import (  # noqa: E501
+    OverridesWriter,
 )
 
 
-class JSONOverridesWritter(OverridesWritter):
+class JSONOverridesWriter(OverridesWriter):
     """
     Writes override rules to JSON format in the format expected by
     the dd-license-attribution tool.
