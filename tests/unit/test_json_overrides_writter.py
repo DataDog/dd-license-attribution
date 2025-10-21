@@ -4,8 +4,6 @@
 # Copyright 2025-present Datadog, Inc.
 
 import json
-import tempfile
-from pathlib import Path
 
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.override_strategy import (
@@ -19,12 +17,7 @@ from dd_license_attribution.overrides_generator.writters.json_overrides_writter 
 
 
 def test_json_overrides_writter_writes_replace_rule_to_file() -> None:
-    """Test writing a REPLACE override rule to JSON file."""
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False
-    ) as tmp_file:
-        output_file = tmp_file.name
-
+    """Test writing a REPLACE override rule returns JSON string."""
     override_rules = [
         OverrideRule(
             override_type=OverrideType.REPLACE,
@@ -43,13 +36,11 @@ def test_json_overrides_writter_writes_replace_rule_to_file() -> None:
         )
     ]
 
-    json_writer = JSONOverridesWritter(output_file)
+    json_writer = JSONOverridesWritter()
     result = json_writer.write(override_rules)
 
-    assert result == output_file
-
-    with open(output_file, "r", encoding="utf-8") as f:
-        json_content = json.load(f)
+    assert isinstance(result, str)
+    json_content = json.loads(result)
 
     assert len(json_content) == 1
     assert json_content[0]["override_type"] == "replace"
@@ -63,16 +54,9 @@ def test_json_overrides_writter_writes_replace_rule_to_file() -> None:
     assert "version" not in json_content[0]["replacement"]
     assert "local_src_path" not in json_content[0]["replacement"]
 
-    Path(output_file).unlink()
-
 
 def test_json_overrides_writter_writes_multiple_rules() -> None:
-    """Test writing multiple override rules to JSON file."""
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False
-    ) as tmp_file:
-        output_file = tmp_file.name
-
+    """Test writing multiple override rules returns JSON string."""
     override_rules = [
         OverrideRule(
             override_type=OverrideType.REPLACE,
@@ -106,11 +90,11 @@ def test_json_overrides_writter_writes_multiple_rules() -> None:
         ),
     ]
 
-    json_writer = JSONOverridesWritter(output_file)
-    json_writer.write(override_rules)
+    json_writer = JSONOverridesWritter()
+    result = json_writer.write(override_rules)
 
-    with open(output_file, "r", encoding="utf-8") as f:
-        json_content = json.load(f)
+    assert isinstance(result, str)
+    json_content = json.loads(result)
 
     assert len(json_content) == 2
     assert json_content[0]["target"]["component"] == "component-1"
@@ -121,45 +105,31 @@ def test_json_overrides_writter_writes_multiple_rules() -> None:
         "Co-Author 2",
     ]
 
-    Path(output_file).unlink()
-
 
 def test_json_overrides_writter_writes_remove_rule_with_no_replacement() -> None:
-    """Test writing a REMOVE override rule with no replacement."""
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False
-    ) as tmp_file:
-        output_file = tmp_file.name
-
+    """Test writing a REMOVE override rule returns JSON string."""
     override_rules = [
         OverrideRule(
             override_type=OverrideType.REMOVE,
-            target={OverrideTargetField.ORIGIN: "https://github.com/test/remove"},
+            target={OverrideTargetField.ORIGIN: ("https://github.com/test/remove")},
             replacement=None,
         )
     ]
 
-    json_writer = JSONOverridesWritter(output_file)
-    json_writer.write(override_rules)
+    json_writer = JSONOverridesWritter()
+    result = json_writer.write(override_rules)
 
-    with open(output_file, "r", encoding="utf-8") as f:
-        json_content = json.load(f)
+    assert isinstance(result, str)
+    json_content = json.loads(result)
 
     assert len(json_content) == 1
     assert json_content[0]["override_type"] == "remove"
     assert json_content[0]["target"]["origin"] == "https://github.com/test/remove"
     assert json_content[0]["replacement"] is None
 
-    Path(output_file).unlink()
-
 
 def test_json_overrides_writter_writes_add_rule() -> None:
-    """Test writing an ADD override rule."""
-    with tempfile.NamedTemporaryFile(
-        mode="w", suffix=".json", delete=False
-    ) as tmp_file:
-        output_file = tmp_file.name
-
+    """Test writing an ADD override rule returns JSON string."""
     override_rules = [
         OverrideRule(
             override_type=OverrideType.ADD,
@@ -175,16 +145,14 @@ def test_json_overrides_writter_writes_add_rule() -> None:
         )
     ]
 
-    json_writer = JSONOverridesWritter(output_file)
-    json_writer.write(override_rules)
+    json_writer = JSONOverridesWritter()
+    result = json_writer.write(override_rules)
 
-    with open(output_file, "r", encoding="utf-8") as f:
-        json_content = json.load(f)
+    assert isinstance(result, str)
+    json_content = json.loads(result)
 
     assert len(json_content) == 1
     assert json_content[0]["override_type"] == "add"
     assert json_content[0]["target"]["component"] == "new-component"
     assert json_content[0]["replacement"]["name"] == "new-component"
     assert json_content[0]["replacement"]["license"] == ["BSD-3-Clause"]
-
-    Path(output_file).unlink()

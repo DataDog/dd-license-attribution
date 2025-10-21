@@ -3,6 +3,7 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2025-present Datadog, Inc.
 
+import io
 import json
 
 from dd_license_attribution.metadata_collector.strategies.override_strategy import (  # noqa: E501
@@ -15,15 +16,14 @@ from dd_license_attribution.overrides_generator.writters.abstract_overrides_writ
 
 class JSONOverridesWritter(OverridesWritter):
     """
-    Writes override rules to a JSON file in the format expected by
+    Writes override rules to JSON format in the format expected by
     the dd-license-attribution tool.
     """
 
-    def __init__(self, output_file: str):
-        self.output_file = output_file
-
     def write(self, override_rules: list[OverrideRule]) -> str:
         # Convert OverrideRule objects to dictionaries for JSON output
+
+        output = io.StringIO()
         json_rules = [
             {
                 "override_type": rule.override_type.value,
@@ -42,7 +42,8 @@ class JSONOverridesWritter(OverridesWritter):
             for rule in override_rules
         ]
 
-        with open(self.output_file, "w", encoding="utf-8") as f:
-            json.dump(json_rules, f, indent=2)
+        json.dump(json_rules, output, indent=2)
+        json_string = output.getvalue()
+        output.close()
 
-        return self.output_file
+        return json_string
