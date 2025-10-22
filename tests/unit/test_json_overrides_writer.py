@@ -11,12 +11,12 @@ from dd_license_attribution.metadata_collector.strategies.override_strategy impo
     OverrideTargetField,
     OverrideType,
 )
-from dd_license_attribution.overrides_generator.writters.json_overrides_writter import (  # noqa: E501
-    JSONOverridesWritter,
+from dd_license_attribution.overrides_generator.writers.json_overrides_writer import (  # noqa: E501
+    JSONOverridesWriter,
 )
 
 
-def test_json_overrides_writter_writes_replace_rule_to_file() -> None:
+def test_json_overrides_writer_writes_replace_rule_to_file() -> None:
     """Test writing a REPLACE override rule returns JSON string."""
     override_rules = [
         OverrideRule(
@@ -36,7 +36,7 @@ def test_json_overrides_writter_writes_replace_rule_to_file() -> None:
         )
     ]
 
-    json_writer = JSONOverridesWritter()
+    json_writer = JSONOverridesWriter()
     result = json_writer.write(override_rules)
 
     assert isinstance(result, str)
@@ -55,7 +55,7 @@ def test_json_overrides_writter_writes_replace_rule_to_file() -> None:
     assert "local_src_path" not in json_content[0]["replacement"]
 
 
-def test_json_overrides_writter_writes_multiple_rules() -> None:
+def test_json_overrides_writer_writes_multiple_rules() -> None:
     """Test writing multiple override rules returns JSON string."""
     override_rules = [
         OverrideRule(
@@ -90,7 +90,7 @@ def test_json_overrides_writter_writes_multiple_rules() -> None:
         ),
     ]
 
-    json_writer = JSONOverridesWritter()
+    json_writer = JSONOverridesWriter()
     result = json_writer.write(override_rules)
 
     assert isinstance(result, str)
@@ -106,7 +106,7 @@ def test_json_overrides_writter_writes_multiple_rules() -> None:
     ]
 
 
-def test_json_overrides_writter_writes_remove_rule_with_no_replacement() -> None:
+def test_json_overrides_writer_writes_remove_rule_with_no_replacement() -> None:
     """Test writing a REMOVE override rule returns JSON string."""
     override_rules = [
         OverrideRule(
@@ -116,7 +116,7 @@ def test_json_overrides_writter_writes_remove_rule_with_no_replacement() -> None
         )
     ]
 
-    json_writer = JSONOverridesWritter()
+    json_writer = JSONOverridesWriter()
     result = json_writer.write(override_rules)
 
     assert isinstance(result, str)
@@ -128,7 +128,7 @@ def test_json_overrides_writter_writes_remove_rule_with_no_replacement() -> None
     assert json_content[0]["replacement"] is None
 
 
-def test_json_overrides_writter_writes_add_rule() -> None:
+def test_json_overrides_writer_writes_add_rule() -> None:
     """Test writing an ADD override rule returns JSON string."""
     override_rules = [
         OverrideRule(
@@ -145,7 +145,7 @@ def test_json_overrides_writter_writes_add_rule() -> None:
         )
     ]
 
-    json_writer = JSONOverridesWritter()
+    json_writer = JSONOverridesWriter()
     result = json_writer.write(override_rules)
 
     assert isinstance(result, str)

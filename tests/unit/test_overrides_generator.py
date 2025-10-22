@@ -14,8 +14,8 @@ from dd_license_attribution.metadata_collector.strategies.override_strategy impo
 from dd_license_attribution.overrides_generator.overrides_generator import (
     OverridesGenerator,
 )
-from dd_license_attribution.overrides_generator.writters.abstract_overrides_writter import (  # noqa: E501
-    OverridesWritter,
+from dd_license_attribution.overrides_generator.writers.abstract_overrides_writer import (  # noqa: E501
+    OverridesWriter,
 )
 
 
@@ -23,7 +23,7 @@ def test_overrides_generator_saves_writer_and_calls_it_when_rules_are_passed(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     """Test that OverridesGenerator delegates to the writer."""
-    overrides_writer_mock = mocker.Mock(spec_set=OverridesWritter)
+    overrides_writer_mock = mocker.Mock(spec_set=OverridesWriter)
     override_rules = [
         OverrideRule(
             override_type=OverrideType.REPLACE,
