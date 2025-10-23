@@ -267,3 +267,19 @@ test-package,https://github.com/test/package,"['MIT']","['Test Author']"
     assert result[0].copyright == ["Test Author"]
     assert result[0].version is None
     assert result[0].local_src_path is None
+
+
+def test_raises_error_on_invalid_csv_format_with_extra_columns(
+    tmp_path: Path,
+) -> None:
+    """Test that invalid CSV format with extra columns raises ValueError."""
+    csv_content = """component,origin,license,copyright
+test-package,https://github.com/test/package,"['MIT']","['Test Author']",extra
+"""
+    csv_file = tmp_path / "test.csv"
+    csv_file.write_text(csv_content)
+
+    strategy = License3rdPartyMetadataCollectionStrategy(str(csv_file))
+
+    with pytest.raises(ValueError, match="Invalid CSV format"):
+        strategy.augment_metadata([])

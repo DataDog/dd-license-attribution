@@ -25,10 +25,11 @@ class License3rdPartyMetadataCollectionStrategy(MetadataCollectionStrategy):
         with open(self.csv_file_path, "r", encoding="utf-8") as f:
             reader = csv.DictReader(f)
             rows = list(reader)
-
         if not rows:
             return metadata
 
+        if None in rows[0].keys():
+            raise ValueError("Invalid CSV format")
         # Create a case-insensitive mapping of column names to actual
         # column names. This allows CSV files with columns like
         # "Component", "LICENSE", etc. to work
