@@ -189,7 +189,7 @@ def generate_sbom_csv(
     package: Annotated[
         str,
         typer.Argument(
-            help="The package to analyze. This has to be a GitHub repository URL."
+            help="The package to analyze. This can be either a GitHub repository URL or a local path to a git repository."
         ),
     ],
     deep_scanning: Annotated[
@@ -337,6 +337,9 @@ def generate_sbom_csv(
     """
     Generate a CSV report (SBOM) of third party dependencies for a given
     open source repository.
+
+    The repository can be specified as either a GitHub repository URL or a local
+    path to a checked-out git repository.
     """
     if log_level.upper() == "DEBUG":
         setup_logging(logging.DEBUG)

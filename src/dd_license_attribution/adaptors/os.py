@@ -56,3 +56,13 @@ def open_file(file_path: str) -> str:
 
 def path_join(path: str, *paths: str) -> str:
     return os.path.join(path, *paths)
+
+
+def expand_user_path(path: str) -> str:
+    """Expand ~ and ~user constructions in a path."""
+    return os.path.expanduser(path)
+
+
+def get_absolute_path(path: str) -> str:
+    """Return the absolute version of a path."""
+    return os.path.abspath(path)

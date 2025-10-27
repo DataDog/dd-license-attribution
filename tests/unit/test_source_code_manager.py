@@ -220,6 +220,10 @@ def test_source_code_manager_get_cached_code(mocker: pytest_mock.MockFixture) ->
         return_value=datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
     )
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
+    expand_user_path_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.expand_user_path",
+        return_value=request_url,
+    )
     git_url_parse_mock = mocker.patch(
         "dd_license_attribution.artifact_management.source_code_manager.parse_git_url",
         return_value=GitUrlParseMock(
@@ -235,10 +239,12 @@ def test_source_code_manager_get_cached_code(mocker: pytest_mock.MockFixture) ->
         "dd_license_attribution.artifact_management.artifact_manager.path_exists",
         return_value=True,
     )
+    cache_dir_path = "cache_dir/20211231_001000Z/test_owner-test_repo/test_branch"
     path_exists_source_code_mock = mocker.patch(
         "dd_license_attribution.artifact_management.source_code_manager.path_exists",
-        return_value=True,
+        side_effect=lambda path: path == cache_dir_path,
     )
+
     artifact_list_dir_mock = mocker.patch(
         "dd_license_attribution.artifact_management.artifact_manager.list_dir",
         return_value=["20211231_001000Z"],
@@ -264,11 +270,10 @@ def test_source_code_manager_get_cached_code(mocker: pytest_mock.MockFixture) ->
 
     assert code_ref == expected_source_code_reference
     assert get_datetime_now_mock.call_count == 1
+    expand_user_path_mock.assert_called_once_with(request_url)
     git_url_parse_mock.assert_called_once_with(request_url)
     path_exists_mock.assert_called_once_with("cache_dir")
-    path_exists_source_code_mock.assert_called_once_with(
-        "cache_dir/20211231_001000Z/test_owner-test_repo/test_branch"
-    )
+    assert path_exists_source_code_mock.call_count == 2
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     source_code_list_dir_mock.assert_called_once_with("cache_dir")
 
@@ -569,6 +574,10 @@ def test_source_code_manager_with_mirror_url(mocker: pytest_mock.MockFixture) ->
         return_value=datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
     )
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
+    expand_user_path_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.expand_user_path",
+        return_value=request_url,
+    )
     git_url_parse_mock = mocker.patch(
         "dd_license_attribution.artifact_management.source_code_manager.parse_git_url",
         return_value=GitUrlParseMock(
@@ -614,9 +623,10 @@ def test_source_code_manager_with_mirror_url(mocker: pytest_mock.MockFixture) ->
 
     assert code_ref == expected_source_code_reference
     get_datetime_now_mock.assert_called_once()
+    expand_user_path_mock.assert_called_once_with(request_url)
     git_url_parse_mock.assert_called_once_with(request_url)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
-    path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
+    assert path_exists_source_code_mock.call_count == 2
     mock_create_dirs.assert_called_once_with(expected_cache_dir)
     run_command_mock.assert_has_calls(
         [
@@ -638,6 +648,10 @@ def test_source_code_manager_with_mirror_ref_mapping(
         return_value=datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
     )
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
+    expand_user_path_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.expand_user_path",
+        return_value=request_url,
+    )
     git_url_parse_mock = mocker.patch(
         "dd_license_attribution.artifact_management.source_code_manager.parse_git_url",
         return_value=GitUrlParseMock(
@@ -685,9 +699,10 @@ def test_source_code_manager_with_mirror_ref_mapping(
 
     assert code_ref == expected_source_code_reference
     get_datetime_now_mock.assert_called_once()
+    expand_user_path_mock.assert_called_once_with(request_url)
     git_url_parse_mock.assert_called_once_with(request_url)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
-    path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
+    assert path_exists_source_code_mock.call_count == 2
     mock_create_dirs.assert_called_once_with(expected_cache_dir)
     run_command_mock.assert_has_calls(
         [
@@ -759,6 +774,10 @@ def test_source_code_manager_with_mirror_url_and_ref_mapping_for_the_default_bra
         return_value=datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
     )
     request_url = "https://github.com/test_owner/test_repo"
+    expand_user_path_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.expand_user_path",
+        return_value=request_url,
+    )
     git_url_parse_mock = mocker.patch(
         "dd_license_attribution.artifact_management.source_code_manager.parse_git_url",
         return_value=GitUrlParseMock(
@@ -808,9 +827,10 @@ def test_source_code_manager_with_mirror_url_and_ref_mapping_for_the_default_bra
 
     assert code_ref == expected_source_code_reference
     get_datetime_now_mock.assert_called_once()
+    expand_user_path_mock.assert_called_once_with(request_url)
     git_url_parse_mock.assert_called_once_with(request_url)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
-    path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
+    assert path_exists_source_code_mock.call_count == 2
     mock_create_dirs.assert_called_once_with(expected_cache_dir)
     output_from_command_mock.assert_called_once_with(
         f"git ls-remote --symref {expected_source_code_reference.repo_url} HEAD"
@@ -828,6 +848,10 @@ def test_source_code_manager_with_multiple_mirrors(
         return_value=datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
     )
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
+    expand_user_path_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.expand_user_path",
+        return_value=request_url,
+    )
     git_url_parse_mock = mocker.patch(
         "dd_license_attribution.artifact_management.source_code_manager.parse_git_url",
         return_value=GitUrlParseMock(
@@ -881,9 +905,10 @@ def test_source_code_manager_with_multiple_mirrors(
 
     assert code_ref == expected_source_code_reference
     get_datetime_now_mock.assert_called_once()
+    expand_user_path_mock.assert_called_once_with(request_url)
     git_url_parse_mock.assert_called_once_with(request_url)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
-    path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
+    assert path_exists_source_code_mock.call_count == 2
     mock_create_dirs.assert_called_once_with(expected_cache_dir)
     run_command_mock.assert_has_calls(
         [
@@ -905,6 +930,10 @@ def test_source_code_manager_with_no_mirror_match(
         return_value=datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
     )
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
+    expand_user_path_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.expand_user_path",
+        return_value=request_url,
+    )
     git_url_parse_mock = mocker.patch(
         "dd_license_attribution.artifact_management.source_code_manager.parse_git_url",
         return_value=GitUrlParseMock(
@@ -949,9 +978,10 @@ def test_source_code_manager_with_no_mirror_match(
 
     assert code_ref == expected_source_code_reference
     get_datetime_now_mock.assert_called_once()
+    expand_user_path_mock.assert_called_once_with(request_url)
     git_url_parse_mock.assert_called_once_with(request_url)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
-    path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
+    assert path_exists_source_code_mock.call_count == 2
     mock_create_dirs.assert_called_once_with(expected_cache_dir)
     run_command_mock.assert_has_calls(
         [
@@ -963,3 +993,145 @@ def test_source_code_manager_with_no_mirror_match(
             ),
         ]
     )
+
+
+def test_source_code_manager_with_local_path(mocker: pytest_mock.MockFixture) -> None:
+    """Test that SourceCodeManager can handle local repository paths."""
+    local_path = "/path/to/local/repo"
+
+    # Mock path_exists to return True for both cache_dir and local_path
+    def path_exists_side_effect(path: str) -> bool:
+        if path == "cache_dir":
+            return True
+        elif path == local_path or path == f"{local_path}/.git":
+            return True
+        return False
+
+    path_exists_artifact_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
+        side_effect=path_exists_side_effect,
+    )
+    path_exists_source_code_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.path_exists",
+        side_effect=path_exists_side_effect,
+    )
+
+    artifact_list_dir_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
+        return_value=[],
+    )
+
+    output_from_command_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.output_from_command",
+        side_effect=[
+            "https://github.com/test_owner/test_repo.git",  # remote URL
+            "main",  # branch name
+        ],
+    )
+
+    source_code_manager = SourceCodeManager("cache_dir", 86400)
+    code_ref = source_code_manager.get_code(local_path)
+
+    expected_source_code_reference = SourceCodeReference(
+        repo_url="https://github.com/test_owner/test_repo.git",
+        branch="main",
+        local_root_path=local_path,
+        local_full_path=local_path,
+    )
+
+    assert code_ref == expected_source_code_reference
+    path_exists_artifact_mock.assert_called_with("cache_dir")
+    artifact_list_dir_mock.assert_called_once_with("cache_dir")
+    # Verify that git commands were called to extract repo info
+    assert output_from_command_mock.call_count == 2
+
+
+def test_source_code_manager_with_local_path_not_a_git_repo(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that SourceCodeManager raises error for non-git local paths."""
+    from dd_license_attribution.artifact_management.source_code_manager import (
+        NonAccessibleRepository,
+    )
+
+    local_path = "/path/to/local/not-a-repo"
+
+    # Mock path_exists to return True for local_path but False for .git
+    def path_exists_side_effect(path: str) -> bool:
+        if path == "cache_dir":
+            return True
+        elif path == local_path:
+            return True
+        elif path == f"{local_path}/.git":
+            return False
+        return False
+
+    path_exists_artifact_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
+        side_effect=path_exists_side_effect,
+    )
+    path_exists_source_code_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.path_exists",
+        side_effect=path_exists_side_effect,
+    )
+
+    artifact_list_dir_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
+        return_value=[],
+    )
+
+    source_code_manager = SourceCodeManager("cache_dir", 86400)
+
+    with pytest.raises(NonAccessibleRepository) as e:
+        source_code_manager.get_code(local_path)
+
+    assert "not a git repository" in str(e.value)
+    path_exists_artifact_mock.assert_called_with("cache_dir")
+    artifact_list_dir_mock.assert_called_once_with("cache_dir")
+
+
+def test_source_code_manager_with_tilde_path(mocker: pytest_mock.MockFixture) -> None:
+    """Test that SourceCodeManager handles tilde expansion in paths."""
+    import os
+
+    tilde_path = "~/my-project"
+    expanded_path = os.path.expanduser(tilde_path)
+
+    # Mock path_exists to return True for expanded path
+    def path_exists_side_effect(path: str) -> bool:
+        if path == "cache_dir":
+            return True
+        elif path == expanded_path or path == f"{expanded_path}/.git":
+            return True
+        return False
+
+    path_exists_artifact_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
+        side_effect=path_exists_side_effect,
+    )
+    path_exists_source_code_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.path_exists",
+        side_effect=path_exists_side_effect,
+    )
+
+    artifact_list_dir_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
+        return_value=[],
+    )
+
+    output_from_command_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.output_from_command",
+        side_effect=[
+            "https://github.com/test_owner/test_repo.git",  # remote URL
+            "main",  # branch name
+        ],
+    )
+
+    source_code_manager = SourceCodeManager("cache_dir", 86400)
+    code_ref = source_code_manager.get_code(tilde_path)
+
+    # Should receive the expanded path
+    assert code_ref is not None
+    assert code_ref.local_root_path == os.path.abspath(expanded_path)
+    assert code_ref.branch == "main"
+    assert output_from_command_mock.call_count == 2

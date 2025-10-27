@@ -58,7 +58,12 @@ pip install .
 
 # Optionally you can define a GITHUB_TOKEN, if used it will raise the throttling threashold and maspeed up your generation calls to github APIs.
 export GITHUB_TOKEN=YOUR_TOKEN
+
+# You can scan a remote GitHub repository
 dd-license-attribution https://github.com/owner/repo > LICENSE-3rdparty.csv
+
+# Or scan a local git repository
+dd-license-attribution /path/to/local/repo > LICENSE-3rdparty.csv
 ```
 
 The following optional parameters are available:
@@ -168,7 +173,11 @@ dd-license-attribution --override-spec .ddla-overrides https://github.com/your-o
 
 #### Basic License Attribution
 ```bash
+# Scan a remote repository
 dd-license-attribution https://github.com/owner/repo > LICENSE-3rdparty.csv
+
+# Or scan a local repository
+dd-license-attribution /path/to/local/repo > LICENSE-3rdparty.csv
 ```
 
 #### Deep Scanning with Caching

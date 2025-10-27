@@ -17,6 +17,8 @@ from giturlparse import parse as parse_git_url
 
 from dd_license_attribution.adaptors.os import (
     create_dirs,
+    expand_user_path,
+    get_absolute_path,
     list_dir,
     output_from_command,
     path_exists,
@@ -196,10 +198,65 @@ class SourceCodeManager(ArtifactManager):
                 )
         return original_url, original_ref_type, original_ref_name, original_ref_name
 
+    def _handle_local_path(self, local_path: str) -> SourceCodeReference | None:
+        """Handle a local git repository path.
+        Args:
+            local_path: Path to the local git repository (should already be expanded)
+        Returns:
+            SourceCodeReference pointing to the local path, or None if invalid
+        """
+        # Normalize the path (resolve relative paths, symlinks, etc.)
+        local_path = get_absolute_path(expand_user_path(local_path))
+
+        # Verify it's a git repository by checking for .git directory
+        git_dir = f"{local_path}/.git"
+        if not path_exists(git_dir):
+            logger.error(
+                f"Path {local_path} is not a git repository (no .git directory found)"
+            )
+            raise NonAccessibleRepository(f"Path {local_path} is not a git repository")
+
+        # Try to extract the repository URL from git config
+        try:
+            remote_url = output_from_command(
+                f"cd {local_path} && git config --get remote.origin.url"
+            ).strip()
+            logger.debug(f"Extracted remote URL from local repo: {remote_url}")
+        except Exception as e:
+            logger.warning(f"Could not extract remote URL from local repository: {e}")
+            remote_url = f"file://{local_path}"
+
+        # Try to get the current branch name
+        try:
+            branch = output_from_command(
+                f"cd {local_path} && git rev-parse --abbrev-ref HEAD"
+            ).strip()
+            logger.debug(f"Extracted branch from local repo: {branch}")
+        except Exception as e:
+            logger.warning(f"Could not extract branch from local repository: {e}")
+            branch = "unknown"
+
+        logger.info(f"Using local repository at {local_path} (branch: {branch})")
+
+        return SourceCodeReference(
+            repo_url=remote_url,
+            branch=branch,
+            local_root_path=local_path,
+            local_full_path=local_path,
+        )
+
     def get_code(
         self, resource_url: str, force_update: bool = False
     ) -> SourceCodeReference | None:
         logger.debug(f"Getting code for resource URL: {resource_url}")
+
+        # Check if resource_url is a local path
+        # Expand ~ and make path absolute before checking
+        expanded_path = expand_user_path(resource_url)
+        if path_exists(expanded_path):
+            logger.debug(f"Detected local path: {expanded_path}")
+            return self._handle_local_path(expanded_path)
+
         parsed_url = parse_git_url(resource_url)
         if not parsed_url.valid:
             return None

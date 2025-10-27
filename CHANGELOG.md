@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Support for scanning local git repositories (in addition to GitHub URLs)
 - `--use-mirrors` parameter to support alternative repository URLs for source code fetching
 - Support for reference mapping for mirror declarations
 - `--no-github-sbom-strategy` parameter to skip the GitHub SBOM strategy
