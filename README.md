@@ -30,10 +30,19 @@ pip install .
 ```
 4. Run the tool on a GitHub repository:
 ```bash
-dd-license-attribution https://github.com/owner/repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom-csv https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
 
 For more advanced usage, see the sections below.
+
+### Available Commands
+
+`dd-license-attribution` provides two main commands:
+
+1. **`generate-sbom-csv`** - Generate a CSV report (SBOM) of third-party dependencies
+2. **`generate-overrides`** - Interactively generate override configuration files
+
+Run `dd-license-attribution --help` to see all available commands.
 
 ### Requirements
 
@@ -50,6 +59,8 @@ For more advanced usage, see the sections below.
 
 ### Usage
 
+#### Generating SBOM Reports
+
 To install and run the command after cloning the repository:
 
 ```bash
@@ -58,10 +69,10 @@ pip install .
 
 # Optionally you can define a GITHUB_TOKEN, if used it will raise the throttling threashold and maspeed up your generation calls to github APIs.
 export GITHUB_TOKEN=YOUR_TOKEN
-dd-license-attribution https://github.com/owner/repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom-csv https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
 
-The following optional parameters are available:
+The following optional parameters are available for `generate-sbom-csv`:
 
 #### Scanning Options
 
@@ -101,7 +112,7 @@ requests,https://github.com/psf/requests,Apache-2.0,"Kenneth Reitz"
 
 #### Output string configuration
 
-There's a file at `src/dd_license_attribution/config/string_formatting_config.py` that you can customize. It's used to help formatting of the "Copyright" part of the output. These are strings that often come after a comma (like the Inc in "Datadog, Inc.") that should be exceptions to splitting the string on the comma. 
+There's a file at `src/dd_license_attribution/config/string_formatting_config.py` that you can customize. It's used to help formatting of the "Copyright" part of the output. These are strings that often come after a comma (like the Inc in "Datadog, Inc.") that should be exceptions to splitting the string on the comma.
 
 #### Manual repository override configuration
 
@@ -139,11 +150,34 @@ Sometimes `dd-license-attribution` may not detect all dependencies correctly, or
 - **Remove false positives** from your dependency report
 - **Update copyright information** when the detected data is wrong
 
-Use the `--override-spec` parameter to specify your override configuration file:
+##### Creating Overrides Interactively (Recommended)
+
+The easiest way to create overrides is using the **interactive `generate-overrides` command**:
 
 ```bash
-dd-license-attribution --override-spec .ddla-overrides https://github.com/your-org/your-project
+# Generate the SBOM first
+dd-license-attribution generate-sbom-csv https://github.com/owner/repo > LICENSE-3rdparty.csv
+
+# Interactively fix entries with missing information
+dd-license-attribution generate-overrides LICENSE-3rdparty.csv
+
+# Regenerate with overrides applied
+dd-license-attribution generate-sbom-csv https://github.com/owner/repo --override-spec .ddla-overrides > LICENSE-3rdparty.csv
 ```
+
+The `generate-overrides` command will:
+- Analyze your CSV file for entries with missing license or copyright
+- Prompt you interactively to provide the correct information
+- Generate a properly formatted `.ddla-overrides` file
+
+**Options:**
+- `--output` or `-o`: Specify custom output file location
+- `--only-license`: Only fix entries with missing license information
+- `--only-copyright`: Only fix entries with missing copyright information
+
+##### Creating Overrides Manually
+
+Alternatively, you can manually create an override configuration file:
 
 **Quick Example:**
 ```json
@@ -160,6 +194,12 @@ dd-license-attribution --override-spec .ddla-overrides https://github.com/your-o
 ]
 ```
 
+Then use it with the `--override-spec` parameter:
+
+```bash
+dd-license-attribution generate-sbom-csv --override-spec .ddla-overrides https://github.com/your-org/your-project
+```
+
 📖 **For complete documentation, examples, and best practices, see [Override Configuration Guide](overrides.md)**
 
 > **Recommendation**: When using overrides, consider creating a PR or feature request to improve `dd-license-attribution` or the target dependency to add missing information upstream. Overrides should ideally be a temporary measure.
@@ -168,24 +208,36 @@ dd-license-attribution --override-spec .ddla-overrides https://github.com/your-o
 
 #### Basic License Attribution
 ```bash
-dd-license-attribution https://github.com/owner/repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom-csv https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
 
 #### Deep Scanning with Caching
 ```bash
-dd-license-attribution --deep-scanning --cache-dir ./cache https://github.com/owner/repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom-csv --deep-scanning --cache-dir ./cache https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
 
 #### Working with Private Repositories
 ```bash
 export GITHUB_TOKEN=your_token
-dd-license-attribution https://github.com/owner/private-repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom-csv https://github.com/owner/private-repo > LICENSE-3rdparty.csv
 ```
 
 #### Using Mirror Repositories
 ```bash
 # Create mirrors.json with your mirror configurations
-dd-license-attribution --use-mirrors=mirrors.json https://github.com/owner/repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom-csv --use-mirrors=mirrors.json https://github.com/owner/repo > LICENSE-3rdparty.csv
+```
+
+#### Interactive Override Generation
+```bash
+# Step 1: Generate initial SBOM
+dd-license-attribution generate-sbom-csv https://github.com/owner/repo > LICENSE-3rdparty.csv
+
+# Step 2: Fix entries with missing information interactively
+dd-license-attribution generate-overrides LICENSE-3rdparty.csv
+
+# Step 3: Regenerate with overrides
+dd-license-attribution generate-sbom-csv --override-spec .ddla-overrides https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
 
 ### Development and Contributing

@@ -42,13 +42,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          dd-license-attribution --only-root-project https://github.com/DataDog/stratus-red-team
+          dd-license-attribution generate-sbom-csv --only-root-project https://github.com/DataDog/stratus-red-team
 
-      - name: Run the dd-license-attribution script against the dd-trace-py repository with dependencies
+      - name: Run the dd-license-attribution script against the dd-license-attribution repository with overrides
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          dd-license-attribution --override-spec=.ddla-overrides https://github.com/DataDog/dd-license-attribution > ddla-output.txt
+          dd-license-attribution generate-sbom-csv --override-spec=.ddla-overrides https://github.com/DataDog/dd-license-attribution > ddla-output.txt
           if ! cmp -s LICENSE-3rdparty.csv ddla-output.txt; then
             echo "Error: LICENSE-3rdparty.csv differs from ddla-output.txt"
             echo "Diff between files:"
