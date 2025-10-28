@@ -10,6 +10,7 @@ from typing import Annotated
 
 import typer
 
+from dd_license_attribution.adaptors.os import write_file
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.license_3rdparty_metadata_collection_strategy import (  # noqa: E501
     License3rdPartyMetadataCollectionStrategy,
@@ -25,8 +26,6 @@ from dd_license_attribution.overrides_generator.overrides_generator import (
 from dd_license_attribution.overrides_generator.writers.json_overrides_writer import (  # noqa: E501
     JSONOverridesWriter,
 )
-
-from dd_license_attribution.adaptors.os import write_file
 
 
 def only_license_or_copyright_callback() -> (
