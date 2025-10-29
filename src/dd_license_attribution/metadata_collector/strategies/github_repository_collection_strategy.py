@@ -30,6 +30,22 @@ class GitHubRepositoryMetadataCollectionStrategy(MetadataCollectionStrategy):
             if not package.copyright or not package.license:
                 # get the repository information
                 status, repository = self.client.repos[owner][repo].get()
+
+                # If the repository has moved, follow the redirect
+                # The redirect URL will use /repositories/{id}, which always returns
+                # the final/current repository data (never another redirect)
+                if status == 301 and repository and "url" in repository:
+                    redirect_url = repository["url"]
+                    api_prefix = "https://api.github.com/"
+                    if redirect_url.startswith(api_prefix):
+                        path = redirect_url[len(api_prefix) :]
+                        path_parts = path.split("/")
+                        # Navigate the GitHub client to the correct endpoint
+                        endpoint = self.client
+                        for part in path_parts:
+                            endpoint = endpoint[part]
+                        status, repository = endpoint.get()
+
                 if status == 200:
                     if not package.copyright:
                         package.copyright = [repository["owner"]["login"]]
@@ -39,8 +55,6 @@ class GitHubRepositoryMetadataCollectionStrategy(MetadataCollectionStrategy):
                             package.license = []
                         else:
                             package.license = [repository["license"].get("spdx_id")]
-                elif status == 301:
-                    continue  # repository moved but we are not supporting redirects here yet
                 else:
                     raise ValueError(
                         f"Failed to get repository information for {owner}/{repo}"

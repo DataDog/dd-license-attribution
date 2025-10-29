@@ -282,3 +282,117 @@ def test_github_repository_collection_strategy_do_not_override_copyright_if_prev
 
     github_parse_mock.assert_called_once_with("test_purl")
     repo_info_mock.get.assert_called_once_with()
+
+
+def test_github_repository_collection_strategy_follows_redirects(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    # GitHub API returns 301 with a redirect URL for moved repositories
+    old_repo_mock = mocker.Mock()
+    old_repo_mock.get.return_value = (
+        301,
+        {"url": "https://api.github.com/repositories/95208491"},
+    )
+
+    # Mock the repositories endpoint
+    new_repo_mock = mocker.Mock()
+    new_repo_mock.get.return_value = (
+        200,
+        {
+            "owner": {"login": "aboutcode-org"},
+            "license": {"spdx_id": "MIT"},
+        },
+    )
+
+    # Create a mock that supports [] operator
+    repositories_mock = mocker.Mock()
+    repositories_mock.__getitem__ = mocker.Mock(return_value=new_repo_mock)
+
+    gh_mock = mocker.Mock()
+    gh_mock.repos = {
+        "nexB": {"pkginfo2": old_repo_mock},
+    }
+    # Mock the repositories endpoint to be subscriptable
+    gh_mock.__getitem__ = mocker.Mock(
+        side_effect=lambda key: (
+            repositories_mock if key == "repositories" else mocker.Mock()
+        )
+    )
+
+    github_parse_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(True, "github", "nexB", "pkginfo2"),
+    )
+
+    strategy = GitHubRepositoryMetadataCollectionStrategy(github_client=gh_mock)
+
+    initial_metadata = [
+        Metadata(
+            name=None,
+            version=None,
+            origin="https://github.com/nexB/pkginfo2",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    expected_metadata = [
+        Metadata(
+            name=None,
+            version=None,
+            origin="https://github.com/nexB/pkginfo2",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["aboutcode-org"],
+        )
+    ]
+
+    assert updated_metadata == expected_metadata
+
+    github_parse_mock.assert_called_once_with("https://github.com/nexB/pkginfo2")
+    old_repo_mock.get.assert_called_once_with()
+    new_repo_mock.get.assert_called_once_with()
+
+
+def test_github_repository_collection_strategy_raises_on_unparseable_redirect(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    # Test that we raise an error when we can't parse the redirect URL
+    repo_mock = mocker.Mock()
+    repo_mock.get.return_value = (
+        301,
+        {"url": "https://not-github.com/some/path"},  # Unparseable URL
+    )
+
+    gh_mock = mocker.Mock()
+    gh_mock.repos = {"owner": {"repo": repo_mock}}
+
+    github_parse_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(True, "github", "owner", "repo"),
+    )
+
+    strategy = GitHubRepositoryMetadataCollectionStrategy(github_client=gh_mock)
+
+    initial_metadata = [
+        Metadata(
+            name=None,
+            version=None,
+            origin="test_purl",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    # Should raise ValueError when redirect URL can't be parsed
+    with pytest.raises(
+        ValueError, match="Failed to get repository information for owner/repo"
+    ):
+        strategy.augment_metadata(initial_metadata)
+
+    github_parse_mock.assert_called_once_with("test_purl")
+    repo_mock.get.assert_called_once_with()
