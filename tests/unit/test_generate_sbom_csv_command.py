@@ -15,7 +15,11 @@ runner = CliRunner()
 
 
 def test_basic_run() -> None:
-    result = runner.invoke(app, ["test", "--no-gh-auth"], color=False)
+    result = runner.invoke(
+        app,
+        ["generate-sbom-csv", "test", "--no-gh-auth"],
+        color=False,
+    )
     assert result.exit_code == 0
 
 
@@ -24,7 +28,7 @@ def test_no_github_auth() -> None:
     original_github_token = os.environ.pop("GITHUB_TOKEN", None)
 
     try:
-        result = runner.invoke(app, ["test"], color=False)
+        result = runner.invoke(app, ["generate-sbom-csv", "test"], color=False)
         assert result.exit_code == 2
         assert "Invalid value for '--github-token'" in result.output_bytes.decode(
             "utf-8", "ignore"
@@ -36,12 +40,21 @@ def test_no_github_auth() -> None:
 
 
 def test_github_auth_param() -> None:
-    result = runner.invoke(app, ["test", "--github-token=12345"], color=False)
+    result = runner.invoke(
+        app,
+        ["generate-sbom-csv", "test", "--github-token=12345"],
+        color=False,
+    )
     assert result.exit_code == 0
 
 
 def test_github_auth_env() -> None:
-    result = runner.invoke(app, ["test"], env={"GITHUB_TOKEN": "12345"}, color=False)
+    result = runner.invoke(
+        app,
+        ["generate-sbom-csv", "test"],
+        env={"GITHUB_TOKEN": "12345"},
+        color=False,
+    )
     assert result.exit_code == 0
 
 
@@ -71,7 +84,7 @@ def test_skip_strategies_options(
     args = ["--no-gh-auth"] + arg
     result = runner.invoke(
         app,
-        ["https://github.com/org/repo"] + args,
+        ["generate-sbom-csv", "https://github.com/org/repo"] + args,
     )
     assert result.exit_code == 0
 
@@ -96,6 +109,7 @@ def test_skip_all_strategies(
     result = runner.invoke(
         app,
         [
+            "generate-sbom-csv",
             "https://github.com/org/repo",
             "--no-gh-auth",
             "--no-pypi-strategy",
@@ -116,7 +130,7 @@ def test_skip_all_strategies(
 
 
 def test_missing_package() -> None:
-    result = runner.invoke(app, color=False)
+    result = runner.invoke(app, ["generate-sbom-csv"], color=False)
     assert result.exit_code == 2
     assert "Missing argument 'PACKAGE'." in result.stderr
 
@@ -138,6 +152,7 @@ def test_use_mirrors_invalid_json(
     result = runner.invoke(
         app,
         [
+            "generate-sbom-csv",
             "--use-mirrors=test.json",
             "--no-gh-auth",
             "--log-level=DEBUG",
@@ -175,11 +190,12 @@ def test_use_mirrors_valid_config(
     result = runner.invoke(
         app,
         [
+            "generate-sbom-csv",
             "--use-mirrors=test.json",
             "--no-gh-auth",
             "--log-level=DEBUG",
             "--",
-            "https://github.com/DataDog/test",
+            "test",
         ],
         color=False,
     )
@@ -187,7 +203,11 @@ def test_use_mirrors_valid_config(
 
 
 def test_cache_ttl_without_cache_dir() -> None:
-    result = runner.invoke(app, ["test", "--cache-ttl=10"], color=False)
+    result = runner.invoke(
+        app,
+        ["generate-sbom-csv", "test", "--cache-ttl=10"],
+        color=False,
+    )
     assert result.exit_code == 2
     assert "Invalid value for '--cache-ttl'" in result.stderr
 
@@ -195,7 +215,12 @@ def test_cache_ttl_without_cache_dir() -> None:
 def test_transitive_root_same_time() -> None:
     result = runner.invoke(
         app,
-        ["test", "--only-transitive-dependencies", "--only-root-project"],
+        [
+            "generate-sbom-csv",
+            "test",
+            "--only-transitive-dependencies",
+            "--only-root-project",
+        ],
         color=False,
     )
     assert result.exit_code == 2

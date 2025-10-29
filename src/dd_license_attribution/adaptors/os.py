@@ -54,5 +54,10 @@ def open_file(file_path: str) -> str:
                 return file.read()
 
 
+def write_file(file_path: str, content: str) -> None:
+    with open(file_path, "w", encoding="utf-8") as file:
+        file.write(content)
+
+
 def path_join(path: str, *paths: str) -> str:
     return os.path.join(path, *paths)

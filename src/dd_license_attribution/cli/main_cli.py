@@ -7,9 +7,24 @@
 
 import typer
 
-from dd_license_attribution.cli.generate_sbom_csv_command import generate_sbom_csv
+from dd_license_attribution.cli.generate_overrides_command import (
+    generate_overrides,
+)
+from dd_license_attribution.cli.generate_sbom_csv_command import (
+    generate_sbom_csv,
+)
 
-app = typer.Typer(add_completion=False, no_args_is_help=True)
+app = typer.Typer(add_completion=False)
 app.command()(generate_sbom_csv)
+app.command()(generate_overrides)
+
+
+@app.callback(invoke_without_command=True)
+def main(ctx: typer.Context) -> None:
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+        ctx.exit(2)
+
+
 if __name__ == "__main__":
     app()

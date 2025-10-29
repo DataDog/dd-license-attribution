@@ -51,7 +51,23 @@ The rule only applies when ALL your matching criteria are met, ensuring precise 
 
 ## Creating Your Override File
 
-### Step 1: Create the JSON File
+You have two options for creating override files:
+
+### Option 1: Use the Interactive Command (Recommended) ⚡
+
+The easiest way to create overrides is using the **interactive `generate-overrides` command**, which automatically analyzes your CSV file and prompts you to fix issues:
+
+```bash
+dd-license-attribution generate-overrides LICENSE-3rdparty.csv
+```
+
+This command will guide you through fixing problematic entries and generate a properly formatted override file. **[See full documentation below](#interactive-override-generation-with-generate-overrides)**.
+
+### Option 2: Manually Create JSON File
+
+If you prefer to write overrides manually, follow these steps:
+
+#### Step 1: Create the JSON File
 
 Create a new file (we recommend naming it `.ddla-overrides`) with a JSON array containing your override rules:
 
@@ -70,7 +86,7 @@ Create a new file (we recommend naming it `.ddla-overrides`) with a JSON array c
 ]
 ```
 
-### Step 2: Build Your Rules
+#### Step 2: Build Your Rules
 
 Each rule in the array follows this structure:
 
@@ -330,3 +346,191 @@ The `OverrideCollectionStrategy` tracks unused rules through the `unused_targets
 - Potential issues with target matching criteria
 
 Monitor unused rules in your pipeline to maintain an effective override configuration.
+
+## Interactive Override Generation with `generate-overrides`
+
+Creating override rules manually can be tedious and error-prone. The `generate-overrides` command provides an **interactive wizard** that helps you quickly generate override files from existing CSV reports.
+
+### What is `generate-overrides`?
+
+The `generate-overrides` command is an interactive tool that:
+
+1. **Analyzes** your LICENSE-3rdparty.csv file
+2. **Identifies** entries with missing or incomplete license/copyright information
+3. **Prompts** you interactively to provide the correct information
+4. **Generates** a properly formatted override JSON file
+
+This eliminates the need to manually write JSON and reduces the chance of syntax errors.
+
+### When to Use `generate-overrides`
+
+Use this command when:
+
+- 📊 You've already generated a LICENSE-3rdparty.csv and noticed entries with missing data
+- 🔄 You want to quickly fix multiple entries with missing license or copyright information
+- ⚡ You need to create overrides but don't want to write JSON manually
+- ✅ You want to ensure your override file is correctly formatted
+
+### Basic Usage
+
+```bash
+dd-license-attribution generate-overrides LICENSE-3rdparty.csv
+```
+
+This will:
+1. Scan the CSV file for entries with empty license or copyright fields
+2. Prompt you interactively for each problematic entry
+3. Generate `.ddla-overrides` file in the current directory
+
+### Command Options
+
+#### Output File Location
+
+Specify a custom output file:
+
+```bash
+dd-license-attribution generate-overrides LICENSE-3rdparty.csv --output my-overrides.json
+```
+
+#### Filter by License Issues Only
+
+Only check for entries with missing license information:
+
+```bash
+dd-license-attribution generate-overrides LICENSE-3rdparty.csv --only-license
+```
+
+This will skip entries that only have missing copyright (but have a license).
+
+#### Filter by Copyright Issues Only
+
+Only check for entries with missing copyright information:
+
+```bash
+dd-license-attribution generate-overrides LICENSE-3rdparty.csv --only-copyright
+```
+
+This will skip entries that only have missing license (but have copyright).
+
+### Interactive Workflow
+
+When you run the command, you'll see an interactive prompt for each problematic entry:
+
+```
+Found 3 entries with missing license or copyright information.
+
+Component: test-package-1
+Origin: https://github.com/test/package1
+Current License: ['MIT']
+Current Copyright: (empty)
+
+Do you want to fix this entry? [Y/n]: y
+
+Enter the corrected information:
+(Press Enter to keep the current value)
+Origin [https://github.com/test/package1]:
+License(s) (comma-separated) [current: MIT]:
+Copyright holder(s) (comma-separated): Copyright 2024 Test Corp
+✓ Override rule created.
+```
+
+#### Interactive Features
+
+1. **Skip Entries**: Answer `n` to skip entries you don't want to fix
+2. **Keep Existing Values**: Press Enter without typing to keep the current value (for fields that already have data)
+3. **Multiple Values**: Provide comma-separated values for multiple licenses or copyright holders
+4. **Current Value Display**: The tool shows current values in brackets to help you decide
+
+### Usage Examples
+
+#### Example 1: Fix All Missing Information
+
+```bash
+dd-license-attribution generate-overrides LICENSE-3rdparty.csv
+```
+
+The tool will prompt you for every entry that's missing either license or copyright information.
+
+#### Example 2: Only Fix Missing Licenses
+
+```bash
+dd-license-attribution generate-overrides LICENSE-3rdparty.csv --only-license -o license-fixes.json
+```
+
+Use this when you want to focus specifically on license information and ignore copyright issues.
+
+#### Example 3: Only Fix Missing Copyright
+
+```bash
+dd-license-attribution generate-overrides LICENSE-3rdparty.csv --only-copyright
+```
+
+Use this when licenses are correct but copyright information needs to be added.
+
+#### Example 4: Keep Existing Values
+
+When prompted:
+```
+License(s) (comma-separated) [current: MIT]: [Press Enter]
+```
+
+Simply press Enter to keep "MIT" as the license. This is useful when only one field needs to be updated.
+
+### Generated Override File
+
+The command generates a JSON file with proper override rules:
+
+```json
+[
+  {
+    "override_type": "replace",
+    "target": {
+      "component": "test-package-1",
+      "origin": "https://github.com/test/package1"
+    },
+    "replacement": {
+      "name": "test-package-1",
+      "origin": "https://github.com/test/package1",
+      "license": ["MIT"],
+      "copyright": ["Copyright 2024 Test Corp"]
+    }
+  }
+]
+```
+
+You can then use this file with the main generation command:
+
+```bash
+dd-license-attribution generate-sbom-csv https://github.com/user/repo --override-spec .ddla-overrides
+```
+
+### Tips for Using `generate-overrides`
+
+1. **Run After Initial Scan**: First generate your CSV report, then use `generate-overrides` to fix issues
+
+2. **Use Filters for Large Files**: If you have many entries, use `--only-license` or `--only-copyright` to focus on specific issues
+
+3. **Commit the Generated File**: Add the generated override file to version control so your team uses the same overrides
+
+4. **Iterative Approach**: You can run the command multiple times with different filters to tackle issues incrementally
+
+5. **Combine with Manual Edits**: The generated file is JSON, so you can manually edit it if needed after generation
+
+### Typical Workflow
+
+A typical workflow might look like:
+
+```bash
+# Step 1: Generate initial SBOM
+dd-license-attribution generate-sbom-csv https://github.com/user/repo > LICENSE-3rdparty.csv
+
+# Step 2: Generate overrides interactively
+dd-license-attribution generate-overrides LICENSE-3rdparty.csv
+
+# Step 3: Regenerate SBOM with overrides
+dd-license-attribution generate-sbom-csv https://github.com/user/repo --override-spec .ddla-overrides > LICENSE-3rdparty.csv
+
+# Step 4: Commit both files
+git add LICENSE-3rdparty.csv .ddla-overrides
+git commit -m "Update license attribution with overrides"
+```
