@@ -7,20 +7,34 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2025-10-29
+
 ### Added
+- New `generate-overrides` CLI command to create valid ddla-overrides files (#124, #115)
+- New collection strategy that reads existing LICENSE-3rdparty.csv files (#114)
+- Node.js/NPM support for collecting Node.js dependency metadata (#88)
+- `--no-scancode-toolkit-strategy` parameter to skip the ScanCode Toolkit strategy (#90)
+- `--no-github-sbom-strategy` parameter to skip the GitHub SBOM strategy
 - `--use-mirrors` parameter to support alternative repository URLs for source code fetching
 - Support for reference mapping for mirror declarations
-- `--no-github-sbom-strategy` parameter to skip the GitHub SBOM strategy
+- Copyright metadata cleanup strategy that eliminates extra whitespace, dates, and copyright strings (#107)
+- Custom splitting utility for copyright metadata used in GitHub SBOM and PyPI collection strategies (#111)
 
 ### Changed
-- Improved PyPI strategy metadata extraction
-- Improved error handling for repository access issues
-- Enhanced logging for better debugging
+- Improved UTF encoding handling to support UTF-16 and system default encodings (#106)
+- Enhanced NPM strategy to skip projects using workspaces with a warning
+- Enhanced NPM strategy to skip execution when package.json is not available
+- Improved logging to avoid noisy debug messages from third-party dependencies (#101)
+- Improved PyPI strategy metadata extraction to handle packages with None values in project_urls
+- Improved PyPI strategy to log warnings when packages return 404 or 503 errors
+- Performance improvements by removing repeated HEAD check calls on remote repositories for Go
 - Better handling of GitHub API rate limits
 
 ### Fixed
 - Fixed issues with PyPI metadata extraction for packages with missing information explicitly declared
+- Fixed bug where PyPI returns dependency with None as project-urls
 - Improved error handling for non-existent repositories
+- Fixed copyright metadata output to remove 'ed' suffix when word was 'copyrighted'
 
 
 ## [0.4.0-beta] - 2025-04-10
