@@ -850,3 +850,423 @@ def test_extract_copyright_from_pkg_data() -> None:
         assert (
             result == expected_output
         ), f"Failed for '{test_input}': expected '{expected_output}', got '{result}'"
+
+
+def test_npm_collection_strategy_with_package_json_enrichment(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test npm collection strategy enriches root package from package.json."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {"name": "test-package", "version": "1.0.0"}
+    package_lock: dict[str, Any] = {
+        "packages": {
+            "": {"dependencies": {"lodash": "4.17.21", "react": "18.2.0"}},
+            "node_modules/lodash": {"version": "4.17.21", "dependencies": {}},
+            "node_modules/react": {"version": "18.2.0", "dependencies": {}},
+        }
+    }
+
+    requests_responses: list[mock.Mock] = [
+        mock.Mock(status_code=200, json=lambda: {"license": "MIT", "author": "John"}),
+        mock.Mock(status_code=200, json=lambda: {"license": "MIT", "author": "Meta"}),
+    ]
+
+    def fake_exists(path: str) -> bool:
+        return True
+
+    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
+        if "package.json" in path:
+            return json.dumps(package_json)
+        elif "package-lock.json" in path:
+            return json.dumps(package_lock)
+        raise FileNotFoundError
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_output_from_command(command: str) -> str:
+        return "npm install completed"
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output_from_command,
+    )
+    mocker.patch("requests.get", side_effect=requests_responses)
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Should have root package + 2 dependencies
+    assert len(result) == 3
+
+    # Check root package metadata was enriched from package.json
+    assert result[0].name == "test-package"  # Enriched from package.json
+    assert result[0].version == "1.0.0"  # Enriched from package.json
+    assert result[0].origin == "https://github.com/org/package1"
+
+    # Check dependencies were added
+    dep_names = {m.name for m in result[1:]}
+    assert "lodash" in dep_names
+    assert "react" in dep_names
+
+
+def test_npm_collection_strategy_npm_install_failure(
+    mocker: pytest_mock.MockFixture,
+    caplog: LogCaptureFixture,
+) -> None:
+    """Test npm collection strategy handles npm install failure but still enriches root package."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {"name": "test-package", "version": "1.0.0"}
+
+    def fake_exists(path: str) -> bool:
+        return True
+
+    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
+        if "package.json" in path:
+            return json.dumps(package_json)
+        raise FileNotFoundError
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_output_from_command(command: str) -> str:
+        # Simulate npm install failure
+        raise Exception("npm install failed")
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output_from_command,
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        result = strategy.augment_metadata(initial_metadata)
+
+    # Should return metadata with root package enriched from package.json
+    # but no dependencies since npm install failed
+    assert len(result) == 1
+    assert (
+        result[0].name == "test-package"
+    )  # Enriched from package.json even when npm install fails
+    assert result[0].version == "1.0.0"  # Enriched from package.json
+    assert any(
+        "Failed to run npm install" in record.message for record in caplog.records
+    )
+
+
+# ============================================================================
+# Tests for root package enrichment from package.json
+# ============================================================================
+
+
+def test_enrich_root_package_from_package_json_with_license_and_copyright(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that root package metadata is enriched from package.json."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {
+        "name": "test-package",
+        "version": "1.0.0",
+        "license": "Apache-2.0",
+        "author": "Test Author",
+    }
+
+    def fake_exists(path: str) -> bool:
+        return "package.json" in path
+
+    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
+        if "package.json" in path:
+            return json.dumps(package_json)
+        raise FileNotFoundError
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "https://github.com/org/test-package",
+        source_code_manager_mock,
+        ProjectScope.ONLY_ROOT_PROJECT,
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/test-package",
+            origin="https://github.com/org/test-package",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Verify root package was enriched
+    assert len(result) == 1
+    assert result[0].name == "test-package"
+    assert result[0].version == "1.0.0"
+    assert result[0].license == ["Apache-2.0"]
+    assert result[0].copyright == ["Test Author"]
+    assert result[0].origin == "https://github.com/org/test-package"
+
+
+def test_enrich_root_package_from_package_json_with_dict_author(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that root package handles author as dict."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {
+        "name": "test-package",
+        "version": "2.0.0",
+        "license": "MIT",
+        "author": {"name": "Jane Doe", "email": "jane@example.com"},
+    }
+
+    def fake_exists(path: str) -> bool:
+        return "package.json" in path
+
+    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
+        if "package.json" in path:
+            return json.dumps(package_json)
+        raise FileNotFoundError
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "https://github.com/org/test-package",
+        source_code_manager_mock,
+        ProjectScope.ONLY_ROOT_PROJECT,
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/test-package",
+            origin="https://github.com/org/test-package",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Verify root package was enriched with author name
+    assert len(result) == 1
+    assert result[0].name == "test-package"
+    assert result[0].version == "2.0.0"
+    assert result[0].license == ["MIT"]
+    assert result[0].copyright == ["Jane Doe"]
+
+
+def test_enrich_root_package_from_package_json_missing_fields(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that root package handles missing license/author gracefully."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {
+        "name": "test-package",
+        "version": "1.0.0",
+        # No license or author
+    }
+
+    def fake_exists(path: str) -> bool:
+        return "package.json" in path
+
+    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
+        if "package.json" in path:
+            return json.dumps(package_json)
+        raise FileNotFoundError
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "https://github.com/org/test-package",
+        source_code_manager_mock,
+        ProjectScope.ONLY_ROOT_PROJECT,
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/test-package",
+            origin="https://github.com/org/test-package",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Verify root package was enriched with available fields only
+    assert len(result) == 1
+    assert result[0].name == "test-package"
+    assert result[0].version == "1.0.0"
+    assert result[0].license == []  # Not updated (empty)
+    assert result[0].copyright == []  # Not updated (empty)
+
+
+def test_enrich_root_package_overwrites_existing_data(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that root package enrichment overwrites existing data."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {
+        "name": "correct-package-name",
+        "version": "2.0.0",
+        "license": "Apache-2.0",
+        "author": "Correct Author",
+    }
+
+    def fake_exists(path: str) -> bool:
+        return "package.json" in path
+
+    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
+        if "package.json" in path:
+            return json.dumps(package_json)
+        raise FileNotFoundError
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "https://github.com/org/test-package",
+        source_code_manager_mock,
+        ProjectScope.ONLY_ROOT_PROJECT,
+    )
+    initial_metadata = [
+        Metadata(
+            name="wrong-name",
+            origin="https://github.com/org/test-package",
+            local_src_path=None,
+            license=["Wrong License"],
+            version="1.0.0",
+            copyright=["Wrong Author"],
+        ),
+    ]
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Verify root package was overwritten with package.json data
+    assert len(result) == 1
+    assert result[0].name == "correct-package-name"
+    assert result[0].version == "2.0.0"
+    assert result[0].license == ["Apache-2.0"]
+    assert result[0].copyright == ["Correct Author"]
