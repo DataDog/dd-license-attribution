@@ -23,7 +23,8 @@ dependencies = [
     "typer",
     "pytz",
     "giturlparse",
-    "requests"
+    "requests",
+    "spdx-tools==0.7", # pinned to 0.7 to avoid breaking changes
 ]
 
 [project.optional-dependencies]
