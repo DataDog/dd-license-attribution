@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Support for GitHub renamed/transferred repositories through automatic redirect following and cannonical naming resolution.
+
 ## [0.5.0] - 2025-10-29
 
 ### Added

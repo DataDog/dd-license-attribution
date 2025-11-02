@@ -40,7 +40,10 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         source_code_manager: SourceCodeManager,
         project_scope: ProjectScope,
     ) -> None:
-        self.top_package = top_package
+        # Resolve canonical URL if this is a GitHub repository
+        # This ensures we can match packages that were canonicalized by earlier strategies
+        canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
+        self.top_package = canonical_url if canonical_url else top_package
         self.source_code_manager = source_code_manager
         self.only_root_project = project_scope == ProjectScope.ONLY_ROOT_PROJECT
         self.only_transitive = (

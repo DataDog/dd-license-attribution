@@ -35,6 +35,7 @@ def test_pypi_collection_strategy_do_not_decrement_list_of_dependencies_if_not_p
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = ("package1", None)
     python_env_manager_mock = mocker.Mock()
 
     strategy = PypiMetadataCollectionStrategy(
@@ -69,6 +70,7 @@ def test_pypi_collection_strategy_is_bypassed_if_only_root_project_is_required(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = ("package1", None)
     python_env_manager_mock = mocker.Mock()
     strategy = PypiMetadataCollectionStrategy(
         "package1",
@@ -105,6 +107,10 @@ def test_pypi_collection_strategy_adds_pypi_metadata_to_list_of_dependencies(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "github.com/org/package1",
+        None,
+    )
     source_code_manager_mock.get_code.return_value = SourceCodeReference(
         repo_url="https://github.com/org/package1",
         branch="main",
@@ -240,6 +246,7 @@ def test_pypi_collection_strategy_handles_company_names_in_copyright_when_depend
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = ("test-package", None)
     python_env_manager_mock = mocker.Mock()
     python_env_manager_mock.get_environment.return_value = "dummy_env"
     mocker.patch(
@@ -293,6 +300,7 @@ def test_pypi_collection_strategy_handles_company_names_in_new_metadata_entry(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = ("top-package", None)
     source_code_manager_mock.get_code.return_value = SourceCodeReference(
         repo_url="https://github.com/test-org/top-package",
         branch="main",
@@ -353,6 +361,7 @@ def test_dependency_in_initial_metadata_is_augmented_and_not_duplicated_when_fou
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = ("top_package", None)
     python_env_manager_mock = mocker.Mock()
     python_env_manager_mock.get_environment.return_value = (
         "cache_dir/20220101_000000Z/org_top_package_virtualenv"
@@ -439,6 +448,7 @@ def test_dependency_in_initial_metadata_is_augmented_and_github_origin_is_prefer
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = ("top_package", None)
     python_env_manager_mock = mocker.Mock()
     python_env_manager_mock.get_environment.return_value = (
         "cache_dir/20220101_000000Z/org_top_package_virtualenv"
@@ -525,6 +535,7 @@ def test_dependency_in_initial_metadata_is_augmented_the_right_github_url_is_fou
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = ("top_package", None)
     python_env_manager_mock = mocker.Mock()
     python_env_manager_mock.get_environment.return_value = (
         "cache_dir/20220101_000000Z/org_top_package_virtualenv"
@@ -614,6 +625,10 @@ def test_pypi_collection_strategy_ignores_none_project_urls(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "github.com/org/package1",
+        None,
+    )
     source_code_manager_mock.get_code.return_value = SourceCodeReference(
         repo_url="https://github.com/org/package1",
         branch="main",

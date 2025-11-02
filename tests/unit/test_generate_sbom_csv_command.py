@@ -80,6 +80,10 @@ def test_skip_strategies_options(
     strategy_name: str,
 ) -> None:
     mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        None,
+    )
 
     args = ["--no-gh-auth"] + arg
     result = runner.invoke(
@@ -105,6 +109,10 @@ def test_skip_all_strategies(
     mock_github: Mock,
 ) -> None:
     mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        None,
+    )
 
     result = runner.invoke(
         app,
@@ -187,6 +195,10 @@ def test_use_mirrors_valid_config(
         }
     ]"""
     mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "test",
+        None,
+    )
     result = runner.invoke(
         app,
         [

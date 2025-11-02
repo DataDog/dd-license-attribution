@@ -425,16 +425,20 @@ def generate_sbom_csv(
 
     strategies: list[MetadataCollectionStrategy] = []
 
-    if enabled_strategies["GitHubSbomMetadataCollectionStrategy"]:
-        strategies.append(
-            GitHubSbomMetadataCollectionStrategy(github_client, project_scope)
-        )
-
     try:
-        source_code_manager = SourceCodeManager(cache_dir, cache_ttl, mirrors)
+        source_code_manager = SourceCodeManager(
+            cache_dir, github_client, cache_ttl, mirrors
+        )
     except ValueError as e:
         logger.error(str(e))
         sys.exit(1)
+
+    if enabled_strategies["GitHubSbomMetadataCollectionStrategy"]:
+        strategies.append(
+            GitHubSbomMetadataCollectionStrategy(
+                github_client, source_code_manager, project_scope
+            )
+        )
 
     if enabled_strategies["GoPkgsMetadataCollectionStrategy"]:
         strategies.append(
@@ -474,7 +478,11 @@ def generate_sbom_csv(
             )
 
     if enabled_strategies["GitHubRepositoryMetadataCollectionStrategy"]:
-        strategies.append(GitHubRepositoryMetadataCollectionStrategy(github_client))
+        strategies.append(
+            GitHubRepositoryMetadataCollectionStrategy(
+                github_client, source_code_manager
+            )
+        )
 
     override_strategy = None
     if override_spec:
