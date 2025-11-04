@@ -127,6 +127,49 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         return f"npm:{dep_name}"
 
+    def _enrich_root_package_from_package_json(
+        self, package_json_data: Dict[str, Any], metadata: List[Metadata]
+    ) -> None:
+        """Enrich root package metadata from package.json.
+
+        This method extracts license, copyright, version, and name from package.json
+        and updates the root package metadata. For Node.js projects, package.json is
+        the authoritative source for package metadata.
+
+        Args:
+            package_json_data: The parsed package.json data
+            metadata: The list of metadata to update (modified in place)
+        """
+        # Extract metadata from package.json
+        license = self._extract_license_from_pkg_data(package_json_data)
+        copyright = self._extract_copyright_from_pkg_data(package_json_data)
+
+        # Extract version
+        version = package_json_data.get("version", None)
+
+        # Extract name
+        name = package_json_data.get("name", None)
+
+        # Find the root package in metadata
+        # The root package is identified by having an origin that matches self.top_package
+        for meta in metadata:
+            if meta.origin and self.top_package in meta.origin:
+                # Update metadata with package.json data
+                if license:
+                    meta.license = license
+                if copyright:
+                    meta.copyright = copyright
+                if version:
+                    meta.version = version
+                if name:
+                    meta.name = name
+
+                logger.debug(
+                    f"Enriched root package from package.json: "
+                    f"name={name}, version={version}, license={license}, copyright={copyright}"
+                )
+                break
+
     def _enrich_metadata_with_npm_registry(
         self, metadata: List[Metadata], dependencies: Dict[str, str]
     ) -> List[Metadata]:
@@ -243,6 +286,10 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 f"Node projects using workspaces are not supported yet by the NPM collection strategy."
             )
             return updated_metadata
+
+        # Always enrich root package from package.json for Node.js projects
+        # package.json is the authoritative source for package metadata
+        self._enrich_root_package_from_package_json(package_json_data, updated_metadata)
 
         # Early return for ONLY_ROOT_PROJECT - no need to run npm install
         if self.only_root_project:
