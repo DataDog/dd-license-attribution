@@ -40,6 +40,8 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         source_code_manager: SourceCodeManager,
         project_scope: ProjectScope,
     ) -> None:
+        # Store original top_package for matching
+        self.original_top_package = top_package
         # Resolve canonical URL if this is a GitHub repository
         # This ensures we can match packages that were canonicalized by earlier strategies
         canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
@@ -154,9 +156,15 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         name = package_json_data.get("name", None)
 
         # Find the root package in metadata
-        # The root package is identified by having an origin that matches self.top_package
-        for meta in metadata:
-            if meta.origin and self.top_package in meta.origin:
+        # The root package is typically the first entry, or one whose origin matches our top_package URLs
+        for idx, meta in enumerate(metadata):
+            # Match if it's the first entry, or if origin contains either canonical or original top_package
+            is_root = meta.origin and (
+                self.top_package in meta.origin
+                or self.original_top_package in meta.origin
+            )
+
+            if is_root:
                 # Update metadata with package.json data
                 if license:
                     meta.license = license
