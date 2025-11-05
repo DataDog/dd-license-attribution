@@ -18,7 +18,6 @@ from dd_license_attribution.utils.custom_splitting import CustomSplit
 
 __all__ = ["GitHubSbomMetadataCollectionStrategy", "ProjectScope"]
 
-import logging
 from typing import Any
 
 from agithub.GitHub import GitHub
