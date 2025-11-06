@@ -24,6 +24,7 @@ from dd_license_attribution.metadata_collector.strategies.npm_collection_strateg
 def create_source_code_manager_mock() -> mock.Mock:
     """Create a mock source code manager with standard return values."""
     source_code_manager_mock = mock.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = ("package1", None)
     source_code_manager_mock.get_code.return_value = SourceCodeReference(
         repo_url="https://github.com/org/package1",
         branch="main",

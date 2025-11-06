@@ -21,6 +21,7 @@ def test_gopkg_collection_strategy_do_not_decrement_list_of_dependencies_if_not_
     mocker: pytest_mock.MockFixture,
 ) -> None:
     mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = ("package1", None)
     mock_source_code_manager.get_code.return_value = SourceCodeReference(
         repo_url="https://github.com/org/package1",
         branch="main",
@@ -59,6 +60,10 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/package1",
+        None,
+    )
     strategy = GoPkgMetadataCollectionStrategy(
         "https://github.com/org/package1", mock_source_code_manager, ProjectScope.ALL
     )
@@ -264,6 +269,10 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies_b
     mocker: pytest_mock.MockFixture,
 ) -> None:
     mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/package1",
+        None,
+    )
     strategy = GoPkgMetadataCollectionStrategy(
         "https://github.com/org/package1", mock_source_code_manager, ProjectScope.ALL
     )
@@ -434,6 +443,10 @@ def test_gopkg_collection_strategy_only_updates_local_source_path_when_only_root
     mocker: pytest_mock.MockFixture,
 ) -> None:
     mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/package1",
+        None,
+    )
     strategy = GoPkgMetadataCollectionStrategy(
         "https://github.com/org/package1",
         mock_source_code_manager,

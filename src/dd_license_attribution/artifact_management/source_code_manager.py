@@ -13,6 +13,7 @@ from enum import Enum
 from typing import Optional
 
 import pytz
+from agithub.GitHub import GitHub
 from giturlparse import parse as parse_git_url
 
 from dd_license_attribution.adaptors.os import (
@@ -101,14 +102,91 @@ class SourceCodeManager(ArtifactManager):
     def __init__(
         self,
         local_cache_dir: str,
+        github_client: GitHub,
         local_cache_ttl: int = 86400,
         mirrors: Optional[list[MirrorSpec]] = None,
     ) -> None:
         super().__init__(local_cache_dir, local_cache_ttl)
         self.mirrors = mirrors or []
+        self.github_client = github_client
+        self._canonical_urls_cache: dict[str, tuple[str, Optional[str]]] = {}
         logger.info(
             f"SourceCodeManager initialized with {len(self.mirrors)} mirror(s) with {self.local_cache_ttl} seconds TTL."
         )
+
+    def get_canonical_urls(self, url: str) -> tuple[str, Optional[str]]:
+        """Get the canonical repository URL and API URL for a given URL.
+
+        This method resolves redirects for renamed or transferred GitHub repositories (301).
+
+        Args:
+            url: The repository URL to resolve (can be any GitHub URL format)
+
+        Returns:
+            A tuple of (canonical_repo_url, api_url) where:
+            - canonical_repo_url: The canonical repository URL (html_url from GitHub API, or original URL if not GitHub)
+            - api_url: The GitHub API URL for the repository (None if not a GitHub repository)
+
+        Examples:
+            https://github.com/DataDog/ospo-tools:
+            ("https://github.com/DataDog/dd-license-attribution", "https://api.github.com/repos/DataDog/dd-license-attribution")
+
+            https://github.com/DataDog/dd-license-attribution:
+            ("https://github.com/DataDog/dd-license-attribution", "https://api.github.com/repos/DataDog/dd-license-attribution")
+
+            https://gitlab.com/some/repo:
+            ("https://gitlab.com/some/repo", None)
+        """
+        # Check cache
+        if url in self._canonical_urls_cache:
+            logger.debug(f"Returning cached canonical URLs for: {url}")
+            return self._canonical_urls_cache[url]
+
+        logger.debug(f"Getting canonical URLs for: {url}")
+        parsed_url = parse_git_url(url)
+
+        if not parsed_url.valid or not parsed_url.github:
+            logger.debug(f"URL is not a GitHub URL: {url}")
+            result = (url, None)
+            self._canonical_urls_cache[url] = result
+            return result
+
+        owner = parsed_url.owner
+        repo = parsed_url.repo
+        status, result = self.github_client.repos[owner][repo].get()
+
+        if status == 301 and result and "url" in result:
+            redirect_url = result["url"]
+            logger.debug(f"Repository has moved, following redirect: {redirect_url}")
+
+            # Check if the redirect is still to GitHub
+            api_prefix = "https://api.github.com/"
+            if redirect_url.startswith(api_prefix):
+                path = redirect_url[len(api_prefix) :]
+                path_parts = path.split("/")
+                endpoint = self.github_client
+                for part in path_parts:
+                    endpoint = endpoint[part]
+                status, result = endpoint.get()
+
+        if status == 200:
+            canonical_repo_url = result.get("html_url")
+            api_url = result.get("url")
+            logger.debug(
+                f"Resolved canonical URLs - Repo URL: {canonical_repo_url}, API URL: {api_url}"
+            )
+            canonical_result = (canonical_repo_url, api_url)
+            self._canonical_urls_cache[url] = canonical_result
+            return canonical_result
+
+        # If we couldn't get the repository information, return the original URL
+        logger.debug(
+            f"Failed to resolve canonical URLs (status {status}), returning: {url}"
+        )
+        original_url = f"{parsed_url.protocol}://{parsed_url.host}/{owner}/{repo}"
+        fallback_result = (original_url, None)
+        self._canonical_urls_cache[url] = fallback_result
+        return fallback_result
 
     def _discover_default_branch(self, url: str) -> str:
         """Discover the default branch for a repository.
@@ -200,27 +278,41 @@ class SourceCodeManager(ArtifactManager):
         self, resource_url: str, force_update: bool = False
     ) -> SourceCodeReference | None:
         logger.debug(f"Getting code for resource URL: {resource_url}")
-        parsed_url = parse_git_url(resource_url)
-        if not parsed_url.valid:
+
+        original_parsed_url = parse_git_url(resource_url)
+        if not original_parsed_url.valid or not original_parsed_url.github:
             return None
-        if not parsed_url.github:  # Only GitHub supported for now
+
+        canonical_url, api_url = self.get_canonical_urls(resource_url)
+        if api_url is None:
+            logger.debug(
+                f"Could not resolve canonical URL for {resource_url}, not a GitHub repository"
+            )
             return None
+
+        parsed_url = parse_git_url(canonical_url)
+        if not parsed_url.valid or not parsed_url.github:
+            return None
+
         owner = parsed_url.owner
         repo = parsed_url.repo
-        repository_url = f"{parsed_url.protocol}://{parsed_url.host}/{parsed_url.owner}/{parsed_url.repo}"
+        repository_url = canonical_url
+
         logger.debug(
-            f"Parsed repository URL: {repository_url} with owner: {owner}, repo: {repo}"
+            f"Resolved canonical repository URL: {repository_url} with owner: {owner}, repo: {repo}"
         )
         branch = "default_branch"
-        if parsed_url.branch:
+        if original_parsed_url.branch:
             # branches are guessed from url, and may fail to be correct specially on tags and branches with slashes
-            validated_ref = extract_ref(parsed_url.branch, repository_url)
+            validated_ref = extract_ref(original_parsed_url.branch, repository_url)
             if validated_ref != "":
                 branch = validated_ref
-        if parsed_url.path_raw.startswith("/tree/"):
-            path = parsed_url.path_raw.removeprefix(f"/tree/{branch}")
-        elif parsed_url.path_raw.startswith("/blob/"):
-            path = "/".join(parsed_url.path_raw.removeprefix("/blob/").split("/")[:-1])
+        if original_parsed_url.path_raw.startswith("/tree/"):
+            path = original_parsed_url.path_raw.removeprefix(f"/tree/{branch}")
+        elif original_parsed_url.path_raw.startswith("/blob/"):
+            path = "/".join(
+                original_parsed_url.path_raw.removeprefix("/blob/").split("/")[:-1]
+            )
             validated_ref = extract_ref(path, repository_url)
             if validated_ref != "":
                 branch = validated_ref

@@ -6,6 +6,9 @@
 from agithub.GitHub import GitHub
 from giturlparse import parse as parse_git_url
 
+from dd_license_attribution.artifact_management.source_code_manager import (
+    SourceCodeManager,
+)
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
@@ -13,23 +16,45 @@ from dd_license_attribution.metadata_collector.strategies.abstract_collection_st
 
 
 class GitHubRepositoryMetadataCollectionStrategy(MetadataCollectionStrategy):
-    def __init__(self, github_client: GitHub):
+    def __init__(self, github_client: GitHub, source_code_manager: SourceCodeManager):
         self.client = github_client
+        self.source_code_manager = source_code_manager
 
     # method to get the metadata
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = []
         for package in metadata:
-            parsed_url = parse_git_url(package.origin)
-            if parsed_url.valid and parsed_url.github:
-                owner = parsed_url.owner
-                repo = parsed_url.repo
-            else:
+            # Skip packages without an origin URL
+            if not package.origin:
                 updated_metadata.append(package)
                 continue
+
+            # Resolve canonical URLs to handle renamed/transferred repositories
+            canonical_url, api_url = self.source_code_manager.get_canonical_urls(
+                package.origin
+            )
+            if api_url is None:
+                # Not a valid GitHub repository
+                updated_metadata.append(package)
+                continue
+
+            # Parse the canonical URL to get owner and repo
+            parsed_url = parse_git_url(canonical_url)
+            if not parsed_url.valid or not parsed_url.github:
+                updated_metadata.append(package)
+                continue
+
+            owner = parsed_url.owner
+            repo = parsed_url.repo
+
+            # Update package origin to use canonical URL
+            # This ensures consistency when this package is referenced by other strategies
+            package.origin = canonical_url
+
             if not package.copyright or not package.license:
                 # get the repository information
                 status, repository = self.client.repos[owner][repo].get()
+
                 if status == 200:
                     if not package.copyright:
                         package.copyright = [repository["owner"]["login"]]
@@ -39,8 +64,6 @@ class GitHubRepositoryMetadataCollectionStrategy(MetadataCollectionStrategy):
                             package.license = []
                         else:
                             package.license = [repository["license"].get("spdx_id")]
-                elif status == 301:
-                    continue  # repository moved but we are not supporting redirects here yet
                 else:
                     raise ValueError(
                         f"Failed to get repository information for {owner}/{repo}"

@@ -3,16 +3,9 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
-from unittest.mock import call
-
-import pytest
 import pytest_mock
 from agithub.GitHub import GitHub
 
-from dd_license_attribution.artifact_management.source_code_manager import (
-    NonAccessibleRepository,
-    UnauthorizedRepository,
-)
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.cleanup_copyright_metadata_strategy import (
     CleanupCopyrightMetadataStrategy,
@@ -38,6 +31,11 @@ def test_github_sbom_collection_strategy_returns_same_metadata_if_not_a_github_r
     mocker: pytest_mock.MockFixture,
 ) -> None:
     github_client_mock = mocker.Mock(spec_set=GitHub)
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "not_a_github_purl",
+        None,
+    )
 
     github_parse_mock = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
@@ -51,6 +49,7 @@ def test_github_sbom_collection_strategy_returns_same_metadata_if_not_a_github_r
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
         project_scope=ProjectScope.ALL,
     )
 
@@ -68,7 +67,9 @@ def test_github_sbom_collection_strategy_returns_same_metadata_if_not_a_github_r
     updated_metadata = strategy.augment_metadata(initial_metadata)
     assert updated_metadata == initial_metadata
 
-    github_parse_mock.assert_called_once_with("not_a_github_purl")
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with(
+        "not_a_github_purl"
+    )
 
 
 class SbomMockWrapper:
@@ -88,6 +89,11 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
     sbom_mock = mocker.Mock()
     sbom_mock.get.return_value = (500, "Not Found")
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/test_owner/test_repo",
+        "https://api.github.com/repos/test_owner/test_repo",
+    )
 
     github_parse_mock = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
@@ -101,6 +107,7 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
         project_scope=ProjectScope.ALL,
     )
 
@@ -115,10 +122,16 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
         )
     ]
 
-    with pytest.raises(ValueError, match="Failed to get SBOM for test_owner/test_repo"):
-        strategy.augment_metadata(initial_metadata)
+    # With the new logging, errors are caught and packages are skipped rather than raising
+    # The metadata should be updated with canonical URL but no SBOM data
+    updated_metadata = strategy.augment_metadata(initial_metadata)
 
-    github_parse_mock.assert_called_once_with("test_purl")
+    # Package should be returned with updated origin but no additional data
+    assert len(updated_metadata) == 1
+    assert updated_metadata[0].origin == "https://github.com/test_owner/test_repo"
+
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
+    github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
     sbom_mock.get.assert_called_once_with()
 
 
@@ -128,6 +141,11 @@ def test_github_sbom_collection_strategy_raise_special_exception_if_error_callin
     sbom_mock = mocker.Mock()
     sbom_mock.get.return_value = (404, "Not Found")
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/test_owner/test_repo",
+        "https://api.github.com/repos/test_owner/test_repo",
+    )
 
     github_parse_mock = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
@@ -141,6 +159,7 @@ def test_github_sbom_collection_strategy_raise_special_exception_if_error_callin
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
         project_scope=ProjectScope.ALL,
     )
 
@@ -155,10 +174,14 @@ def test_github_sbom_collection_strategy_raise_special_exception_if_error_callin
         )
     ]
 
-    with pytest.raises(NonAccessibleRepository, match=".*test_owner/test_repo.*"):
-        strategy.augment_metadata(initial_metadata)
+    updated_metadata = strategy.augment_metadata(initial_metadata)
 
-    github_parse_mock.assert_called_once_with("test_purl")
+    # Package should be returned with updated origin but no additional data
+    assert len(updated_metadata) == 1
+    assert updated_metadata[0].origin == "https://github.com/test_owner/test_repo"
+
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
+    github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
     sbom_mock.get.assert_called_once_with()
 
 
@@ -168,6 +191,11 @@ def test_github_sbom_collection_strategy_raise_special_exception_if_error_callin
     sbom_mock = mocker.Mock()
     sbom_mock.get.return_value = (401, "Unauthorized")
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/test_owner/test_repo",
+        "https://api.github.com/repos/test_owner/test_repo",
+    )
 
     github_parse_mock = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
@@ -181,6 +209,7 @@ def test_github_sbom_collection_strategy_raise_special_exception_if_error_callin
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
         project_scope=ProjectScope.ALL,
     )
 
@@ -195,10 +224,14 @@ def test_github_sbom_collection_strategy_raise_special_exception_if_error_callin
         )
     ]
 
-    with pytest.raises(UnauthorizedRepository, match=".*test_owner/test_repo.*"):
-        strategy.augment_metadata(initial_metadata)
+    updated_metadata = strategy.augment_metadata(initial_metadata)
 
-    github_parse_mock.assert_called_once_with("test_purl")
+    # Package should be returned with updated origin but no additional data
+    assert len(updated_metadata) == 1
+    assert updated_metadata[0].origin == "https://github.com/test_owner/test_repo"
+
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
+    github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
     sbom_mock.get.assert_called_once_with()
 
 
@@ -214,14 +247,17 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
                     {
                         "SPDXID": "SPDXRef-githubactions-somthing-that-acts"
                     },  # this should be skipped
-                    {
-                        "name": "package1"
-                    },  # this was already in the metadata, we keep the old information since there is none new
+                    # No other packages in SBOM for this test
                 ]
             }
         },
     )
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/test_owner/test_repo",
+        "https://api.github.com/repos/test_owner/test_repo",
+    )
 
     github_parse_mock = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
@@ -235,12 +271,13 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
         project_scope=ProjectScope.ALL,
     )
 
     initial_metadata = [
         Metadata(
-            name="package1",
+            name="github.com/test_owner/old_name",  # A github.com format name
             version="1.0",
             origin="test_purl",
             local_src_path=None,
@@ -249,10 +286,22 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
         )
     ]
 
-    updated_metadata = strategy.augment_metadata(initial_metadata)
-    assert updated_metadata == initial_metadata
+    expected_metadata = [
+        Metadata(
+            name="github.com/test_owner/test_repo",  # Updated to canonical name
+            version="1.0",
+            origin="https://github.com/test_owner/test_repo",
+            local_src_path=None,
+            license=["APACHE-2.0"],
+            copyright=["Datadog Inc."],
+        )
+    ]
 
-    github_parse_mock.assert_called_once_with("test_purl")
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+    assert updated_metadata == expected_metadata
+
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
+    github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
     sbom_mock.get.assert_called_once_with()
 
 
@@ -288,17 +337,25 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
         },
     )
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+    source_code_manager_mock = mocker.Mock()
+    # First call is for package1 with origin="test_purl"
+    # Second call would be for package2 with origin=None but it returns None API URL so parse_git_url won't be called
+    source_code_manager_mock.get_canonical_urls.side_effect = [
+        (
+            "https://github.com/test_owner/test_repo",
+            "https://api.github.com/repos/test_owner/test_repo",
+        ),
+        (None, None),
+    ]
 
     giturlparse_mock = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
-        side_effect=[
-            GitUrlParseMock(True, "github", "test_owner", "test_repo"),
-            GitUrlParseMock(True, "gitlab", None, None),
-        ],
+        return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
     )
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
         project_scope=ProjectScope.ALL,
     )
 
@@ -325,7 +382,7 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
         Metadata(
             name="package1",
             version="2.0",
-            origin="test_purl",
+            origin="https://github.com/test_owner/test_repo",
             local_src_path=None,
             license=["APACHE-2.0"],
             copyright=[],
@@ -351,12 +408,8 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
     updated_metadata = strategy.augment_metadata(initial_metadata)
     assert sorted(updated_metadata, key=str) == sorted(expected_metadata, key=str)
 
-    giturlparse_mock.assert_has_calls(
-        [
-            call("test_purl"),
-            call(None),
-        ]
-    )
+    # parse_git_url is only called once for the first package with a valid GitHub URL
+    giturlparse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
 
     sbom_mock.get.assert_called_once_with()
 
@@ -387,6 +440,11 @@ def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_fals
         },
     )
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/test_owner/test_repo",
+        "https://api.github.com/repos/test_owner/test_repo",
+    )
 
     github_parse_mock = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
@@ -400,6 +458,7 @@ def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_fals
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
         project_scope=ProjectScope.ONLY_ROOT_PROJECT,
     )
 
@@ -420,7 +479,7 @@ def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_fals
         Metadata(
             name="package1",
             version="2.0",
-            origin="test_purl",
+            origin="https://github.com/test_owner/test_repo",
             local_src_path=None,
             license=["APACHE-2.0"],
             copyright=[],
@@ -429,7 +488,8 @@ def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_fals
 
     assert updated_metadata == expected_metadata
 
-    github_parse_mock.assert_called_once_with("test_purl")
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
+    github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
     sbom_mock.get.assert_called_once_with()
 
 
@@ -443,7 +503,7 @@ def test_strategy_does_not_keep_root_when_with_root_project_is_false(
             "sbom": {
                 "packages": [
                     {
-                        "name": "package1",
+                        "name": "com.github.test_owner/test_repo",
                         "versionInfo": "2.0",
                         "licenseDeclared": "APACHE-2.0",
                         "downloadLocation": "test_purl",
@@ -459,6 +519,11 @@ def test_strategy_does_not_keep_root_when_with_root_project_is_false(
         },
     )
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/test_owner/test_repo",
+        "https://api.github.com/repos/test_owner/test_repo",
+    )
 
     github_parse_mock = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
@@ -467,6 +532,7 @@ def test_strategy_does_not_keep_root_when_with_root_project_is_false(
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
         project_scope=ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
     )
 
@@ -496,7 +562,8 @@ def test_strategy_does_not_keep_root_when_with_root_project_is_false(
 
     assert updated_metadata == expected_metadata
 
-    github_parse_mock.assert_called_once_with("test_purl")
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
+    github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
     sbom_mock.get.assert_called_once_with()
 
 
@@ -521,6 +588,11 @@ def test_github_sbom_collection_strategy_handles_company_names_in_copyright(
     mock_client.repos = {
         "test-owner": {"test-repo": {"dependency-graph": SbomMockWrapper(sbom_mock)}}
     }
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/test-owner/test-repo",
+        "https://api.github.com/repos/test-owner/test-repo",
+    )
 
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
@@ -529,6 +601,7 @@ def test_github_sbom_collection_strategy_handles_company_names_in_copyright(
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=mock_client,
+        source_code_manager=source_code_manager_mock,
         project_scope=ProjectScope.ALL,
     )
     cleanup_copyright_metadata_strategy = CleanupCopyrightMetadataStrategy()
@@ -593,6 +666,11 @@ def test_github_sbom_collection_strategy_uses_name_as_origin_if_download_locatio
     sbom_mock.get.return_value = sbom_data
 
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/test_owner/test_repo",
+        "https://api.github.com/repos/test_owner/test_repo",
+    )
 
     giturlparse_mock = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
@@ -601,6 +679,7 @@ def test_github_sbom_collection_strategy_uses_name_as_origin_if_download_locatio
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
         project_scope=ProjectScope.ALL,
     )
 
@@ -620,7 +699,7 @@ def test_github_sbom_collection_strategy_uses_name_as_origin_if_download_locatio
         Metadata(
             name="package0",
             version="4.0",
-            origin="test_purl",
+            origin="https://github.com/test_owner/test_repo",
             local_src_path=None,
             license=["MIT"],
             copyright=["Copyright 1"],
@@ -645,5 +724,6 @@ def test_github_sbom_collection_strategy_uses_name_as_origin_if_download_locatio
 
     assert updated_metadata == expected_metadata
 
-    giturlparse_mock.assert_called_once_with("test_purl")
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
+    giturlparse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
     sbom_mock.get.assert_called_once_with()
