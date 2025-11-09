@@ -243,12 +243,20 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
         200,
         {
             "sbom": {
+                "SPDXID": "SPDXRef-DOCUMENT",
+                "spdxVersion": "SPDX-2.3",
+                "name": "SBOM for test_owner/test_repo",
+                "documentNamespace": "https://spdx.org/spdxdocs/test_owner-test_repo",
+                "dataLicense": "CC0-1.0",
+                "creationInfo": {
+                    "creators": ["Tool: GitHub Dependency Graph"],
+                    "created": "2024-01-01T00:00:00Z",
+                },
                 "packages": [
                     {
                         "SPDXID": "SPDXRef-githubactions-somthing-that-acts"
                     },  # this should be skipped
-                    # No other packages in SBOM for this test
-                ]
+                ],
             }
         },
     )
@@ -313,6 +321,15 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
         200,
         {
             "sbom": {
+                "SPDXID": "SPDXRef-DOCUMENT",
+                "spdxVersion": "SPDX-2.3",
+                "name": "SBOM for test_owner/test_repo",
+                "documentNamespace": "https://spdx.org/spdxdocs/test_owner-test_repo",
+                "dataLicense": "CC0-1.0",
+                "creationInfo": {
+                    "creators": ["Tool: GitHub Dependency Graph"],
+                    "created": "2024-01-01T00:00:00Z",
+                },
                 "packages": [
                     {
                         "SPDXID": "SPDXRef-githubactions-somthing-that-acts"
@@ -332,7 +349,7 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
                         "licenseDeclared": "APACHE-2.0",
                         "downloadLocation": "test_purl_2",
                     },
-                ]
+                ],
             }
         },
     )
@@ -422,6 +439,15 @@ def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_fals
         200,
         {
             "sbom": {
+                "SPDXID": "SPDXRef-DOCUMENT",
+                "spdxVersion": "SPDX-2.3",
+                "name": "SBOM for test_owner/test_repo",
+                "documentNamespace": "https://spdx.org/spdxdocs/test_owner-test_repo",
+                "dataLicense": "CC0-1.0",
+                "creationInfo": {
+                    "creators": ["Tool: GitHub Dependency Graph"],
+                    "created": "2024-01-01T00:00:00Z",
+                },
                 "packages": [
                     {
                         "name": "package1",
@@ -435,7 +461,7 @@ def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_fals
                         "licenseDeclared": "APACHE-2.0",
                         "downloadLocation": "test_purl_2",
                     },
-                ]
+                ],
             }
         },
     )
@@ -501,6 +527,15 @@ def test_strategy_does_not_keep_root_when_with_root_project_is_false(
         200,
         {
             "sbom": {
+                "SPDXID": "SPDXRef-DOCUMENT",
+                "spdxVersion": "SPDX-2.3",
+                "name": "SBOM for test_owner/test_repo",
+                "documentNamespace": "https://spdx.org/spdxdocs/test_owner-test_repo",
+                "dataLicense": "CC0-1.0",
+                "creationInfo": {
+                    "creators": ["Tool: GitHub Dependency Graph"],
+                    "created": "2024-01-01T00:00:00Z",
+                },
                 "packages": [
                     {
                         "name": "com.github.test_owner/test_repo",
@@ -514,7 +549,7 @@ def test_strategy_does_not_keep_root_when_with_root_project_is_false(
                         "licenseDeclared": "APACHE-2.0",
                         "downloadLocation": "test_purl_2",
                     },
-                ]
+                ],
             }
         },
     )
@@ -575,12 +610,25 @@ def test_github_sbom_collection_strategy_handles_company_names_in_copyright(
         200,
         {
             "sbom": {
+                "SPDXID": "SPDXRef-DOCUMENT",
+                "spdxVersion": "SPDX-2.3",
+                "name": "SBOM for test-owner/test-repo",
+                "documentNamespace": "https://spdx.org/spdxdocs/test-owner-test-repo",
+                "dataLicense": "CC0-1.0",
+                "creationInfo": {
+                    "creators": ["Tool: GitHub Dependency Graph"],
+                    "created": "2024-01-01T00:00:00Z",
+                },
                 "packages": [
                     {
                         "name": "test-package",
+                        "SPDXID": "SPDXRef-test-package",
+                        "versionInfo": "1.0.0",
+                        "downloadLocation": "NOASSERTION",
+                        "filesAnalyzed": False,
                         "copyrightText": "Company A, Copyright 2024 Company B, Inc. and its affiliates, Company C, llc, Company Datadog",
                     }
-                ]
+                ],
             }
         },
     )
@@ -636,29 +684,44 @@ def test_github_sbom_collection_strategy_uses_name_as_origin_if_download_locatio
         200,
         {
             "sbom": {
+                "SPDXID": "SPDXRef-DOCUMENT",
+                "spdxVersion": "SPDX-2.3",
+                "name": "SBOM for test_owner/test_repo",
+                "documentNamespace": "https://spdx.org/spdxdocs/test_owner-test_repo",
+                "dataLicense": "CC0-1.0",
+                "creationInfo": {
+                    "creators": ["Tool: GitHub Dependency Graph"],
+                    "created": "2024-01-01T00:00:00Z",
+                },
                 "packages": [
                     {
                         "name": "package0",
+                        "SPDXID": "SPDXRef-package0",
                         "versionInfo": "4.0",
                         "licenseDeclared": "MIT",
                         "copyrightText": "Copyright 1",
                         "downloadLocation": "test_purl",
+                        "filesAnalyzed": False,
                     },
                     {
                         "name": "github.com/package1",
+                        "SPDXID": "SPDXRef-package1",
                         "versionInfo": "2.0",
-                        "licenseConcluded": "MIT",
+                        "licenseDeclared": "MIT",
                         "copyrightText": "Copyright 2",
                         "downloadLocation": "",
+                        "filesAnalyzed": False,
                     },
                     {
                         "name": "github.com/package2",
+                        "SPDXID": "SPDXRef-package2",
                         "versionInfo": "3.0",
-                        "licenseConcluded": "MIT",
+                        "licenseDeclared": "MIT",
                         "copyrightText": "Copyright 3",
                         "downloadLocation": "NOASSERTION",
+                        "filesAnalyzed": False,
                     },
-                ]
+                ],
             }
         },
     )
