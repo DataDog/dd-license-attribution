@@ -7,10 +7,8 @@
 
 import json
 import logging
-
-# Get application-specific logger
-logger = logging.getLogger("dd_license_attribution")
-from typing import Any, Dict, List
+import re
+from typing import Any
 
 import requests
 from giturlparse import validate as validate_git_url
@@ -31,6 +29,9 @@ from dd_license_attribution.metadata_collector.project_scope import (
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
+
+# Get application-specific logger
+logger = logging.getLogger("dd_license_attribution")
 
 
 class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
@@ -67,8 +68,8 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         return "npm"
 
     def _extract_yarn_aliases_from_tree(
-        self, trees: List[Dict[str, Any]]
-    ) -> Dict[str, str]:
+        self, trees: list[dict[str, Any]]
+    ) -> dict[str, str]:
         """
         Extract Yarn aliases from the tree structure.
         Aliases appear in 'children' arrays with syntax: "alias@npm:real-package@version"
@@ -80,12 +81,11 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         Returns mapping: {"string-width-cjs": "string-width"}
         """
-        import re
 
-        aliases: Dict[str, str] = {}
+        aliases: dict[str, str] = {}
 
         # Recursively scan all trees and their children for alias patterns
-        def scan_tree(tree: Dict[str, Any]) -> None:
+        def scan_tree(tree: dict[str, Any]) -> None:
             # Check children for alias patterns
             children = tree.get("children", [])
             for child in children:
@@ -113,7 +113,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         return aliases
 
-    def _get_yarn_dependencies(self, project_path: str) -> Dict[str, str]:
+    def _get_yarn_dependencies(self, project_path: str) -> dict[str, str]:
         """Get dependencies from a Yarn project.
 
         Args:
@@ -122,8 +122,8 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         Returns:
             Dictionary mapping package names to versions
         """
-        all_deps: Dict[str, str] = {}
-        all_trees: List[Dict[str, Any]] = []
+        all_deps: dict[str, str] = {}
+        all_trees: list[dict[str, Any]] = []
 
         try:
             # Use yarn list to get all dependencies (excluding dev dependencies)
@@ -203,12 +203,12 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 return version[1:]
         return version
 
-    def _extract_license_from_pkg_data(self, pkg_data: Dict[str, Any]) -> List[str]:
+    def _extract_license_from_pkg_data(self, pkg_data: dict[str, Any]) -> list[str]:
         if "license" in pkg_data and pkg_data["license"]:
             return [str(pkg_data["license"])]
         return []
 
-    def _extract_copyright_from_pkg_data(self, pkg_data: Dict[str, Any]) -> List[str]:
+    def _extract_copyright_from_pkg_data(self, pkg_data: dict[str, Any]) -> list[str]:
         if not pkg_data.get("author"):
             return []
 
@@ -221,7 +221,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
     def _fetch_npm_registry_metadata(
         self, dep_name: str, version: str
-    ) -> tuple[List[str], List[str], Dict[str, Any] | None]:
+    ) -> tuple[list[str], list[str], dict[str, Any] | None]:
         license = []
         copyright = []
         pkg_data = None
@@ -236,13 +236,13 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 license = self._extract_license_from_pkg_data(pkg_data)
                 copyright = self._extract_copyright_from_pkg_data(pkg_data)
             else:
-                logging.warning(
+                logger.warning(
                     "Failed to fetch npm registry metadata for "
                     f"{dep_name}@{version}: {resp.status_code}, "
                     f"{resp.text}"
                 )
         except Exception as e:
-            logging.warning(
+            logger.warning(
                 "Failed to fetch npm registry metadata for "
                 f"{dep_name}@{version}: {e}"
             )
@@ -251,7 +251,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
     def _determine_origin(
         self,
-        pkg_data: Dict[str, Any] | None,
+        pkg_data: dict[str, Any] | None,
         dep_name: str,
     ) -> str:
         if not pkg_data:
@@ -276,7 +276,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         return f"npm:{dep_name}"
 
     def _enrich_root_package_from_package_json(
-        self, package_json_data: Dict[str, Any], metadata: List[Metadata]
+        self, package_json_data: dict[str, Any], metadata: list[Metadata]
     ) -> None:
         """Enrich root package metadata from package.json.
 
@@ -325,8 +325,8 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 break
 
     def _enrich_metadata_with_npm_registry(
-        self, metadata: List[Metadata], dependencies: Dict[str, str]
-    ) -> List[Metadata]:
+        self, metadata: list[Metadata], dependencies: dict[str, str]
+    ) -> list[Metadata]:
         updated_metadata = metadata.copy()
 
         # Apply project scope filters - filter transitive-only if needed
@@ -381,8 +381,8 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         return updated_metadata
 
-    def _get_npm_dependencies(self, lock_data: Dict[str, Any]) -> Dict[str, str]:
-        all_deps: Dict[str, str] = {}
+    def _get_npm_dependencies(self, lock_data: dict[str, Any]) -> dict[str, str]:
+        all_deps: dict[str, str] = {}
 
         if "packages" not in lock_data:
             logger.warning("No 'packages' key found in package-lock.json.")
@@ -405,7 +405,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         return all_deps
 
     def _extract_transitive_dependencies(
-        self, packages: Dict[str, Any], all_deps: Dict[str, str]
+        self, packages: dict[str, Any], all_deps: dict[str, str]
     ) -> None:
 
         processed_packages = set()
@@ -430,7 +430,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
                 processed_packages.add(pkg_name)
 
-    def augment_metadata(self, metadata: List[Metadata]) -> List[Metadata]:
+    def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = metadata.copy()
         source_code_ref = self.source_code_manager.get_code(self.top_package)
         if not source_code_ref:
@@ -456,7 +456,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         package_manager = self._detect_package_manager(project_path)
         logger.info(f"Detected package manager: {package_manager}")
 
-        all_deps: Dict[str, str] = {}
+        all_deps: dict[str, str] = {}
 
         if package_manager == "yarn":
             # Check if yarn is installed
