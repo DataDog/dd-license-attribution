@@ -448,6 +448,8 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             )
             return updated_metadata
 
+        self._enrich_root_package_from_package_json(package_json_data, updated_metadata)
+
         # Early return for ONLY_ROOT_PROJECT - no need to run npm install
         if self.only_root_project:
             return updated_metadata
