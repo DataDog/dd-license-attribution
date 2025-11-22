@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Improved PyPI strategy to log warnings when packages return 404 or 503 errors
 - Performance improvements by removing repeated HEAD check calls on remote repositories for Go
 - Better handling of GitHub API rate limits
+- Improved SBOM Strategy metadata extraction
 
 ### Fixed
 - Fixed issues with PyPI metadata extraction for packages with missing information explicitly declared

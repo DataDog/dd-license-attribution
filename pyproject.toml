@@ -23,7 +23,9 @@ dependencies = [
     "typer",
     "pytz",
     "giturlparse",
-    "requests"
+    "requests",
+    "spdx-tools>=0.6.0,<0.7.0",
+    "setuptools",
 ]
 
 [project.optional-dependencies]
