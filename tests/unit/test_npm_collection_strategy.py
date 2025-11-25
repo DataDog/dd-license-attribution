@@ -1240,8 +1240,9 @@ def test_npm_collection_strategy_with_yarn_project(
     # Should have root package + 2 dependencies
     assert len(result) == 3
 
-    # Check root package metadata remains unchanged
-    assert result[0].name == "package1"
+    # Check root package metadata was enriched from package.json
+    assert result[0].name == "test-package"  # Enriched from package.json
+    assert result[0].version == "1.0.0"  # Enriched from package.json
     assert result[0].origin == "https://github.com/org/package1"
 
     # Check dependencies were added
@@ -1328,7 +1329,8 @@ def test_npm_collection_strategy_yarn_not_installed(
     with caplog.at_level(logging.ERROR):
         result = strategy.augment_metadata(initial_metadata)
 
-    # Should return original metadata (no dependencies, root unchanged)
+    # Should return metadata with root enriched from package.json (no dependencies)
     assert len(result) == 1
-    assert result[0].name == "package1"
+    assert result[0].name == "test-package"  # Enriched from package.json
+    assert result[0].version == "1.0.0"  # Enriched from package.json
     assert any("Yarn is not installed" in record.message for record in caplog.records)
