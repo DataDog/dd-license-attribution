@@ -522,3 +522,57 @@ def test_keep_current_values_on_empty_input(
     assert len(override_rules) == 1
     assert override_rules[0].replacement.license == ["MIT"]
     assert override_rules[0].replacement.copyright == ["Copyright 2024 Test Corp"]
+
+
+@patch("dd_license_attribution.cli.generate_overrides_command.write_file")
+@patch(
+    "dd_license_attribution.cli.generate_overrides_command.OverridesGenerator.generate_overrides"
+)
+@patch(
+    "dd_license_attribution.cli.generate_overrides_command."
+    "License3rdPartyMetadataCollectionStrategy.augment_metadata"
+)
+def test_quoted_values_with_commas(
+    mock_strategy_augment_metadata: Mock,
+    mock_generator_generate_overrides: Mock,
+    mock_file: Mock,
+    app: typer.Typer,
+    runner: CliRunner,
+) -> None:
+    """
+    Test that quoted copyright holders containing commas are parsed correctly.
+    """
+    metadata = Metadata(
+        name="test-package",
+        version="1.0.0",
+        origin="https://github.com/test/test",
+        local_src_path=None,
+        license=[],
+        copyright=[],
+    )
+    mock_strategy_augment_metadata.return_value = [metadata]
+
+    mock_generator_generate_overrides.return_value = '{"overrides": []}'
+
+    # Use quoted values to preserve commas within copyright holder names
+    user_input = (
+        "y\n\n"  # yes to fix, keep origin
+        "MIT\n"  # license
+        '"Datadog, Inc.", "Google, LLC"\n'  # copyright with commas
+    )
+    result = runner.invoke(
+        app, ["generate-overrides", "test.csv"], input=user_input, color=False
+    )
+
+    assert result.exit_code == 0
+    assert "Successfully created override file: .ddla-overrides" in result.stdout
+
+    # Verify that quoted values preserved internal commas
+    override_rules = mock_generator_generate_overrides.call_args[0][0]
+    assert len(override_rules) == 1
+    assert override_rules[0].replacement.license == ["MIT"]
+    # Should be two copyright holders, each preserving their internal commas
+    assert override_rules[0].replacement.copyright == [
+        "Datadog, Inc.",
+        "Google, LLC",
+    ]
