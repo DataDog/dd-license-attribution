@@ -46,7 +46,7 @@ class CustomSplit:
 
         if self.protected_terms:
             # Re-merge items that should be protected
-            result = []
+            result: list[str] = []
             for value in parsed_values:
                 if result and not self._should_split(value):
                     # This value should be merged with the previous one
