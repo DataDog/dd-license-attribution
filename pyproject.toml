@@ -20,6 +20,8 @@ classifiers = [
 dependencies = [
     "agithub",
     "scancode-toolkit",
+    "spdx-tools>=0.8.2,<0.9",
+    "setuptools",
     "typer",
     "pytz",
     "giturlparse",
@@ -84,6 +86,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "giturlparse"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "spdx.*"
 ignore_missing_imports = true
 
 [tool.isort]
