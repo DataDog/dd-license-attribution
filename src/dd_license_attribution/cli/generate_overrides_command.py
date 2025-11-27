@@ -26,6 +26,7 @@ from dd_license_attribution.overrides_generator.overrides_generator import (
 from dd_license_attribution.overrides_generator.writers.json_overrides_writer import (  # noqa: E501
     JSONOverridesWriter,
 )
+from dd_license_attribution.utils.custom_splitting import CustomSplit
 
 
 def only_license_or_copyright_callback() -> (
@@ -94,7 +95,7 @@ def generate_overrides(
         bool,
         typer.Option(
             "--only-copyright",
-            help=("Only check for entries with missing copyright " "information."),
+            help=("Only check for entries with missing copyright information."),
             callback=only_license_or_copyright_exclusive,
         ),
     ] = False,
@@ -151,7 +152,7 @@ def generate_overrides(
 
     # Collect override rules from user input
     override_rules = []
-
+    splitter = CustomSplit()
     for entry in problematic_entries:
         typer.echo(f"Component: {entry.name}")
         typer.echo(f"Origin: {entry.origin}")
@@ -176,8 +177,7 @@ def generate_overrides(
             "Origin", default=entry.origin if entry.origin else ""
         )
 
-        # Ask for license (comma-separated list)
-        license_prompt = "License(s) (comma-separated)"
+        license_prompt = "License(s) (comma-separated, use quotes to preserve commas)"
         current_licenses = ", ".join(entry.license)
         license_prompt += f" [current: {current_licenses}]"
         license_input = typer.prompt(license_prompt, default="")
@@ -185,12 +185,11 @@ def generate_overrides(
         if not license_input.strip():
             new_licenses = entry.license
         else:
-            new_licenses = [
-                lic.strip() for lic in license_input.split(",") if lic.strip()
-            ]
-        # Ask for copyright (comma-separated list)
+            new_licenses = splitter.custom_split(license_input)
 
-        copyright_prompt = "Copyright holder(s) (comma-separated)"
+        copyright_prompt = (
+            "Copyright holder(s) (comma-separated, use quotes to preserve commas)"
+        )
         current_copyrights = ", ".join(entry.copyright)
         copyright_prompt += f" [current: {current_copyrights}]"
         copyright_input = typer.prompt(copyright_prompt, default="")
@@ -198,9 +197,7 @@ def generate_overrides(
         if not copyright_input.strip():
             new_copyrights = entry.copyright
         else:
-            new_copyrights = [
-                cr.strip() for cr in copyright_input.split(",") if cr.strip()
-            ]
+            new_copyrights = splitter.custom_split(copyright_input)
 
         # Create the override rule using the existing OverrideRule structure
         # Build the target dictionary with OverrideTargetField keys

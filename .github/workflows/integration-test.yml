@@ -66,3 +66,7 @@ jobs:
           name: ddla-output
           path: ddla-output.txt
           if-no-files-found: error
+
+      - name: Test generate-overrides command with clean CSV
+        run: |
+          dd-license-attribution generate-overrides LICENSE-3rdparty.csv -o test-overrides.json
