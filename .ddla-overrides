@@ -55,23 +55,6 @@
   {
     "override_type": "replace",
     "target": {
-      "origin": "https://github.com/aboutcode-org/extractcode"
-    },
-    "replacement": {
-      "name": "extractcode",
-      "origin": "https://github.com/aboutcode-org/extractcode",
-      "version": "31.0.0",
-      "license": [
-        "Apache-2.0"
-      ],
-      "copyright": [
-        "nexB. Inc. and others"
-      ]
-    }
-  },
-  {
-    "override_type": "replace",
-    "target": {
       "origin": "https://github.com/python/importlib_metadata"
     },
     "replacement": {
@@ -117,23 +100,6 @@
       ],
       "copyright": [
         "ExecutableBookProject"
-      ]
-    }
-  },
-  {
-    "override_type": "replace",
-    "target": {
-      "origin": "https://github.com/nexB/scancode-toolkit"
-    },
-    "replacement": {
-      "name": "scancode-toolkit",
-      "origin": "https://github.com/nexB/scancode-toolkit",
-      "version": "32.3.2",
-      "license": [
-        "Apache-2.0 AND CC-BY-4.0"
-      ],
-      "copyright": [
-        "nexB Inc. and others"
       ]
     }
   },
