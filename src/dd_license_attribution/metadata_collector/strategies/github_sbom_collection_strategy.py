@@ -3,11 +3,24 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
+import json
 import logging
+from io import StringIO
+from typing import Any
 
-# Get application-specific logger
-logger = logging.getLogger("dd_license_attribution")
+from agithub.GitHub import GitHub
+from giturlparse import parse as parse_git_url
+from spdx.document import Document
+from spdx.package import Package
+from spdx.parsers.jsonparser import Parser as JSONParser
+from spdx.parsers.jsonyamlxmlbuilders import Builder
+from spdx.parsers.loggers import StandardLogger
 
+from dd_license_attribution.artifact_management.source_code_manager import (
+    NonAccessibleRepository,
+    SourceCodeManager,
+    UnauthorizedRepository,
+)
 from dd_license_attribution.config import string_formatting_config
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
@@ -18,16 +31,8 @@ from dd_license_attribution.utils.custom_splitting import CustomSplit
 
 __all__ = ["GitHubSbomMetadataCollectionStrategy", "ProjectScope"]
 
-from typing import Any
-
-from agithub.GitHub import GitHub
-from giturlparse import parse as parse_git_url
-
-from dd_license_attribution.artifact_management.source_code_manager import (
-    NonAccessibleRepository,
-    SourceCodeManager,
-    UnauthorizedRepository,
-)
+# Get application-specific logger
+logger = logging.getLogger("dd_license_attribution")
 
 
 class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
@@ -55,6 +60,17 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
         elif project_scope == ProjectScope.ALL:
             self.with_root_project = True
             self.with_transitive_dependencies = True
+
+    def _extract_license_string(self, license_expression: Any) -> str | None:
+        """Extract license string from SPDX license expression object."""
+        if license_expression is None:
+            return None
+        # SPDX library may return the license as a string or as an object
+        # Handle both cases
+        if isinstance(license_expression, str):
+            return license_expression
+        # If it's an object with a string representation, use that
+        return str(license_expression) if license_expression else None
 
     # method to get the metadata
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
@@ -122,8 +138,8 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     owner,
                     repo,
                 )
-                sbom = self.__get_github_generated_sbom(owner, repo)
-                packages_in_sbom = sbom["packages"]
+                sbom_document = self.__get_github_generated_sbom(owner, repo)
+                packages_in_sbom: list[Package] = sbom_document.packages
                 logger.debug(
                     "Loaded %d package(s) from SBOM for '%s/%s'.",
                     len(packages_in_sbom),
@@ -147,7 +163,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                 packages_in_sbom = [
                     pkg
                     for pkg in packages_in_sbom
-                    if canonical_package_name != pkg["name"]
+                    if canonical_package_name != pkg.name
                 ]
                 after_count = len(packages_in_sbom)
                 logger.debug(
@@ -163,7 +179,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     for pkg in packages_in_sbom
                     if any(
                         m_pkg.name is not None
-                        and pkg["name"].lower().startswith(m_pkg.name.lower())
+                        and pkg.name.lower().startswith(m_pkg.name.lower())
                         for m_pkg in metadata
                     )
                 ]
@@ -183,10 +199,10 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
             is_root_package = package_index == root_package_index
 
             for sbom_package in packages_in_sbom:
-                pkg_name = sbom_package.get("name", "<no-name>")
+                pkg_name = sbom_package.name if sbom_package.name else "<no-name>"
                 logger.debug("Processing SBOM package: '%s'", pkg_name)
                 # skipping CI dependencies declared as actions
-                if "SPDXID" in sbom_package and sbom_package["SPDXID"].startswith(
+                if sbom_package.spdx_id and sbom_package.spdx_id.startswith(
                     "SPDXRef-githubactions-"
                 ):
                     logger.debug(
@@ -199,7 +215,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     (
                         old_package_metadata
                         for old_package_metadata in metadata
-                        if old_package_metadata.name == sbom_package["name"]
+                        if old_package_metadata.name == sbom_package.name
                     ),
                     None,
                 )
@@ -207,7 +223,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     (
                         new_package_metadata
                         for new_package_metadata in updated_metadata
-                        if new_package_metadata.name == sbom_package["name"]
+                        if new_package_metadata.name == sbom_package.name
                     ),
                     None,
                 )
@@ -229,47 +245,46 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                 # last, we update with sbom data to fill gaps if available
                 if (
                     not version
-                    and "versionInfo" in sbom_package
-                    and sbom_package["versionInfo"] != "NOASSERTION"
+                    and sbom_package.version
+                    and sbom_package.version != "NOASSERTION"
                 ):
-                    version = sbom_package["versionInfo"]
+                    version = sbom_package.version
                 if not origin:
                     if (
-                        "downloadLocation" in sbom_package
-                        and sbom_package["downloadLocation"] != "NOASSERTION"
-                        and sbom_package["downloadLocation"] != ""
+                        sbom_package.download_location
+                        and sbom_package.download_location != "NOASSERTION"
+                        and sbom_package.download_location != ""
                     ):
-                        origin = sbom_package["downloadLocation"]
-                    elif sbom_package["name"].startswith("github.com"):
+                        origin = sbom_package.download_location
+                    elif sbom_package.name and sbom_package.name.startswith(
+                        "github.com"
+                    ):
                         origin = "https://{sbom_name}".format(
-                            sbom_name=sbom_package["name"]
+                            sbom_name=sbom_package.name
                         )
                     else:  # fallback guess
-                        origin = sbom_package["name"]
+                        origin = sbom_package.name
                 if not license:
-                    if (
-                        "licenseDeclared" in sbom_package
-                        and sbom_package["licenseDeclared"] != "NOASSERTION"
-                    ):
-                        license = [sbom_package["licenseDeclared"]]
-                    elif (
-                        "licenseConcluded" in sbom_package
-                        and sbom_package["licenseConcluded"] != "NOASSERTION"
-                    ):
-                        license = [sbom_package["licenseConcluded"]]
+                    license_declared_str = self._extract_license_string(
+                        sbom_package.license_declared
+                    )
+                    if license_declared_str and license_declared_str != "NOASSERTION":
+                        license = [license_declared_str]
                     else:
-                        license = []
+                        license_concluded_str = self._extract_license_string(
+                            sbom_package.conc_lics
+                        )
+                        if (
+                            license_concluded_str
+                            and license_concluded_str != "NOASSERTION"
+                        ):
+                            license = [license_concluded_str]
+                        else:
+                            license = []
                 if not copyright:
-                    if (
-                        "copyrightText" in sbom_package
-                        and sbom_package["copyrightText"] != "NOASSERTION"
-                    ):
+                    if sbom_package.cr_text and sbom_package.cr_text != "NOASSERTION":
                         copyright = list(
-                            set(
-                                self.splitter.custom_split(
-                                    sbom_package["copyrightText"], ","
-                                )
-                            )
+                            set(self.splitter.custom_split(sbom_package.cr_text, ","))
                         )
                     else:
                         copyright = []
@@ -287,7 +302,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     # Check if this SBOM package represents the root project
                     # SBOM uses "com.github.owner/repo" but we use "github.com/owner/repo"
                     # Don't create a duplicate if this is the root project and the initial package was already updated
-                    sbom_is_root = sbom_package["name"] == canonical_package_name
+                    sbom_is_root = sbom_package.name == canonical_package_name
 
                     if is_root_package and sbom_is_root:
                         package.version = version or package.version
@@ -309,7 +324,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     else:
                         # This is a different package, create new metadata
                         updated_package = Metadata(
-                            name=sbom_package["name"],
+                            name=sbom_package.name if sbom_package.name else "",
                             version=version,
                             origin=origin,
                             local_src_path=None,
@@ -341,7 +356,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         return updated_metadata
 
-    def __get_github_generated_sbom(self, owner: str, repo: str) -> Any:
+    def __get_github_generated_sbom(self, owner: str, repo: str) -> Document:
         logger.debug(
             "Attempting to retrieve GitHub-generated SBOM for '%s/%s'.", owner, repo
         )
@@ -350,7 +365,17 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
             "GitHub SBOM API response for '%s/%s': status=%s", owner, repo, status
         )
         if status == 200:
-            return result["sbom"]
+            # Parse the SBOM JSON using spdx-tools library (version 0.7.0rc0)
+            sbom_json = result["sbom"]
+            sbom_json_str = json.dumps(sbom_json)
+            sbom_file = StringIO(sbom_json_str)
+            builder = Builder()
+            standard_logger = StandardLogger()
+            parser = JSONParser(builder, standard_logger)
+            parser.parse(sbom_file)
+            document = parser.document
+            logger.debug("Successfully parsed SPDX document for '%s/%s'.", owner, repo)
+            return document
         if status == 404:
             error_message = (
                 f"Inexistent repository or private repository and not enough permissions in the GitHub token.\n"

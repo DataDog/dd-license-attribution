@@ -3,6 +3,9 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
+from typing import Any
+from unittest.mock import Mock
+
 import pytest_mock
 from agithub.GitHub import GitHub
 
@@ -25,6 +28,38 @@ class GitUrlParseMock:
         self.owner = owner
         self.repo = repo
         self.github = platform == "github"
+
+
+def create_mock_spdx_package(
+    name: str | None = None,
+    spdx_id: str | None = None,
+    version: str | None = None,
+    download_location: str | None = None,
+    license_declared: str | None = None,
+    license_concluded: str | None = None,
+    copyright_text: str | None = None,
+) -> Mock:
+    """Create a mock SPDX Package object.
+
+    Note: spdx-tools 0.8.2 still uses the same attribute names as 0.7:
+    version, conc_lics (not license_concluded), cr_text (not copyright_text).
+    """
+    package = Mock()
+    package.name = name
+    package.spdx_id = spdx_id
+    package.version = version
+    package.download_location = download_location
+    package.license_declared = license_declared
+    package.conc_lics = license_concluded  # spdx uses conc_lics
+    package.cr_text = copyright_text  # spdx uses cr_text
+    return package
+
+
+def create_mock_spdx_document(packages: list[Any]) -> Mock:
+    """Create a mock SPDX Document object."""
+    document = Mock()
+    document.packages = packages
+    return document
 
 
 def test_github_sbom_collection_strategy_returns_same_metadata_if_not_a_github_repo(
@@ -105,6 +140,11 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
         ),
     )
 
+    # Mock JSONParser - it won't be called since API call fails
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.JSONParser"
+    )
+
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
         source_code_manager=source_code_manager_mock,
@@ -157,6 +197,11 @@ def test_github_sbom_collection_strategy_raise_special_exception_if_error_callin
         ),
     )
 
+    # Mock JSONParser - it won't be called since API call fails
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.JSONParser"
+    )
+
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
         source_code_manager=source_code_manager_mock,
@@ -207,6 +252,11 @@ def test_github_sbom_collection_strategy_raise_special_exception_if_error_callin
         ),
     )
 
+    # Mock JSONParser - it won't be called since API call fails
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.JSONParser"
+    )
+
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
         source_code_manager=source_code_manager_mock,
@@ -238,19 +288,19 @@ def test_github_sbom_collection_strategy_raise_special_exception_if_error_callin
 def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_returns_original_info(
     mocker: pytest_mock.MockFixture,
 ) -> None:
+    # Create SPDX document with a GitHub Actions package (should be skipped)
+    packages = [
+        create_mock_spdx_package(
+            spdx_id="SPDXRef-githubactions-somthing-that-acts"
+        ),  # this should be skipped
+        # No other packages in SBOM for this test
+    ]
+    spdx_document = create_mock_spdx_document(packages)
+
     sbom_mock = mocker.Mock()
     sbom_mock.get.return_value = (
         200,
-        {
-            "sbom": {
-                "packages": [
-                    {
-                        "SPDXID": "SPDXRef-githubactions-somthing-that-acts"
-                    },  # this should be skipped
-                    # No other packages in SBOM for this test
-                ]
-            }
-        },
+        {"sbom": {}},  # Actual content doesn't matter, parse_file will be mocked
     )
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
     source_code_manager_mock = mocker.Mock()
@@ -267,6 +317,14 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
             owner="test_owner",
             repo="test_repo",
         ),
+    )
+
+    # Mock JSONParser to return our SPDX document
+    parser_instance_mock = mocker.Mock()
+    parser_instance_mock.document = spdx_document
+    json_parser_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.JSONParser",
+        return_value=parser_instance_mock,
     )
 
     strategy = GitHubSbomMetadataCollectionStrategy(
@@ -303,38 +361,41 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
     source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
     github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
     sbom_mock.get.assert_called_once_with()
+    json_parser_mock.assert_called_once()  # Verify parser was instantiated
+    json_parser_mock.assert_called_once()  # Verify parser was instantiated
+    parser_instance_mock.parse.assert_called_once()  # Verify parse was called  # Verify parse was called
 
 
 def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_package(
     mocker: pytest_mock.MockFixture,
 ) -> None:
+    # Create SPDX document with multiple packages
+    packages = [
+        create_mock_spdx_package(
+            spdx_id="SPDXRef-githubactions-somthing-that-acts"
+        ),  # this should be skipped
+        create_mock_spdx_package(  # this is the package from the original metadata with new information
+            name="package1",
+            version="2.0",
+            license_declared="APACHE-2.0",
+            download_location="test_purl",
+        ),
+        create_mock_spdx_package(  # this was already in the previous line, we keep the new information and not override with this.
+            name="package1"
+        ),
+        create_mock_spdx_package(  # this is a package that is not in the original metadata and has downloadLocation declared
+            name="package3",
+            version="3.0",
+            license_declared="APACHE-2.0",
+            download_location="test_purl_2",
+        ),
+    ]
+    spdx_document = create_mock_spdx_document(packages)
+
     sbom_mock = mocker.Mock()
     sbom_mock.get.return_value = (
         200,
-        {
-            "sbom": {
-                "packages": [
-                    {
-                        "SPDXID": "SPDXRef-githubactions-somthing-that-acts"
-                    },  # this should be skipped
-                    {  # this is the package from the original metadata with new information
-                        "name": "package1",
-                        "versionInfo": "2.0",
-                        "licenseDeclared": "APACHE-2.0",
-                        "downloadLocation": "test_purl",
-                    },
-                    {  # this was already in the previous line, we keep the new information and not override with this.
-                        "name": "package1"
-                    },
-                    {  # this is a package that is not in the original metadata and has downloadLocation declared
-                        "name": "package3",
-                        "versionInfo": "3.0",
-                        "licenseDeclared": "APACHE-2.0",
-                        "downloadLocation": "test_purl_2",
-                    },
-                ]
-            }
-        },
+        {"sbom": {}},  # Actual content doesn't matter, parse_file will be mocked
     )
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
     source_code_manager_mock = mocker.Mock()
@@ -351,6 +412,14 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
     giturlparse_mock = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
+    )
+
+    # Mock JSONParser to return our SPDX document
+    parser_instance_mock = mocker.Mock()
+    parser_instance_mock.document = spdx_document
+    json_parser_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.JSONParser",
+        return_value=parser_instance_mock,
     )
 
     strategy = GitHubSbomMetadataCollectionStrategy(
@@ -412,32 +481,34 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
     giturlparse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
 
     sbom_mock.get.assert_called_once_with()
+    json_parser_mock.assert_called_once()  # Verify parser was instantiated
+    parser_instance_mock.parse.assert_called_once()  # Verify parse was called
 
 
 def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_false(
     mocker: pytest_mock.MockFixture,
 ) -> None:
+    # Create SPDX document with multiple packages
+    packages = [
+        create_mock_spdx_package(
+            name="package1",
+            version="2.0",
+            license_declared="APACHE-2.0",
+            download_location="test_purl",
+        ),
+        create_mock_spdx_package(
+            name="package2",
+            version="3.0",
+            license_declared="APACHE-2.0",
+            download_location="test_purl_2",
+        ),
+    ]
+    spdx_document = create_mock_spdx_document(packages)
+
     sbom_mock = mocker.Mock()
     sbom_mock.get.return_value = (
         200,
-        {
-            "sbom": {
-                "packages": [
-                    {
-                        "name": "package1",
-                        "versionInfo": "2.0",
-                        "licenseDeclared": "APACHE-2.0",
-                        "downloadLocation": "test_purl",
-                    },
-                    {
-                        "name": "package2",
-                        "versionInfo": "3.0",
-                        "licenseDeclared": "APACHE-2.0",
-                        "downloadLocation": "test_purl_2",
-                    },
-                ]
-            }
-        },
+        {"sbom": {}},  # Actual content doesn't matter, parse_file will be mocked
     )
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
     source_code_manager_mock = mocker.Mock()
@@ -454,6 +525,14 @@ def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_fals
             owner="test_owner",
             repo="test_repo",
         ),
+    )
+
+    # Mock JSONParser to return our SPDX document
+    parser_instance_mock = mocker.Mock()
+    parser_instance_mock.document = spdx_document
+    json_parser_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.JSONParser",
+        return_value=parser_instance_mock,
     )
 
     strategy = GitHubSbomMetadataCollectionStrategy(
@@ -491,32 +570,34 @@ def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_fals
     source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
     github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
     sbom_mock.get.assert_called_once_with()
+    json_parser_mock.assert_called_once()  # Verify parser was instantiated
+    parser_instance_mock.parse.assert_called_once()  # Verify parse was called
 
 
 def test_strategy_does_not_keep_root_when_with_root_project_is_false(
     mocker: pytest_mock.MockFixture,
 ) -> None:
+    # Create SPDX document with root project and a dependency
+    packages = [
+        create_mock_spdx_package(
+            name="com.github.test_owner/test_repo",
+            version="2.0",
+            license_declared="APACHE-2.0",
+            download_location="test_purl",
+        ),
+        create_mock_spdx_package(
+            name="package2",
+            version="3.0",
+            license_declared="APACHE-2.0",
+            download_location="test_purl_2",
+        ),
+    ]
+    spdx_document = create_mock_spdx_document(packages)
+
     sbom_mock = mocker.Mock()
     sbom_mock.get.return_value = (
         200,
-        {
-            "sbom": {
-                "packages": [
-                    {
-                        "name": "com.github.test_owner/test_repo",
-                        "versionInfo": "2.0",
-                        "licenseDeclared": "APACHE-2.0",
-                        "downloadLocation": "test_purl",
-                    },
-                    {
-                        "name": "package2",
-                        "versionInfo": "3.0",
-                        "licenseDeclared": "APACHE-2.0",
-                        "downloadLocation": "test_purl_2",
-                    },
-                ]
-            }
-        },
+        {"sbom": {}},  # Actual content doesn't matter, parse_file will be mocked
     )
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
     source_code_manager_mock = mocker.Mock()
@@ -528,6 +609,14 @@ def test_strategy_does_not_keep_root_when_with_root_project_is_false(
     github_parse_mock = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
+    )
+
+    # Mock JSONParser to return our SPDX document
+    parser_instance_mock = mocker.Mock()
+    parser_instance_mock.document = spdx_document
+    json_parser_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.JSONParser",
+        return_value=parser_instance_mock,
     )
 
     strategy = GitHubSbomMetadataCollectionStrategy(
@@ -565,24 +654,26 @@ def test_strategy_does_not_keep_root_when_with_root_project_is_false(
     source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
     github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
     sbom_mock.get.assert_called_once_with()
+    json_parser_mock.assert_called_once()  # Verify parser was instantiated
+    parser_instance_mock.parse.assert_called_once()  # Verify parse was called
 
 
 def test_github_sbom_collection_strategy_handles_company_names_in_copyright(
     mocker: pytest_mock.MockFixture,
 ) -> None:
+    # Create SPDX document with copyright text
+    packages = [
+        create_mock_spdx_package(
+            name="test-package",
+            copyright_text="Company A, Copyright 2024 Company B, Inc. and its affiliates, Company C, llc, Company Datadog",
+        )
+    ]
+    spdx_document = create_mock_spdx_document(packages)
+
     sbom_mock = mocker.Mock()
     sbom_mock.get.return_value = (
         200,
-        {
-            "sbom": {
-                "packages": [
-                    {
-                        "name": "test-package",
-                        "copyrightText": "Company A, Copyright 2024 Company B, Inc. and its affiliates, Company C, llc, Company Datadog",
-                    }
-                ]
-            }
-        },
+        {"sbom": {}},  # Actual content doesn't matter, parse_file will be mocked
     )
     mock_client = mocker.Mock()
     mock_client.repos = {
@@ -597,6 +688,14 @@ def test_github_sbom_collection_strategy_handles_company_names_in_copyright(
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(True, "github", "test-owner", "test-repo"),
+    )
+
+    # Mock JSONParser to return our SPDX document
+    parser_instance_mock = mocker.Mock()
+    parser_instance_mock.document = spdx_document
+    json_parser_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.JSONParser",
+        return_value=parser_instance_mock,
     )
 
     strategy = GitHubSbomMetadataCollectionStrategy(
@@ -627,43 +726,44 @@ def test_github_sbom_collection_strategy_handles_company_names_in_copyright(
         "Company C, llc",
         "Company Datadog",
     ]
+    json_parser_mock.assert_called_once()  # Verify parser was instantiated
+    parser_instance_mock.parse.assert_called_once()  # Verify parse was called
 
 
 def test_github_sbom_collection_strategy_uses_name_as_origin_if_download_location_is_empty_or_noassertion(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    sbom_data = (
-        200,
-        {
-            "sbom": {
-                "packages": [
-                    {
-                        "name": "package0",
-                        "versionInfo": "4.0",
-                        "licenseDeclared": "MIT",
-                        "copyrightText": "Copyright 1",
-                        "downloadLocation": "test_purl",
-                    },
-                    {
-                        "name": "github.com/package1",
-                        "versionInfo": "2.0",
-                        "licenseConcluded": "MIT",
-                        "copyrightText": "Copyright 2",
-                        "downloadLocation": "",
-                    },
-                    {
-                        "name": "github.com/package2",
-                        "versionInfo": "3.0",
-                        "licenseConcluded": "MIT",
-                        "copyrightText": "Copyright 3",
-                        "downloadLocation": "NOASSERTION",
-                    },
-                ]
-            }
-        },
-    )
+    # Create SPDX document with packages having different download locations
+    packages = [
+        create_mock_spdx_package(
+            name="package0",
+            version="4.0",
+            license_declared="MIT",
+            copyright_text="Copyright 1",
+            download_location="test_purl",
+        ),
+        create_mock_spdx_package(
+            name="github.com/package1",
+            version="2.0",
+            license_concluded="MIT",
+            copyright_text="Copyright 2",
+            download_location="",
+        ),
+        create_mock_spdx_package(
+            name="github.com/package2",
+            version="3.0",
+            license_concluded="MIT",
+            copyright_text="Copyright 3",
+            download_location="NOASSERTION",
+        ),
+    ]
+    spdx_document = create_mock_spdx_document(packages)
+
     sbom_mock = mocker.Mock()
-    sbom_mock.get.return_value = sbom_data
+    sbom_mock.get.return_value = (
+        200,
+        {"sbom": {}},  # Actual content doesn't matter, parse_file will be mocked
+    )
 
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
     source_code_manager_mock = mocker.Mock()
@@ -675,6 +775,14 @@ def test_github_sbom_collection_strategy_uses_name_as_origin_if_download_locatio
     giturlparse_mock = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
         return_value=GitUrlParseMock(True, "github", "test_owner", "test_repo"),
+    )
+
+    # Mock JSONParser to return our SPDX document
+    parser_instance_mock = mocker.Mock()
+    parser_instance_mock.document = spdx_document
+    json_parser_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.JSONParser",
+        return_value=parser_instance_mock,
     )
 
     strategy = GitHubSbomMetadataCollectionStrategy(
@@ -727,3 +835,5 @@ def test_github_sbom_collection_strategy_uses_name_as_origin_if_download_locatio
     source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
     giturlparse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
     sbom_mock.get.assert_called_once_with()
+    json_parser_mock.assert_called_once()  # Verify parser was instantiated
+    parser_instance_mock.parse.assert_called_once()  # Verify parse was called
