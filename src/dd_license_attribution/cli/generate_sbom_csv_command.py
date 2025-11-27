@@ -528,7 +528,7 @@ def generate_sbom_csv(
     output = csv_reporter.generate_report(metadata)
     if temp_dir is not None:
         temp_dir.cleanup()
-    print(output)
+    print(output, end="")
     if override_strategy is not None and len(override_strategy.unused_targets()) != 0:
         logger.warning("Not all targets in the override spec file were used.")
         logger.warning(
