@@ -22,6 +22,7 @@ Before suggesting any code changes, verify:
 - [ ] `pytest --cov=src/dd_license_attribution --cov-fail-under=95` passes
 - [ ] New code has corresponding unit tests with proper mocking
 - [ ] Unit tests mock all external dependencies (adaptors, network calls, etc.)
+- [ ] All mocks are verified with assertions (call count AND parameters)
 - [ ] No unit tests make real filesystem, network, or database calls
 - [ ] Tests focus on public interfaces, not internal implementation details
 - [ ] `isort --check-only src/ tests/` and `black --check src/ tests/` pass
@@ -221,6 +222,18 @@ class TestExampleClass:
 
 **CRITICAL**: Unit tests must remain unit tests. Mock all external dependencies to prevent tests from becoming integration tests.
 
+**MANDATORY MOCK VERIFICATION**: Every mock used in a test MUST be verified with assertions. This is non-negotiable.
+
+- ✅ **REQUIRED**: Verify call count (e.g., `assert_called_once()`, `assert_called()`, `assert_not_called()`)
+- ✅ **REQUIRED**: Verify parameters passed (e.g., `assert_called_once_with(...)`, `assert_called_with(...)`)
+- ✅ **REQUIRED**: Verify call order when relevant (e.g., `assert_has_calls(...)`)
+
+**Why this matters:**
+- Ensures the code under test actually uses the mocked dependencies
+- Verifies the correct parameters are passed to external dependencies
+- Catches regressions when refactoring
+- Documents expected behavior through assertions
+
 #### What to Mock
 
 ```python
@@ -252,6 +265,8 @@ class TestDataProcessor:
         # Assert: Verify behavior and mock calls
         assert result.content == "processed: test content"
         assert result.metadata["version"] == "1.0"
+        
+        # CRITICAL: ALWAYS verify mocks were called correctly
         self.os_adaptor.read_file.assert_called_once_with("test.txt")
         self.network_adaptor.fetch_metadata.assert_called_once()
 ```
@@ -318,7 +333,8 @@ class TestDataProcessor:
         with pytest.raises(FileNotFoundError, match="File not found: test.txt"):
             processor.process_file("test.txt")
         
-        # Verify no unnecessary calls were made
+        # CRITICAL: ALWAYS verify mock interactions
+        os_adaptor.path_exists.assert_called_once_with("test.txt")
         os_adaptor.read_file.assert_not_called()
         network_adaptor.fetch_metadata.assert_not_called()
 ```
@@ -371,7 +387,10 @@ def test_processes_license_file_correctly(self) -> None:
     
     result = self.processor.parse_license("LICENSE")
     
+    # Verify result
     assert result == expected_result
+    
+    # CRITICAL: ALWAYS verify mock was called with correct parameters
     self.os_adaptor.read_file.assert_called_once_with("LICENSE")
 
 # ✅ Reset mocks between tests if needed
@@ -379,6 +398,74 @@ def teardown_method(self) -> None:
     """Clean up after each test."""
     self.os_adaptor.reset_mock()
     self.network_adaptor.reset_mock()
+```
+
+#### Mock Verification Requirements
+
+**MANDATORY for every test that uses mocks:**
+
+```python
+# ✅ REQUIRED: Complete mock verification
+def test_with_complete_verification(self) -> None:
+    # Arrange
+    self.os_adaptor.read_file.return_value = "content"
+    self.os_adaptor.path_exists.return_value = True
+    
+    # Act
+    result = self.processor.process_file("test.txt")
+    
+    # Assert - Verify result
+    assert result == "processed: content"
+    
+    # Assert - MANDATORY: Verify ALL mock interactions
+    self.os_adaptor.path_exists.assert_called_once_with("test.txt")
+    self.os_adaptor.read_file.assert_called_once_with("test.txt")
+
+# ❌ FORBIDDEN: Missing mock verification
+def test_without_verification(self) -> None:
+    # Arrange
+    self.os_adaptor.read_file.return_value = "content"
+    
+    # Act
+    result = self.processor.process_file("test.txt")
+    
+    # Assert - Only checks result, DOES NOT verify mock was called
+    assert result == "processed: content"
+    # MISSING: self.os_adaptor.read_file.assert_called_once_with("test.txt")
+
+# ✅ REQUIRED: Verify call count for methods called multiple times
+def test_multiple_calls_verification(self) -> None:
+    # Arrange
+    self.os_adaptor.read_file.return_value = "content"
+    
+    # Act
+    self.processor.process_multiple_files(["file1.txt", "file2.txt", "file3.txt"])
+    
+    # Assert - Verify exact call count
+    assert self.os_adaptor.read_file.call_count == 3
+    
+    # Assert - Verify exact calls with parameters
+    expected_calls = [
+        call("file1.txt"),
+        call("file2.txt"),
+        call("file3.txt")
+    ]
+    self.os_adaptor.read_file.assert_has_calls(expected_calls)
+
+# ✅ REQUIRED: Verify mocks were NOT called when appropriate
+def test_early_return_no_calls(self) -> None:
+    # Arrange
+    self.os_adaptor.path_exists.return_value = False
+    
+    # Act
+    result = self.processor.process_file_if_exists("test.txt")
+    
+    # Assert - Verify result
+    assert result is None
+    
+    # Assert - MANDATORY: Verify what WAS and WAS NOT called
+    self.os_adaptor.path_exists.assert_called_once_with("test.txt")
+    self.os_adaptor.read_file.assert_not_called()  # Should not be called
 ```
 
 ### Contract Tests for External Libraries
@@ -767,6 +854,39 @@ logger.info("Processing file: %s", filename)
 
 ## 🚀 Development Workflow
 
+### Development Environment
+
+**CRITICAL**: This project uses **pipenv** exclusively for dependency management and development environment setup.
+
+```bash
+# Install dependencies
+pipenv install --dev
+
+# Activate virtual environment
+pipenv shell
+
+# Run commands in pipenv environment
+pipenv run pytest
+pipenv run mypy src/ tests/
+pipenv run black src/ tests/
+pipenv run isort src/ tests/
+
+# Add new dependencies
+pipenv install package-name
+pipenv install --dev package-name  # For development dependencies
+```
+
+**NEVER use:**
+- ❌ `pip install` directly
+- ❌ `venv` or `virtualenv` manually
+- ❌ `poetry` or other package managers
+- ❌ `conda` environments
+
+**ALWAYS use:**
+- ✅ `pipenv install` for dependencies
+- ✅ `pipenv run` for commands
+- ✅ `pipenv shell` for interactive development
+
 ### For New Features
 
 1. **Plan**: Break down complex features into smaller, testable components
@@ -853,8 +973,8 @@ def test_over_mocked(self, mock_process):
     # This doesn't test any real logic
     pass
 
-# ✅ CORRECT: Test public interface with mocked dependencies
-def test_public_behavior_with_mocked_dependencies(self):
+# ❌ FORBIDDEN: Not verifying mock interactions
+def test_without_mock_verification(self):
     os_adaptor = Mock()
     os_adaptor.read_file.return_value = "test content"
     
@@ -862,9 +982,23 @@ def test_public_behavior_with_mocked_dependencies(self):
     result = processor.process_file("test.txt")
     
     assert result == "processed: test content"
+    # MISSING: Mock verification - this test is incomplete!
+
+# ✅ CORRECT: Test public interface with mocked dependencies AND verification
+def test_public_behavior_with_mocked_dependencies(self):
+    os_adaptor = Mock()
+    os_adaptor.read_file.return_value = "test content"
+    
+    processor = DataProcessor(os_adaptor=os_adaptor)
+    result = processor.process_file("test.txt")
+    
+    # Verify result
+    assert result == "processed: test content"
+    
+    # CRITICAL: ALWAYS verify mock interactions
     os_adaptor.read_file.assert_called_once_with("test.txt")
 
-# ✅ CORRECT: Test error handling with mocked exceptions
+# ✅ CORRECT: Test error handling with mocked exceptions AND verification
 def test_handles_file_not_found(self):
     os_adaptor = Mock()
     os_adaptor.read_file.side_effect = FileNotFoundError("File not found")
@@ -873,6 +1007,9 @@ def test_handles_file_not_found(self):
     
     with pytest.raises(FileNotFoundError):
         processor.process_file("nonexistent.txt")
+    
+    # CRITICAL: ALWAYS verify mock was called
+    os_adaptor.read_file.assert_called_once_with("nonexistent.txt")
 ```
 
 ## 🎯 Quality Gates
