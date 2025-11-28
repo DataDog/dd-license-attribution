@@ -41,7 +41,7 @@ class UnauthorizedRepository(Exception):
 
 
 def extract_ref(ref: str, url: str) -> str:
-    logger.debug(f"Extracting ref {ref} from {url}")
+    logger.debug("Extracting ref %s from %s", ref, url)
     split_ref = ref.split("/")
     for i in range(len(split_ref)):
         ref_guess = "/".join(split_ref[: i + 1])
@@ -49,13 +49,13 @@ def extract_ref(ref: str, url: str) -> str:
             f"git ls-remote {url} {ref_guess} | grep -q {ref_guess}"
         )
         if validated == 0:
-            logger.debug(f"Found valid ref: {ref_guess}")
+            logger.debug("Found valid ref: %s", ref_guess)
             return ref_guess
     if len(split_ref) > 0:  # may be a hash
         ref_guess = split_ref[0]
         validated = run_command(f"git ls-remote {url} | grep -q {ref_guess}")
         if validated == 0:
-            logger.debug(f"Found valid ref from hash: {ref_guess}")
+            logger.debug("Found valid ref from hash: %s", ref_guess)
             return ref_guess
     return ""
 
@@ -110,7 +110,9 @@ class SourceCodeManager(ArtifactManager):
         self.github_client = github_client
         self._canonical_urls_cache: dict[str, tuple[str, str | None]] = {}
         logger.info(
-            f"SourceCodeManager initialized with {len(self.mirrors)} mirror(s) with {self.local_cache_ttl} seconds TTL."
+            "SourceCodeManager initialized with %d mirror(s) with %d seconds TTL.",
+            len(self.mirrors),
+            self.local_cache_ttl,
         )
 
     def get_canonical_urls(self, url: str) -> tuple[str, str | None]:
@@ -138,14 +140,14 @@ class SourceCodeManager(ArtifactManager):
         """
         # Check cache
         if url in self._canonical_urls_cache:
-            logger.debug(f"Returning cached canonical URLs for: {url}")
+            logger.debug("Returning cached canonical URLs for: %s", url)
             return self._canonical_urls_cache[url]
 
-        logger.debug(f"Getting canonical URLs for: {url}")
+        logger.debug("Getting canonical URLs for: %s", url)
         parsed_url = parse_git_url(url)
 
         if not parsed_url.valid or not parsed_url.github:
-            logger.debug(f"URL is not a GitHub URL: {url}")
+            logger.debug("URL is not a GitHub URL: %s", url)
             result = (url, None)
             self._canonical_urls_cache[url] = result
             return result
@@ -156,7 +158,7 @@ class SourceCodeManager(ArtifactManager):
 
         if status == 301 and result and "url" in result:
             redirect_url = result["url"]
-            logger.debug(f"Repository has moved, following redirect: {redirect_url}")
+            logger.debug("Repository has moved, following redirect: %s", redirect_url)
 
             # Check if the redirect is still to GitHub
             api_prefix = "https://api.github.com/"
@@ -172,7 +174,9 @@ class SourceCodeManager(ArtifactManager):
             canonical_repo_url = result.get("html_url")
             api_url = result.get("url")
             logger.debug(
-                f"Resolved canonical URLs - Repo URL: {canonical_repo_url}, API URL: {api_url}"
+                "Resolved canonical URLs - Repo URL: %s, API URL: %s",
+                canonical_repo_url,
+                api_url,
             )
             canonical_result = (canonical_repo_url, api_url)
             self._canonical_urls_cache[url] = canonical_result
@@ -180,7 +184,7 @@ class SourceCodeManager(ArtifactManager):
 
         # If we couldn't get the repository information, return the original URL
         logger.debug(
-            f"Failed to resolve canonical URLs (status {status}), returning: {url}"
+            "Failed to resolve canonical URLs (status %s), returning: %s", status, url
         )
         original_url = f"{parsed_url.protocol}://{parsed_url.host}/{owner}/{repo}"
         fallback_result = (original_url, None)
@@ -203,7 +207,7 @@ class SourceCodeManager(ArtifactManager):
                 .removeprefix("refs/heads/")
             )
             logger.debug(
-                f"Discovered default branch in repository: {discovered_branch}"
+                "Discovered default branch in repository: %s", discovered_branch
             )
             return discovered_branch
         except Exception as e:
@@ -224,13 +228,17 @@ class SourceCodeManager(ArtifactManager):
             except NonAccessibleRepository as e:
                 # ignoring the failure, we will try with the mirror url if found next
                 logger.debug(
-                    f"Failed to discover default branch for original repository {original_url}: {str(e)}"
+                    "Failed to discover default branch for original repository %s: %s",
+                    original_url,
+                    str(e),
                 )
 
         for mirror_map in self.mirrors:
             if mirror_map.original_url == original_url:
                 logger.debug(
-                    f"Found mirror definition for {original_url}: {mirror_map.mirror_url}"
+                    "Found mirror definition for %s: %s",
+                    original_url,
+                    mirror_map.mirror_url,
                 )
                 mirror_url = mirror_map.mirror_url
                 if original_ref_name == "default_branch":
@@ -239,7 +247,9 @@ class SourceCodeManager(ArtifactManager):
                     except NonAccessibleRepository as e:
                         # ignoring the failure, we will try with the mirror url if found next
                         logger.error(
-                            f"Failed to discover default branch for mirror repository {mirror_url}: {str(e)}"
+                            "Failed to discover default branch for mirror repository %s: %s",
+                            mirror_url,
+                            str(e),
                         )
                         raise NonAccessibleRepository(
                             f"Could not discover default branch for neither original repository {original_url} nor mirror repository {mirror_url}"
@@ -253,7 +263,12 @@ class SourceCodeManager(ArtifactManager):
                         (original_ref_type, original_ref_name)
                     ]
                     logger.debug(
-                        f"Mapped {original_ref_type}:{original_ref_name} to mirror {effective_ref_type}:{effective_ref_name} in {mirror_url}"
+                        "Mapped %s:%s to mirror %s:%s in %s",
+                        original_ref_type,
+                        original_ref_name,
+                        effective_ref_type,
+                        effective_ref_name,
+                        mirror_url,
                     )
                     if effective_ref_type != RefType.BRANCH:
                         raise NotImplementedError(
@@ -276,7 +291,7 @@ class SourceCodeManager(ArtifactManager):
     def get_code(
         self, resource_url: str, force_update: bool = False
     ) -> SourceCodeReference | None:
-        logger.debug(f"Getting code for resource URL: {resource_url}")
+        logger.debug("Getting code for resource URL: %s", resource_url)
 
         original_parsed_url = parse_git_url(resource_url)
         if not original_parsed_url.valid or not original_parsed_url.github:
@@ -285,7 +300,8 @@ class SourceCodeManager(ArtifactManager):
         canonical_url, api_url = self.get_canonical_urls(resource_url)
         if api_url is None:
             logger.debug(
-                f"Could not resolve canonical URL for {resource_url}, not a GitHub repository"
+                "Could not resolve canonical URL for %s, not a GitHub repository",
+                resource_url,
             )
             return None
 
@@ -298,7 +314,10 @@ class SourceCodeManager(ArtifactManager):
         repository_url = canonical_url
 
         logger.debug(
-            f"Resolved canonical repository URL: {repository_url} with owner: {owner}, repo: {repo}"
+            "Resolved canonical repository URL: %s with owner: %s, repo: %s",
+            repository_url,
+            owner,
+            repo,
         )
         branch = "default_branch"
         if original_parsed_url.branch:
@@ -319,21 +338,28 @@ class SourceCodeManager(ArtifactManager):
         else:
             path = ""
         logger.debug(
-            f"Using branch: {branch} and path: {path} for repository URL: {repository_url}"
+            "Using branch: %s and path: %s for repository URL: %s",
+            branch,
+            path,
+            repository_url,
         )
         # Get mirror URL and branch if available
         effective_repository_url, _, effective_branch, branch = (
             self._get_mirror_url_and_ref(repository_url, RefType.BRANCH, branch)
         )
         logger.debug(
-            f"Effective repository URL: {effective_repository_url}, effective branch: {effective_branch}"
+            "Effective repository URL: %s, effective branch: %s",
+            effective_repository_url,
+            effective_branch,
         )
 
         cached_timestamps = list_dir(self.local_cache_dir)
         cached_timestamps.sort(reverse=True)
         if not force_update:
             # check if there is a cache
-            logger.debug(f"Checking local cache for {owner}/{repo} at branch {branch}.")
+            logger.debug(
+                "Checking local cache for %s/%s at branch %s.", owner, repo, branch
+            )
             for time_copy_str in cached_timestamps:
                 time_copy = datetime.strptime(time_copy_str, "%Y%m%d_%H%M%SZ").replace(
                     tzinfo=pytz.UTC
@@ -345,7 +371,11 @@ class SourceCodeManager(ArtifactManager):
                 )
                 if path_exists(local_branch_path):
                     logger.debug(
-                        f"Found cached branch {branch} for {owner}/{repo} at {local_branch_path}"
+                        "Found cached branch %s for %s/%s at %s",
+                        branch,
+                        owner,
+                        repo,
+                        local_branch_path,
                     )
                     return SourceCodeReference(
                         repo_url=repository_url,
@@ -360,14 +390,20 @@ class SourceCodeManager(ArtifactManager):
 
         create_dirs(local_branch_path)
         logger.debug(
-            f"Cloning repository {effective_repository_url} at branch {effective_branch} to {local_branch_path}"
+            "Cloning repository %s at branch %s to %s",
+            effective_repository_url,
+            effective_branch,
+            local_branch_path,
         )
         run_command(
             f"git clone -c advice.detachedHead=False --depth 1 --branch={effective_branch} {effective_repository_url} {local_branch_path}"
         )
 
         logger.debug(
-            f"Cloned repository {effective_repository_url} at branch {effective_branch} to {local_branch_path}"
+            "Cloned repository %s at branch %s to %s",
+            effective_repository_url,
+            effective_branch,
+            local_branch_path,
         )
         return SourceCodeReference(
             repo_url=repository_url,

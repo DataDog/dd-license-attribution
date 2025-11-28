@@ -127,11 +127,11 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         try:
             # Use yarn list to get all dependencies (excluding dev dependencies)
-            logger.debug(f"Running yarn list in {project_path}")
+            logger.debug("Running yarn list in %s", project_path)
             output = output_from_command(
                 f"cd {project_path} && yarn list --production --json --non-interactive 2>&1"
             )
-            logger.debug(f"Yarn list output length: {len(output)} characters")
+            logger.debug("Yarn list output length: %d characters", len(output))
 
             # Check if yarn command failed
             if not output or len(output.strip()) == 0:
@@ -159,7 +159,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
             # Extract aliases from all trees (they appear in children arrays)
             aliases = self._extract_yarn_aliases_from_tree(all_trees)
-            logger.debug(f"Found {len(aliases)} Yarn aliases")
+            logger.debug("Found %d Yarn aliases", len(aliases))
 
             # Second pass: process packages and resolve aliases
             for tree in all_trees:
@@ -191,7 +191,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     all_deps[resolved_name] = ""
 
         except Exception as e:
-            logger.warning(f"Failed to run yarn list for {project_path}: {e}")
+            logger.warning("Failed to run yarn list for %s: %s", project_path, e)
 
         return all_deps
 
@@ -319,8 +319,11 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     meta.name = name
 
                 logger.debug(
-                    f"Enriched root package from package.json: "
-                    f"name={name}, version={version}, license={license}, copyright={copyright}"
+                    "Enriched root package from package.json: name=%s, version=%s, license=%s, copyright=%s",
+                    name,
+                    version,
+                    license,
+                    copyright,
                 )
                 break
 
@@ -342,7 +345,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         for idx, (dep_name, version) in enumerate(dependencies.items(), 1):
             if idx % 50 == 0 or idx == total_deps:
-                logger.info(f"Progress: {idx}/{total_deps} dependencies processed")
+                logger.info("Progress: %d/%d dependencies processed", idx, total_deps)
             clean_version = self._clean_version_string(version)
 
             license, copyright, pkg_data = self._fetch_npm_registry_metadata(
@@ -444,7 +447,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         package_json_data = json.loads(open_file(package_json_path))
         if "workspaces" in package_json_data:
             logger.warning(
-                f"Node projects using workspaces are not supported yet by the NPM collection strategy."
+                "Node projects using workspaces are not supported yet by the NPM collection strategy."
             )
             return updated_metadata
 
@@ -456,7 +459,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         # Detect package manager (npm or yarn)
         package_manager = self._detect_package_manager(project_path)
-        logger.info(f"Detected package manager: {package_manager}")
+        logger.info("Detected package manager: %s", package_manager)
 
         all_deps: dict[str, str] = {}
 
@@ -464,10 +467,11 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             # Check if yarn is installed
             try:
                 yarn_version = output_from_command("yarn --version 2>/dev/null")
-                logger.debug(f"Yarn version: {yarn_version.strip()}")
+                logger.debug("Yarn version: %s", yarn_version.strip())
             except Exception as e:
                 logger.error(
-                    f"Yarn is not installed or not in PATH. Please install yarn to analyze this project. Error: {e}"
+                    "Yarn is not installed or not in PATH. Please install yarn to analyze this project. Error: %s",
+                    e,
                 )
                 return updated_metadata
 
@@ -475,7 +479,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             all_deps = self._get_yarn_dependencies(project_path)
             if not all_deps:
                 logger.warning(
-                    f"No dependencies found for Yarn project at {project_path}"
+                    "No dependencies found for Yarn project at %s", project_path
                 )
         else:
             # For npm projects, use the existing npm logic
@@ -486,26 +490,28 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     "npm install --package-lock-only --force; cd $CWD"
                 )
             except Exception as e:
-                logger.warning(f"Failed to run npm install for {self.top_package}: {e}")
+                logger.warning(
+                    "Failed to run npm install for %s: %s", self.top_package, e
+                )
                 return updated_metadata
 
             lock_path = path_join(project_path, "package-lock.json")
             if not path_exists(lock_path):
-                logger.warning(f"No package-lock.json found in {project_path}")
+                logger.warning("No package-lock.json found in %s", project_path)
                 return updated_metadata
 
             try:
                 lock_data = json.loads(open_file(lock_path))
                 all_deps = self._get_npm_dependencies(lock_data)
             except Exception as e:
-                logger.warning(f"Failed to read package-lock.json: {e}")
+                logger.warning("Failed to read package-lock.json: %s", e)
                 return updated_metadata
 
         if not all_deps:
-            logger.warning(f"No dependencies extracted from {project_path}")
+            logger.warning("No dependencies extracted from %s", project_path)
             return updated_metadata
 
-        logger.info(f"Found {len(all_deps)} dependencies")
+        logger.info("Found %d dependencies", len(all_deps))
 
         # Use private method to enrich metadata with NPM registry data
         # Handles scope filtering, version cleaning, fetching, and enrichment

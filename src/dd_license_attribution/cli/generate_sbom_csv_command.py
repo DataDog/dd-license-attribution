@@ -391,7 +391,7 @@ def generate_sbom_csv(
             for strategy in enabled_strategies:
                 if strategy not in debug_enabled_strategies:
                     enabled_strategies[strategy] = False
-            logger.debug(f"Enabled strategies: {enabled_strategies}")
+            logger.debug("Enabled strategies: %s", enabled_strategies)
         else:
             logger.debug(
                 "No strategies enabled - if you wanted to enable strategies, provide a debug object with a list of them in the 'enabled_strategies' key."
@@ -532,5 +532,6 @@ def generate_sbom_csv(
     if override_strategy is not None and len(override_strategy.unused_targets()) != 0:
         logger.warning("Not all targets in the override spec file were used.")
         logger.warning(
-            f"Unused targets: {override_strategy.unused_targets()}. Consider removing them."
+            "Unused targets: %s. Consider removing them.",
+            override_strategy.unused_targets(),
         )

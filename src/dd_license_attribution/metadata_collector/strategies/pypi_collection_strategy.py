@@ -66,7 +66,7 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         if dependencies is None:
             return updated_metadata
         for dependency, version in dependencies:
-            logger.debug(f"dependency: {dependency}, version: {version}")
+            logger.debug("dependency: %s, version: %s", dependency, version)
 
             # get the metadata from pypi API
             pypi_metadata = self._get_metadata_from_pypi(dependency, version)
@@ -77,8 +77,8 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
             else:
                 pypi_info = {"name": dependency}
 
-            logger.debug(f"pypi_info: {pypi_info}")
-            logger.debug(f"pypi_metadata: {pypi_metadata}")
+            logger.debug("pypi_info: %s", pypi_info)
+            logger.debug("pypi_metadata: %s", pypi_metadata)
 
             origin = "pypi:" + dependency
             project_urls = {}
@@ -89,7 +89,9 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
             for key in list(project_urls):
                 if project_urls[key] is None:
                     logger.debug(
-                        f"Project URL for key '{key}' is None in package {dependency}"
+                        "Project URL for key '%s' is None in package %s",
+                        key,
+                        dependency,
                     )
                     del project_urls[key]
                     continue
@@ -187,10 +189,10 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         request_uri = f"https://pypi.org/pypi/{package}/{version}/json"
         response = requests.get(request_uri)
         if response.status_code == 404:
-            logger.warning(f"pypi.org is returning a 404 for {package}. Skipping.")
+            logger.warning("pypi.org is returning a 404 for %s. Skipping.", package)
             return None
         if response.status_code == 503:
-            logger.warning(f"pypi.org is returning a 503 for{package}. Skipping.")
+            logger.warning("pypi.org is returning a 503 for %s. Skipping.", package)
             return None
         return response.json()  # type: ignore
 
