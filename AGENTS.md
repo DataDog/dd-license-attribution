@@ -138,6 +138,49 @@ import shutil
 import tempfile
 ```
 
+### CLI and Infrastructure Exceptions
+
+**The following are EXCEPTIONS to the OS import rules** and are permitted in specific contexts:
+
+1. **CLI Output (`print()` for STDOUT)**:
+   - ✅ **ALLOWED** in CLI command functions for final output intended for piping/redirection
+   - ✅ Example: `print(csv_output, end="")` in `generate_sbom_csv_command.py`
+   - ❌ **NOT ALLOWED** for debug messages or progress updates (use logging instead)
+   - 💡 **Best Practice**: Add a comment to clarify intentional STDOUT usage
+
+2. **CLI Error Handling (`sys.exit()`)**:
+   - ✅ **ALLOWED** in CLI command functions to exit with error codes
+   - ✅ Example: `sys.exit(1)` after logging errors in CLI commands
+   - ❌ **NOT ALLOWED** in business logic or library code (raise exceptions instead)
+   - 💡 **Preferred Alternative**: Raise custom exceptions and handle at CLI boundary
+
+3. **Logging Infrastructure (`sys.stderr`)**:
+   - ✅ **ALLOWED** in `utils/logging.py` for configuring log output destinations
+   - ✅ Example: `logging.StreamHandler(sys.stderr)` for stderr output
+   - ❌ **NOT ALLOWED** for direct writing to stderr (use logging instead)
+
+**Summary of Exceptions**:
+```python
+# ✅ ALLOWED: CLI output to STDOUT
+def generate_sbom_csv(...) -> None:
+    # ... business logic ...
+    # Output CSV to STDOUT for piping (e.g., command | grep "MIT")
+    print(csv_output, end="")
+
+# ✅ ALLOWED: CLI error handling
+def generate_sbom_csv(...) -> None:
+    try:
+        # ... logic ...
+    except SomeError as e:
+        logger.error(str(e))
+        sys.exit(1)  # Exit with error code for shell scripts
+
+# ✅ ALLOWED: Logging infrastructure setup
+def setup_logging(level: int) -> None:
+    console_handler = logging.StreamHandler(sys.stderr)
+    # ... configure logging ...
+```
+
 ### REQUIRED Adaptor Usage
 
 ```python

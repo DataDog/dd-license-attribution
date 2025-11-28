@@ -528,6 +528,9 @@ def generate_sbom_csv(
     output = csv_reporter.generate_report(metadata)
     if temp_dir is not None:
         temp_dir.cleanup()
+
+    # Output CSV to STDOUT for piping/redirection (e.g., ddla generate-sbom-csv URL > output.csv)
+    # This is intentional CLI output, not logging. Do not replace with logger.info()
     print(output, end="")
     if override_strategy is not None and len(override_strategy.unused_targets()) != 0:
         logger.warning("Not all targets in the override spec file were used.")
