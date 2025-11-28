@@ -11,6 +11,82 @@ All code changes must comply with these non-negotiable requirements:
 - **OS operations through adaptors only** (no direct imports)
 - **Formatted with isort and black**
 - **CHANGELOG.md updates** for user-facing changes
+- **SPDX-License-Identifier header** in all source files
+
+## 📄 File Headers and Licensing
+
+### Required File Header Format
+
+**MANDATORY**: Every Python source file (`.py`) and test file must include the following header at the very top:
+
+```python
+# SPDX-License-Identifier: Apache-2.0
+#
+# Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
+#
+# This product includes software developed at Datadog (https://www.datadoghq.com/).
+# Copyright 2024-present Datadog, Inc.
+```
+
+### Header Components
+
+1. **SPDX-License-Identifier** (Line 1):
+   - REQUIRED on the first line of every source file
+   - Format: `# SPDX-License-Identifier: Apache-2.0`
+   - Enables automated license scanning and compliance
+   - Follows [SPDX specification](https://spdx.dev/)
+
+2. **License Statement** (After blank line):
+   - Standard Datadog Apache 2.0 license statement
+   - Must include full text as shown above
+
+3. **Copyright Notice**:
+   - Company: Datadog (https://www.datadoghq.com/)
+   - Year: `2024-present` (update year as needed)
+
+### When to Include Headers
+
+**REQUIRED in**:
+- ✅ All Python source files in `src/`
+- ✅ All test files in `tests/`
+- ✅ All Python scripts
+
+**NOT REQUIRED in**:
+- ❌ `__init__.py` files that are empty or near-empty
+- ❌ Configuration files (`.toml`, `.yaml`, `.json`)
+- ❌ Documentation files (`.md`, `.txt`)
+
+### Examples
+
+```python
+# ✅ CORRECT: Complete header with SPDX identifier
+# SPDX-License-Identifier: Apache-2.0
+#
+# Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
+#
+# This product includes software developed at Datadog (https://www.datadoghq.com/).
+# Copyright 2024-present Datadog, Inc.
+
+import logging
+from typing import Any
+# ... rest of file ...
+
+# ❌ FORBIDDEN: Missing SPDX-License-Identifier
+# Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
+#
+# This product includes software developed at Datadog (https://www.datadoghq.com/).
+# Copyright 2024-present Datadog, Inc.
+
+import logging
+# ... rest of file ...
+
+# ❌ FORBIDDEN: SPDX identifier not on first line
+# Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
+# SPDX-License-Identifier: Apache-2.0
+#
+# This product includes software developed at Datadog (https://www.datadoghq.com/).
+# Copyright 2024-present Datadog, Inc.
+```
 
 ## 📋 Pre-Commit Validation Checklist
 
@@ -31,6 +107,7 @@ Before suggesting any code changes, verify:
 - [ ] Modern Python 3.11+ syntax used for type hints (e.g., `list[str]` not `List[str]`)
 - [ ] Logging follows consistent format and patterns
 - [ ] Contract tests added for any new external library dependencies
+- [ ] All Python files include SPDX-License-Identifier header on first line
 
 ## 🔧 Type Safety Requirements
 
