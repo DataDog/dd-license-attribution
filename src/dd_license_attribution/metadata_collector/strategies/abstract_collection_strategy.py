@@ -4,12 +4,11 @@
 # Copyright 2024-present Datadog, Inc.
 
 from abc import ABC, abstractmethod
-from typing import List
 
 from dd_license_attribution.metadata_collector.metadata import Metadata
 
 
 class MetadataCollectionStrategy(ABC):
     @abstractmethod
-    def augment_metadata(self, metadata: List[Metadata]) -> List[Metadata]:
+    def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         raise NotImplementedError

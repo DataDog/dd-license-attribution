@@ -8,7 +8,6 @@ import logging
 
 # Get application-specific logger
 logger = logging.getLogger("dd_license_attribution")
-from typing import Optional
 
 from dd_license_attribution.adaptors.os import open_file
 from dd_license_attribution.artifact_management.source_code_manager import (

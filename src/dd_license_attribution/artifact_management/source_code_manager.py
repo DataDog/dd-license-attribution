@@ -4,13 +4,12 @@
 # Copyright 2024-present Datadog, Inc.
 
 import logging
-
-# Get application-specific logger
-logger = logging.getLogger("dd_license_attribution")
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+
+# Get application-specific logger
+logger = logging.getLogger("dd_license_attribution")
 
 import pytz
 from agithub.GitHub import GitHub
@@ -93,7 +92,7 @@ class MirrorSpec:
 
     original_url: str
     mirror_url: str
-    ref_mapping: Optional[dict[tuple[RefType, str], tuple[RefType, str]]] = (
+    ref_mapping: dict[tuple[RefType, str], tuple[RefType, str]] | None = (
         None  # Maps (ref_type, ref_name) to (ref_type, ref_name)
     )
 
@@ -104,17 +103,17 @@ class SourceCodeManager(ArtifactManager):
         local_cache_dir: str,
         github_client: GitHub,
         local_cache_ttl: int = 86400,
-        mirrors: Optional[list[MirrorSpec]] = None,
+        mirrors: list[MirrorSpec] | None = None,
     ) -> None:
         super().__init__(local_cache_dir, local_cache_ttl)
         self.mirrors = mirrors or []
         self.github_client = github_client
-        self._canonical_urls_cache: dict[str, tuple[str, Optional[str]]] = {}
+        self._canonical_urls_cache: dict[str, tuple[str, str | None]] = {}
         logger.info(
             f"SourceCodeManager initialized with {len(self.mirrors)} mirror(s) with {self.local_cache_ttl} seconds TTL."
         )
 
-    def get_canonical_urls(self, url: str) -> tuple[str, Optional[str]]:
+    def get_canonical_urls(self, url: str) -> tuple[str, str | None]:
         """Get the canonical repository URL and API URL for a given URL.
 
         This method resolves redirects for renamed or transferred GitHub repositories (301).
