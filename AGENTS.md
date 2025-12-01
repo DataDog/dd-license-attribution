@@ -25,7 +25,7 @@ All code changes must comply with these non-negotiable requirements:
 # Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
 #
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
-# Copyright 2024-present Datadog, Inc.
+# Copyright 2025-present Datadog, Inc.
 ```
 
 ### Header Components
@@ -42,7 +42,7 @@ All code changes must comply with these non-negotiable requirements:
 
 3. **Copyright Notice**:
    - Company: Datadog (https://www.datadoghq.com/)
-   - Year: `2024-present` (update year as needed)
+   - Year: `YYYY-present` where YYYY is the year the file was first created (e.g., `2025-present` for files created in 2025)
 
 ### When to Include Headers
 
@@ -65,7 +65,7 @@ All code changes must comply with these non-negotiable requirements:
 # Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
 #
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
-# Copyright 2024-present Datadog, Inc.
+# Copyright 2025-present Datadog, Inc.
 
 import logging
 from typing import Any
@@ -75,7 +75,7 @@ from typing import Any
 # Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
 #
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
-# Copyright 2024-present Datadog, Inc.
+# Copyright 2025-present Datadog, Inc.
 
 import logging
 # ... rest of file ...
@@ -85,7 +85,7 @@ import logging
 # SPDX-License-Identifier: Apache-2.0
 #
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
-# Copyright 2024-present Datadog, Inc.
+# Copyright 2025-present Datadog, Inc.
 ```
 
 ## 📋 Pre-Commit Validation Checklist
