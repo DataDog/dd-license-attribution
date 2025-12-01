@@ -11,6 +11,82 @@ All code changes must comply with these non-negotiable requirements:
 - **OS operations through adaptors only** (no direct imports)
 - **Formatted with isort and black**
 - **CHANGELOG.md updates** for user-facing changes
+- **SPDX-License-Identifier header** in all source files
+
+## 📄 File Headers and Licensing
+
+### Required File Header Format
+
+**MANDATORY**: Every Python source file (`.py`) and test file must include the following header at the very top:
+
+```python
+# SPDX-License-Identifier: Apache-2.0
+#
+# Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
+#
+# This product includes software developed at Datadog (https://www.datadoghq.com/).
+# Copyright 2025-present Datadog, Inc.
+```
+
+### Header Components
+
+1. **SPDX-License-Identifier** (Line 1):
+   - REQUIRED on the first line of every source file
+   - Format: `# SPDX-License-Identifier: Apache-2.0`
+   - Enables automated license scanning and compliance
+   - Follows [SPDX specification](https://spdx.dev/)
+
+2. **License Statement** (After blank line):
+   - Standard Datadog Apache 2.0 license statement
+   - Must include full text as shown above
+
+3. **Copyright Notice**:
+   - Company: Datadog (https://www.datadoghq.com/)
+   - Year: `YYYY-present` where YYYY is the year the file was first created (e.g., `2025-present` for files created in 2025)
+
+### When to Include Headers
+
+**REQUIRED in**:
+- ✅ All Python source files in `src/`
+- ✅ All test files in `tests/`
+- ✅ All Python scripts
+
+**NOT REQUIRED in**:
+- ❌ `__init__.py` files that are empty or near-empty
+- ❌ Configuration files (`.toml`, `.yaml`, `.json`)
+- ❌ Documentation files (`.md`, `.txt`)
+
+### Examples
+
+```python
+# ✅ CORRECT: Complete header with SPDX identifier
+# SPDX-License-Identifier: Apache-2.0
+#
+# Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
+#
+# This product includes software developed at Datadog (https://www.datadoghq.com/).
+# Copyright 2025-present Datadog, Inc.
+
+import logging
+from typing import Any
+# ... rest of file ...
+
+# ❌ FORBIDDEN: Missing SPDX-License-Identifier
+# Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
+#
+# This product includes software developed at Datadog (https://www.datadoghq.com/).
+# Copyright 2025-present Datadog, Inc.
+
+import logging
+# ... rest of file ...
+
+# ❌ FORBIDDEN: SPDX identifier not on first line
+# Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
+# SPDX-License-Identifier: Apache-2.0
+#
+# This product includes software developed at Datadog (https://www.datadoghq.com/).
+# Copyright 2025-present Datadog, Inc.
+```
 
 ## 📋 Pre-Commit Validation Checklist
 
@@ -31,6 +107,7 @@ Before suggesting any code changes, verify:
 - [ ] Modern Python 3.11+ syntax used for type hints (e.g., `list[str]` not `List[str]`)
 - [ ] Logging follows consistent format and patterns
 - [ ] Contract tests added for any new external library dependencies
+- [ ] All Python files include SPDX-License-Identifier header on first line
 
 ## 🔧 Type Safety Requirements
 
@@ -136,6 +213,49 @@ import subprocess
 import pathlib
 import shutil
 import tempfile
+```
+
+### CLI and Infrastructure Exceptions
+
+**The following are EXCEPTIONS to the OS import rules** and are permitted in specific contexts:
+
+1. **CLI Output (`print()` for STDOUT)**:
+   - ✅ **ALLOWED** in CLI command functions for final output intended for piping/redirection
+   - ✅ Example: `print(csv_output, end="")` in `generate_sbom_csv_command.py`
+   - ❌ **NOT ALLOWED** for debug messages or progress updates (use logging instead)
+   - 💡 **Best Practice**: Add a comment to clarify intentional STDOUT usage
+
+2. **CLI Error Handling (`sys.exit()`)**:
+   - ✅ **ALLOWED** in CLI command functions to exit with error codes
+   - ✅ Example: `sys.exit(1)` after logging errors in CLI commands
+   - ❌ **NOT ALLOWED** in business logic or library code (raise exceptions instead)
+   - 💡 **Preferred Alternative**: Raise custom exceptions and handle at CLI boundary
+
+3. **Logging Infrastructure (`sys.stderr`)**:
+   - ✅ **ALLOWED** in `utils/logging.py` for configuring log output destinations
+   - ✅ Example: `logging.StreamHandler(sys.stderr)` for stderr output
+   - ❌ **NOT ALLOWED** for direct writing to stderr (use logging instead)
+
+**Summary of Exceptions**:
+```python
+# ✅ ALLOWED: CLI output to STDOUT
+def generate_sbom_csv(...) -> None:
+    # ... business logic ...
+    # Output CSV to STDOUT for piping (e.g., command | grep "MIT")
+    print(csv_output, end="")
+
+# ✅ ALLOWED: CLI error handling
+def generate_sbom_csv(...) -> None:
+    try:
+        # ... logic ...
+    except SomeError as e:
+        logger.error(str(e))
+        sys.exit(1)  # Exit with error code for shell scripts
+
+# ✅ ALLOWED: Logging infrastructure setup
+def setup_logging(level: int) -> None:
+    console_handler = logging.StreamHandler(sys.stderr)
+    # ... configure logging ...
 ```
 
 ### REQUIRED Adaptor Usage

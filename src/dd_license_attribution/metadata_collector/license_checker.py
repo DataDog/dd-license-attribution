@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+#
 # Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
 #
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
@@ -7,7 +9,6 @@ import logging
 
 # Get application-specific logger
 logger = logging.getLogger("dd_license_attribution")
-from typing import List
 
 from dd_license_attribution.metadata_collector.metadata import Metadata
 
@@ -15,10 +16,10 @@ from dd_license_attribution.metadata_collector.metadata import Metadata
 class LicenseChecker:
     """A class to check for cautionary licenses in a list of Metadata objects."""
 
-    def __init__(self, cautionary_licenses: List[str]) -> None:
+    def __init__(self, cautionary_licenses: list[str]) -> None:
         self._cautionary_licenses = cautionary_licenses
 
-    def check_cautionary_licenses(self, metadata_list: List[Metadata]) -> None:
+    def check_cautionary_licenses(self, metadata_list: list[Metadata]) -> None:
         for metadata in metadata_list:
             if not metadata.license:
                 continue

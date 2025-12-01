@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+#
 # Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
 #
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
@@ -391,7 +393,7 @@ def generate_sbom_csv(
             for strategy in enabled_strategies:
                 if strategy not in debug_enabled_strategies:
                     enabled_strategies[strategy] = False
-            logger.debug(f"Enabled strategies: {enabled_strategies}")
+            logger.debug("Enabled strategies: %s", enabled_strategies)
         else:
             logger.debug(
                 "No strategies enabled - if you wanted to enable strategies, provide a debug object with a list of them in the 'enabled_strategies' key."
@@ -528,9 +530,13 @@ def generate_sbom_csv(
     output = csv_reporter.generate_report(metadata)
     if temp_dir is not None:
         temp_dir.cleanup()
+
+    # Output CSV to STDOUT for piping/redirection (e.g., ddla generate-sbom-csv URL > output.csv)
+    # This is intentional CLI output, not logging. Do not replace with logger.info()
     print(output, end="")
     if override_strategy is not None and len(override_strategy.unused_targets()) != 0:
         logger.warning("Not all targets in the override spec file were used.")
         logger.warning(
-            f"Unused targets: {override_strategy.unused_targets()}. Consider removing them."
+            "Unused targets: %s. Consider removing them.",
+            override_strategy.unused_targets(),
         )

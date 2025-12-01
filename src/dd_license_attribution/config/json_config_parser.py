@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: Apache-2.0
+#
 # Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
 #
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
@@ -8,7 +10,6 @@ import logging
 
 # Get application-specific logger
 logger = logging.getLogger("dd_license_attribution")
-from typing import Optional
 
 from dd_license_attribution.adaptors.os import open_file
 from dd_license_attribution.artifact_management.source_code_manager import (
@@ -109,15 +110,15 @@ class JsonConfigParser:
                 )
             return mirrors
         except FileNotFoundError:
-            logger.error(f"Mirror configuration file not found: {mirror_file_path}")
+            logger.error("Mirror configuration file not found: %s", mirror_file_path)
             raise
         except json.JSONDecodeError:
             logger.error(
-                f"Invalid JSON in mirror configuration file: {mirror_file_path}"
+                "Invalid JSON in mirror configuration file: %s", mirror_file_path
             )
             raise
         except Exception as e:
-            logger.error(f"Failed to load mirror configurations: {str(e)}")
+            logger.error("Failed to load mirror configurations: %s", str(e))
             raise
 
     @staticmethod
@@ -142,11 +143,11 @@ class JsonConfigParser:
             )
             return override_rules
         except FileNotFoundError:
-            logger.error(f"Override spec file not found: {override_file_path}")
+            logger.error("Override spec file not found: %s", override_file_path)
             raise
         except json.JSONDecodeError:
-            logger.error(f"Invalid JSON in override spec file: {override_file_path}")
+            logger.error("Invalid JSON in override spec file: %s", override_file_path)
             raise
         except Exception as e:
-            logger.error(f"Error reading override spec file: {e}")
+            logger.error("Error reading override spec file: %s", e)
             raise
