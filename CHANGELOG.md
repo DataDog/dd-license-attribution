@@ -7,9 +7,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
-### Added
-- Support for GitHub renamed/transferred repositories
-- Support for Yarn package manager in npm collection
+### Added
+- Support for GitHub renamed/transferred repositories
+- Support for Yarn package manager in npm collection
+
+### Changed
+- GitHub SBOM parsing now uses official SPDX Python library for improved robustness and standards compliance
+- Pinned spdx-tools to version >=0.8.2,<0.9 for consistency between local development and CI environments
+- Added setuptools as explicit runtime dependency to support spdx-tools namespace package imports
 
 ## [0.5.0] - 2025-10-29
 
