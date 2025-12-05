@@ -40,6 +40,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         top_package: str,
         source_code_manager: SourceCodeManager,
         project_scope: ProjectScope,
+        yarn_subdirs: list[str] | None = None,
     ) -> None:
         # Store original top_package for matching
         self.original_top_package = top_package
@@ -52,6 +53,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         self.only_transitive = (
             project_scope == ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
         )
+        self.yarn_subdirs = yarn_subdirs or []
 
     def _detect_package_manager(self, project_path: str) -> str:
         """Detect whether the project uses npm or yarn.
@@ -194,6 +196,40 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             logger.warning(f"Failed to run yarn list for {project_path}: {e}")
 
         return all_deps
+
+    def _collect_yarn_deps_from_location(
+        self, location_path: str, location_name: str = "root"
+    ) -> dict[str, str]:
+        """Collect yarn dependencies from a specific location.
+
+        Args:
+            location_path: Full path to the directory containing yarn.lock
+            location_name: Descriptive name for logging (e.g., "root", "subdir/path")
+
+        Returns:
+            Dictionary mapping package names to versions, or empty dict if yarn.lock doesn't exist
+        """
+        yarn_lock_path = path_join(location_path, "yarn.lock")
+        if not path_exists(yarn_lock_path):
+            logger.debug(f"No yarn.lock found at {location_name} ({location_path})")
+            return {}
+
+        logger.info(f"Collecting yarn dependencies from {location_name}")
+
+        # Check if yarn is installed
+        try:
+            yarn_version = output_from_command("yarn --version 2>/dev/null")
+            logger.debug(f"Yarn version: {yarn_version.strip()}")
+        except Exception as e:
+            logger.error(
+                f"Yarn is not installed or not in PATH. Please install yarn to analyze this project. Error: {e}"
+            )
+            return {}
+
+        # Use existing _get_yarn_dependencies method
+        deps = self._get_yarn_dependencies(location_path)
+        logger.info(f"Found {len(deps)} dependencies at {location_name}")
+        return deps
 
     def _clean_version_string(self, version: str) -> str:
         if isinstance(version, str) and version:
@@ -353,7 +389,8 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
             found = False
             for meta in updated_metadata:
-                if meta.name == dep_name:
+                # Match by both name and version to support multiple versions of same package
+                if meta.name == dep_name and meta.version == clean_version:
                     found = True
                     if (
                         not meta.origin or not validate_git_url(meta.origin)
@@ -363,8 +400,6 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                         meta.license = license
                     if not meta.copyright and copyright:
                         meta.copyright = copyright
-                    if not meta.version and clean_version:
-                        meta.version = clean_version
                     break
 
             if not found:
@@ -461,21 +496,50 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         all_deps: dict[str, str] = {}
 
         if package_manager == "yarn":
-            # Check if yarn is installed
-            try:
-                yarn_version = output_from_command("yarn --version 2>/dev/null")
-                logger.debug(f"Yarn version: {yarn_version.strip()}")
-            except Exception as e:
-                logger.error(
-                    f"Yarn is not installed or not in PATH. Please install yarn to analyze this project. Error: {e}"
-                )
-                return updated_metadata
+            # Collect dependencies from multiple locations (root + subdirs)
+            # Use a set to keep all unique (package, version) combinations
+            unique_deps: set[tuple[str, str]] = set()
 
-            # For Yarn projects, use yarn list to get dependencies
-            all_deps = self._get_yarn_dependencies(project_path)
+            # Collect from root
+            root_deps = self._collect_yarn_deps_from_location(project_path, "root")
+            for pkg, ver in root_deps.items():
+                unique_deps.add((pkg, ver))
+
+            # Collect from subdirectories
+            for subdir in self.yarn_subdirs:
+                subdir_path = path_join(project_path, subdir)
+                if not path_exists(subdir_path):
+                    logger.warning(
+                        f"Subdirectory {subdir} does not exist in {project_path}"
+                    )
+                    continue
+
+                subdir_deps = self._collect_yarn_deps_from_location(subdir_path, subdir)
+                for pkg, ver in subdir_deps.items():
+                    unique_deps.add((pkg, ver))
+
+            # Group dependencies by package name to identify multiple versions
+            deps_by_package: dict[str, list[str]] = {}
+            for pkg, ver in unique_deps:
+                if pkg not in deps_by_package:
+                    deps_by_package[pkg] = []
+                if ver not in deps_by_package[pkg]:
+                    deps_by_package[pkg].append(ver)
+
+            # Log packages with multiple versions
+            for pkg, versions in deps_by_package.items():
+                if len(versions) > 1:
+                    logger.info(
+                        f"Package {pkg} has multiple versions: {', '.join(sorted(versions))}"
+                    )
+
+            # Flatten to dict - use first version for each package
+            # We'll handle multiple versions by processing all combinations
+            all_deps = {pkg: versions[0] for pkg, versions in deps_by_package.items()}
+
             if not all_deps:
                 logger.warning(
-                    f"No dependencies found for Yarn project at {project_path}"
+                    f"No dependencies found for Yarn project at {project_path} and subdirectories"
                 )
         else:
             # For npm projects, use the existing npm logic
@@ -505,8 +569,24 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             logger.warning(f"No dependencies extracted from {project_path}")
             return updated_metadata
 
-        logger.info(f"Found {len(all_deps)} dependencies")
+        logger.info(f"Found {len(all_deps)} unique packages")
 
         # Use private method to enrich metadata with NPM registry data
         # Handles scope filtering, version cleaning, fetching, and enrichment
-        return self._enrich_metadata_with_npm_registry(updated_metadata, all_deps)
+        updated_metadata = self._enrich_metadata_with_npm_registry(updated_metadata, all_deps)
+
+        # For yarn, process additional versions of packages (if any)
+        if package_manager == "yarn":
+            # Process additional versions (versions beyond the first for each package)
+            additional_deps: dict[str, str] = {}
+            for pkg, versions in deps_by_package.items():
+                for ver in versions[1:]:  # Skip first version (already processed)
+                    additional_deps[pkg] = ver
+
+            if additional_deps:
+                logger.info(f"Processing {len(additional_deps)} additional package versions")
+                updated_metadata = self._enrich_metadata_with_npm_registry(
+                    updated_metadata, additional_deps
+                )
+
+        return updated_metadata
