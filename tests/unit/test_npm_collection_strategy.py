@@ -1489,3 +1489,501 @@ def test_npm_collection_strategy_yarn_not_installed(
     assert result[0].name == "test-package"  # Enriched from package.json
     assert result[0].version == "1.0.0"  # Enriched from package.json
     assert any("Yarn is not installed" in record.message for record in caplog.records)
+
+
+# ============================================================================
+# Tests for multi-location yarn.lock support
+# ============================================================================
+
+
+def test_collect_yarn_deps_from_location_with_existing_lock(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test _collect_yarn_deps_from_location finds and processes yarn.lock."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    yarn_output = """
+{"type":"tree","data":{"trees":[{"name":"lodash@4.17.21"},{"name":"react@17.0.0"}]}}
+"""
+
+    def fake_exists(path: str) -> bool:
+        return "yarn.lock" in path
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_output(cmd: str) -> str:
+        if "yarn list" in cmd:
+            return yarn_output
+        return "1.22.0"
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+
+    result = strategy._collect_yarn_deps_from_location("/test/path", "test-location")
+
+    assert len(result) == 2
+    assert result["lodash"] == "4.17.21"
+    assert result["react"] == "17.0.0"
+
+
+def test_collect_yarn_deps_from_location_without_lock(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test _collect_yarn_deps_from_location returns empty dict when no yarn.lock."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    def fake_exists(path: str) -> bool:
+        return False
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+
+    result = strategy._collect_yarn_deps_from_location("/test/path", "test-location")
+
+    assert len(result) == 0
+
+
+def test_augment_metadata_with_single_subdirectory(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test augment_metadata collects from root and single subdirectory."""
+    source_code_manager_mock = create_source_code_manager_mock()
+
+    package_json = {
+        "name": "test-package",
+        "version": "1.0.0",
+        "license": "MIT",
+    }
+
+    # Root has lodash and react
+    root_yarn_output = """
+{"type":"tree","data":{"trees":[{"name":"lodash@4.17.21"},{"name":"react@17.0.0"}]}}
+"""
+
+    # Subdir has axios and react (same version)
+    subdir_yarn_output = """
+{"type":"tree","data":{"trees":[{"name":"axios@1.0.0"},{"name":"react@17.0.0"}]}}
+"""
+
+    def fake_exists(path: str) -> bool:
+        if "package.json" in path:
+            return True
+        if "yarn.lock" in path:
+            return True
+        if "cache_dir/org_package1/subdir" in path:
+            return True
+        return False
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "package.json" in path:
+            return json.dumps(package_json)
+        return ""
+
+    def fake_output(cmd: str) -> str:
+        if "yarn --version" in cmd:
+            return "1.22.0"
+        if "yarn list" in cmd:
+            if "/subdir" in cmd:
+                return subdir_yarn_output
+            return root_yarn_output
+        return ""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+
+    # Mock requests for npm registry
+    mock_get = mocker.patch("requests.get")
+    mock_response = mock.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"license": "MIT"}
+    mock_get.return_value = mock_response
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL, yarn_subdirs=["subdir"]
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Should have root package + lodash + react + axios (react deduplicated)
+    assert len(result) == 4
+    names = {m.name for m in result}
+    assert "lodash" in names
+    assert "react" in names
+    assert "axios" in names
+
+
+def test_augment_metadata_with_multiple_subdirectories(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test augment_metadata collects from root and multiple subdirectories."""
+    source_code_manager_mock = create_source_code_manager_mock()
+
+    package_json = {
+        "name": "test-package",
+        "version": "1.0.0",
+        "license": "MIT",
+    }
+
+    root_yarn_output = """
+{"type":"tree","data":{"trees":[{"name":"lodash@4.17.21"}]}}
+"""
+
+    subdir1_yarn_output = """
+{"type":"tree","data":{"trees":[{"name":"react@17.0.0"}]}}
+"""
+
+    subdir2_yarn_output = """
+{"type":"tree","data":{"trees":[{"name":"axios@1.0.0"}]}}
+"""
+
+    def fake_exists(path: str) -> bool:
+        if "package.json" in path:
+            return True
+        if "yarn.lock" in path:
+            return True
+        if any(sub in path for sub in ["subdir1", "subdir2"]):
+            return True
+        return False
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "package.json" in path:
+            return json.dumps(package_json)
+        return ""
+
+    def fake_output(cmd: str) -> str:
+        if "yarn --version" in cmd:
+            return "1.22.0"
+        if "yarn list" in cmd:
+            if "/subdir1" in cmd:
+                return subdir1_yarn_output
+            elif "/subdir2" in cmd:
+                return subdir2_yarn_output
+            return root_yarn_output
+        return ""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+
+    # Mock requests for npm registry
+    mock_get = mocker.patch("requests.get")
+    mock_response = mock.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"license": "MIT"}
+    mock_get.return_value = mock_response
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        yarn_subdirs=["subdir1", "subdir2"],
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Should have root package + lodash + react + axios
+    assert len(result) == 4
+    names = {m.name for m in result}
+    assert "lodash" in names
+    assert "react" in names
+    assert "axios" in names
+
+
+def test_augment_metadata_with_missing_subdirectory(
+    mocker: pytest_mock.MockFixture,
+    caplog: LogCaptureFixture,
+) -> None:
+    """Test augment_metadata handles missing subdirectory gracefully."""
+    source_code_manager_mock = create_source_code_manager_mock()
+
+    package_json = {
+        "name": "test-package",
+        "version": "1.0.0",
+        "license": "MIT",
+    }
+
+    root_yarn_output = """
+{"type":"tree","data":{"trees":[{"name":"lodash@4.17.21"}]}}
+"""
+
+    def fake_exists(path: str) -> bool:
+        if "package.json" in path:
+            return True
+        if "yarn.lock" in path and "missing-subdir" not in path:
+            return True
+        if "missing-subdir" in path:
+            return False
+        return False
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "package.json" in path:
+            return json.dumps(package_json)
+        return ""
+
+    def fake_output(cmd: str) -> str:
+        if "yarn --version" in cmd:
+            return "1.22.0"
+        if "yarn list" in cmd:
+            return root_yarn_output
+        return ""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+
+    # Mock requests for npm registry
+    mock_get = mocker.patch("requests.get")
+    mock_response = mock.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"license": "MIT"}
+    mock_get.return_value = mock_response
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        yarn_subdirs=["missing-subdir"],
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        result = strategy.augment_metadata(initial_metadata)
+
+    # Should have root package + lodash (missing subdir skipped)
+    assert len(result) == 2
+    assert any("missing-subdir" in record.message for record in caplog.records)
+    assert any("does not exist" in record.message for record in caplog.records)
+
+
+def test_augment_metadata_with_version_conflicts(
+    mocker: pytest_mock.MockFixture,
+    caplog: LogCaptureFixture,
+) -> None:
+    """Test augment_metadata handles multiple versions of same package."""
+    source_code_manager_mock = create_source_code_manager_mock()
+
+    package_json = {
+        "name": "test-package",
+        "version": "1.0.0",
+        "license": "MIT",
+    }
+
+    # Root has react@17.0.0
+    root_yarn_output = """
+{"type":"tree","data":{"trees":[{"name":"react@17.0.0"}]}}
+"""
+
+    # Subdir has react@18.0.0
+    subdir_yarn_output = """
+{"type":"tree","data":{"trees":[{"name":"react@18.0.0"}]}}
+"""
+
+    def fake_exists(path: str) -> bool:
+        if "package.json" in path:
+            return True
+        if "yarn.lock" in path:
+            return True
+        if "subdir" in path:
+            return True
+        return False
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "package.json" in path:
+            return json.dumps(package_json)
+        return ""
+
+    def fake_output(cmd: str) -> str:
+        if "yarn --version" in cmd:
+            return "1.22.0"
+        if "yarn list" in cmd:
+            if "/subdir" in cmd:
+                return subdir_yarn_output
+            return root_yarn_output
+        return ""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+
+    # Mock requests for npm registry
+    mock_get = mocker.patch("requests.get")
+    mock_response = mock.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"license": "MIT"}
+    mock_get.return_value = mock_response
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL, yarn_subdirs=["subdir"]
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    with caplog.at_level(logging.INFO):
+        result = strategy.augment_metadata(initial_metadata)
+
+    # Should have root package + react@17.0.0 + react@18.0.0
+    assert len(result) == 3
+    react_entries = [m for m in result if m.name == "react"]
+    assert len(react_entries) == 2
+    versions = {m.version for m in react_entries}
+    assert "17.0.0" in versions
+    assert "18.0.0" in versions
+
+    # Should log that react has multiple versions
+    assert any(
+        "react" in record.message and "multiple versions" in record.message
+        for record in caplog.records
+    )
