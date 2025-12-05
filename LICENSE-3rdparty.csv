@@ -18,7 +18,7 @@
 "colorama","https://github.com/tartley/colorama","['BSD-3-Clause']","['Jonathan Hartley']"
 "commoncode","https://github.com/aboutcode-org/commoncode","['Apache-2.0']","['nexB. Inc. and others']"
 "container-inspector","https://github.com/aboutcode-org/container-inspector","['Apache-2.0']","['nexB. Inc. and others']"
-"cryptography","pypi:cryptography","['Apache-2.0 OR BSD-3-Clause']","['The cryptography developers <cryptography-dev@python.org>']"
+"cryptography","https://github.com/pyca/cryptography","['Apache-2.0 OR BSD-3-Clause']","['The cryptography developers <cryptography-dev@python.org>']"
 "debian-inspector","https://github.com/aboutcode-org/debian-inspector","['Apache-2.0 AND BSD-3-Clause AND MIT']","['nexB. Inc. and others']"
 "dockerfile-parse","https://github.com/containerbuildsystem/dockerfile-parse","['BSD']","['Jiri Popelka']"
 "dparse2","https://github.com/aboutcode-org/dparse2","['MIT']","['maintained by AboutCode.org', 'originally from Jannis Gebauer']"
