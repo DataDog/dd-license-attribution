@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ### Added
 - Support for GitHub renamed/transferred repositories
 - Support for Yarn package manager in npm collection
+- New `--yarn-subdir` CLI option for specifying subdirectories with additional `yarn.lock` files in monorepos
 
 ### Changed
 - PyPI collection strategy now performs case-insensitive key matching for project_urls dictionary to better handle different key capitalizations from PyPI metadata
