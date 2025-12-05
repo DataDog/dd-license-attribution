@@ -84,6 +84,7 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
 
             origin = "pypi:" + dependency
             project_urls = {}
+            project_urls_lower = {}
             # Depending on the pypi package, the GitHub URL is in different keys
             if "project_urls" in pypi_info and pypi_info["project_urls"] is not None:
                 project_urls = pypi_info["project_urls"]
@@ -98,25 +99,32 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
                     del project_urls[key]
                     continue
                 project_urls[key] = project_urls[key].replace("http://", "https://")
+                project_urls_lower[key.lower()] = project_urls[key]
 
-            if "Homepage" in project_urls and validate_git_url(
-                project_urls["Homepage"]
+            if "homepage" in project_urls_lower and validate_git_url(
+                project_urls_lower["homepage"]
             ):
-                origin = project_urls["Homepage"]
-            if "GitHub" in project_urls and validate_git_url(project_urls["GitHub"]):
-                origin = project_urls["GitHub"]
-            if "Repository" in project_urls and validate_git_url(
-                project_urls["Repository"]
+                origin = project_urls_lower["homepage"]
+            if "github" in project_urls_lower and validate_git_url(
+                project_urls_lower["github"]
             ):
-                origin = project_urls["Repository"]
-            if "Code" in project_urls and validate_git_url(project_urls["Code"]):
-                origin = project_urls["Code"]
-            if "Source Code" in project_urls and validate_git_url(
-                project_urls["Source Code"]
+                origin = project_urls_lower["github"]
+            if "repository" in project_urls_lower and validate_git_url(
+                project_urls_lower["repository"]
             ):
-                origin = project_urls["Source Code"]
-            if "Source" in project_urls and validate_git_url(project_urls["Source"]):
-                origin = project_urls["Source"]
+                origin = project_urls_lower["repository"]
+            if "code" in project_urls_lower and validate_git_url(
+                project_urls_lower["code"]
+            ):
+                origin = project_urls_lower["code"]
+            if "source code" in project_urls_lower and validate_git_url(
+                project_urls_lower["source code"]
+            ):
+                origin = project_urls_lower["source code"]
+            if "source" in project_urls_lower and validate_git_url(
+                project_urls_lower["source"]
+            ):
+                origin = project_urls_lower["source"]
 
             find_pkg = next(
                 (
