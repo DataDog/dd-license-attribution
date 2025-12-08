@@ -7,9 +7,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
-### Added
-- Support for GitHub renamed/transferred repositories
-- Support for Yarn package manager in npm collection
+### Added
+- Support for GitHub renamed/transferred repositories
+- Support for Yarn package manager in npm collection
+
+### Changed
+- PyPI collection strategy now performs case-insensitive key matching for project_urls dictionary to better handle different key capitalizations from PyPI metadata
 
 ## [0.5.0] - 2025-10-29
 

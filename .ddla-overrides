@@ -227,11 +227,11 @@
   {
     "override_type": "replace",
     "target": {
-      "origin": "pypi:cryptography"
+      "origin": "https://github.com/pyca/cryptography/"
     },
     "replacement": {
       "name": "cryptography",
-      "origin": "pypi:cryptography",
+      "origin": "https://github.com/pyca/cryptography",
       "license": [
         "Apache-2.0 OR BSD-3-Clause"
       ],
