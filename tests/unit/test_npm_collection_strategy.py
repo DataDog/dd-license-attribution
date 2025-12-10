@@ -170,9 +170,9 @@ def test_npm_collection_strategy_adds_npm_metadata(
     package_json: dict[str, Any] = {}
     package_lock: dict[str, Any] = {
         "packages": {
-            "": {"dependencies": {"dep1": "1.0.0", "dep2": "2.0.0"}},
-            "node_modules/dep1": {"version": "1.0.0", "dependencies": {}},
-            "node_modules/dep2": {"version": "2.0.0", "dependencies": {}},
+            "": {"dependencies": {"dep1": "^1.0.0", "dep2": "~2.0.0"}},
+            "node_modules/dep1": {"version": "1.0.5", "dependencies": {}},
+            "node_modules/dep2": {"version": "2.0.3", "dependencies": {}},
         }
     }
 
@@ -216,7 +216,7 @@ def test_npm_collection_strategy_adds_npm_metadata(
         ),
         Metadata(
             name="dep1",
-            version="1.0.0",
+            version="1.0.5",
             origin="npm:dep1",
             local_src_path=None,
             license=["MIT"],
@@ -224,7 +224,7 @@ def test_npm_collection_strategy_adds_npm_metadata(
         ),
         Metadata(
             name="dep2",
-            version="2.0.0",
+            version="2.0.3",
             origin="npm:dep2",
             local_src_path=None,
             license=["Apache-2.0"],
@@ -248,17 +248,17 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
     package_json: dict[str, Any] = {}
     package_lock: dict[str, Any] = {
         "packages": {
-            "": {"dependencies": {"dep1": "1.0.0"}},
+            "": {"dependencies": {"dep1": "^1.0.0"}},
             "node_modules/dep1": {
-                "version": "1.0.0",
-                "dependencies": {"transitive1": "1.1.0", "transitive2": "1.2.0"},
+                "version": "1.0.8",
+                "dependencies": {"transitive1": ">=1.1.0", "transitive2": "~1.2.0"},
             },
             "node_modules/transitive1": {
-                "version": "1.1.0",
-                "dependencies": {"deep1": "2.0.0"},
+                "version": "1.1.3",
+                "dependencies": {"deep1": "^2.0.0"},
             },
-            "node_modules/transitive2": {"version": "1.2.0", "dependencies": {}},
-            "node_modules/deep1": {"version": "2.0.0", "dependencies": {}},
+            "node_modules/transitive2": {"version": "1.2.5", "dependencies": {}},
+            "node_modules/deep1": {"version": "2.0.1", "dependencies": {}},
         }
     }
 
@@ -310,7 +310,7 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
         ),
         Metadata(
             name="dep1",
-            version="1.0.0",
+            version="1.0.8",
             origin="npm:dep1",
             local_src_path=None,
             license=["MIT"],
@@ -318,7 +318,7 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
         ),
         Metadata(
             name="transitive1",
-            version="1.1.0",
+            version="1.1.3",
             origin="npm:transitive1",
             local_src_path=None,
             license=["Apache-2.0"],
@@ -326,7 +326,7 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
         ),
         Metadata(
             name="transitive2",
-            version="1.2.0",
+            version="1.2.5",
             origin="npm:transitive2",
             local_src_path=None,
             license=["BSD-3-Clause"],
@@ -334,7 +334,7 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
         ),
         Metadata(
             name="deep1",
-            version="2.0.0",
+            version="2.0.1",
             origin="npm:deep1",
             local_src_path=None,
             license=["GPL-3.0"],
@@ -358,8 +358,8 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
     package_json: dict[str, Any] = {}
     package_lock = {
         "packages": {
-            "": {"dependencies": {"dep1": "1.0.0"}},
-            "node_modules/dep1": {"version": "1.0.0", "dependencies": {}},
+            "": {"dependencies": {"dep1": "^1.0.0"}},
+            "node_modules/dep1": {"version": "1.0.2", "dependencies": {}},
         }
     }
 
@@ -389,7 +389,7 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
         ),
         Metadata(
             name="dep1",
-            version="1.0.0",
+            version="1.0.2",
             origin="npm:dep1",
             local_src_path=None,
             license=["MIT"],
@@ -400,7 +400,7 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
     expected_metadata = [
         Metadata(
             name="dep1",
-            version="1.0.0",
+            version="1.0.2",
             origin="npm:dep1",
             local_src_path=None,
             license=["MIT"],
@@ -779,42 +779,195 @@ def test_npm_collection_strategy_handles_workspaces(
     mock_requests.assert_not_called()
 
 
-def test_clean_version_string() -> None:
-    """Test _clean_version_string with various version string formats."""
+def test_npm_handles_complex_semver_ranges(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that complex semver ranges in dependencies are ignored and resolved versions are used."""
     source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {}
+    package_lock: dict[str, Any] = {
+        "packages": {
+            "": {
+                "dependencies": {
+                    "dep1": ">=1.0.0 <2.0.0",  # Complex range
+                    "dep2": "<1.5.0",  # Less than
+                    "dep3": "1.0.0 - 2.0.0",  # Hyphen range
+                }
+            },
+            "node_modules/dep1": {"version": "1.5.3", "dependencies": {}},
+            "node_modules/dep2": {"version": "1.4.2", "dependencies": {}},
+            "node_modules/dep3": {"version": "1.8.0", "dependencies": {}},
+        }
+    }
+
+    requests_responses: list[mock.Mock] = [
+        mock.Mock(status_code=200, json=lambda: {"license": "MIT", "author": "Alice"}),
+        mock.Mock(
+            status_code=200, json=lambda: {"license": "Apache-2.0", "author": "Bob"}
+        ),
+        mock.Mock(status_code=200, json=lambda: {"license": "ISC", "author": "Carol"}),
+    ]
+
+    (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_requests,
+    ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
+
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
     )
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+    result = strategy.augment_metadata(initial_metadata)
 
-    test_cases = {
-        # Basic prefix removals
-        "^1.2.3": "1.2.3",
-        "~1.2.3": "1.2.3",
-        ">1.2.3": "1.2.3",
-        ">=1.2.3": "1.2.3",
-        # Plain version unchanged
-        "1.2.3": "1.2.3",
-        # Empty string
-        "": "",
-        # Pre-release versions
-        "^1.2.3-alpha.1": "1.2.3-alpha.1",
-        "~2.0.0-beta": "2.0.0-beta",
-        # Build metadata
-        ">=1.0.0+build.1": "1.0.0+build.1",
-        # Edge cases with only prefixes
-        "^": "",
-        "~": "",
-        ">": "",
-        ">=": "",
-        # Priority test - >= should be handled first, not just >
-        ">=1.0.0": "1.0.0",
+    # Verify that resolved versions from the version field are used, not the complex ranges
+    expected_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+        Metadata(
+            name="dep1",
+            version="1.5.3",  # Resolved version, not the range
+            origin="npm:dep1",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["Alice"],
+        ),
+        Metadata(
+            name="dep2",
+            version="1.4.2",  # Resolved version, not the range
+            origin="npm:dep2",
+            local_src_path=None,
+            license=["Apache-2.0"],
+            copyright=["Bob"],
+        ),
+        Metadata(
+            name="dep3",
+            version="1.8.0",  # Resolved version, not the range
+            origin="npm:dep3",
+            local_src_path=None,
+            license=["ISC"],
+            copyright=["Carol"],
+        ),
+    ]
+    assert result == expected_metadata
+    assert mock_requests.call_count == 3
+
+
+def test_npm_handles_missing_node_modules_entry(
+    mocker: pytest_mock.MockFixture,
+    caplog: LogCaptureFixture,
+) -> None:
+    """Test that missing node_modules entries are handled gracefully with warnings."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {}
+    package_lock: dict[str, Any] = {
+        "packages": {
+            "": {
+                "dependencies": {
+                    "dep1": "^1.0.0",
+                    "dep2": "^2.0.0",  # This one is missing from node_modules
+                    "dep3": "^3.0.0",
+                }
+            },
+            "node_modules/dep1": {"version": "1.0.5", "dependencies": {}},
+            # dep2 is intentionally missing
+            "node_modules/dep3": {
+                "version": "3.1.0",
+                "dependencies": {
+                    "transitive1": "^1.0.0"  # This transitive is also missing
+                },
+            },
+        }
     }
 
-    for input_version, expected_output in test_cases.items():
-        result = strategy._clean_version_string(input_version)
-        assert (
-            result == expected_output
-        ), f"Failed for '{input_version}': expected '{expected_output}', got '{result}'"
+    requests_responses: list[mock.Mock] = [
+        mock.Mock(status_code=200, json=lambda: {"license": "MIT", "author": "Alice"}),
+        mock.Mock(status_code=200, json=lambda: {"license": "ISC", "author": "Carol"}),
+    ]
+
+    (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_requests,
+    ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        result = strategy.augment_metadata(initial_metadata)
+
+    # Verify that only dependencies with node_modules entries are added
+    expected_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+        Metadata(
+            name="dep1",
+            version="1.0.5",
+            origin="npm:dep1",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["Alice"],
+        ),
+        Metadata(
+            name="dep3",
+            version="3.1.0",
+            origin="npm:dep3",
+            local_src_path=None,
+            license=["ISC"],
+            copyright=["Carol"],
+        ),
+    ]
+    assert result == expected_metadata
+
+    # Verify warnings were logged for missing dependencies
+    assert any(
+        "dep2 not found in package-lock.json packages" in record.message
+        for record in caplog.records
+    )
+    assert any(
+        "transitive1 not found in package-lock.json packages" in record.message
+        for record in caplog.records
+    )
+
+    # Only 2 requests should be made (for dep1 and dep3, not dep2)
+    assert mock_requests.call_count == 2
 
 
 def test_extract_copyright_from_pkg_data() -> None:
