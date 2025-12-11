@@ -335,6 +335,14 @@ def generate_sbom_csv(
             help="Path to a JSON file containing mirror specifications for repositories."
         ),
     ] = None,
+    yarn_subdirs: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--yarn-subdir",
+            help="Subdirectory path(s) containing additional yarn.lock files to include in dependency analysis. Can be specified multiple times. Paths are relative to repository root.",
+            rich_help_panel="Scanning Options",
+        ),
+    ] = None,
 ) -> None:
     """
     Generate a CSV report (SBOM) of third party dependencies for a given
@@ -462,6 +470,7 @@ def generate_sbom_csv(
                 package,
                 source_code_manager,
                 project_scope,
+                yarn_subdirs=yarn_subdirs or [],
             )
         )
 

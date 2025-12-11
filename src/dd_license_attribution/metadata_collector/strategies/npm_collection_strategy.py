@@ -42,6 +42,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         top_package: str,
         source_code_manager: SourceCodeManager,
         project_scope: ProjectScope,
+        yarn_subdirs: list[str] | None = None,
     ) -> None:
         # Store original top_package for matching
         self.original_top_package = top_package
@@ -54,6 +55,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         self.only_transitive = (
             project_scope == ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
         )
+        self.yarn_subdirs = yarn_subdirs or []
 
     def _detect_package_manager(self, project_path: str) -> str:
         """Detect whether the project uses npm or yarn.
@@ -104,7 +106,9 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                             if alias_name not in aliases:
                                 aliases[alias_name] = real_name
                                 logger.debug(
-                                    f"Detected Yarn alias: {alias_name} -> {real_name}"
+                                    "Detected Yarn alias: %s -> %s",
+                                    alias_name,
+                                    real_name,
                                 )
 
                     # Recursively scan this child's children
@@ -155,7 +159,8 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             # Check if we got any valid tree data
             if not all_trees:
                 logger.error(
-                    f"Yarn list did not produce valid JSON output. Output: {output[:500]}"
+                    "Yarn list did not produce valid JSON output. Output: %s",
+                    output[:500],
                 )
                 return all_deps
 
@@ -196,6 +201,41 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             logger.warning("Failed to run yarn list for %s: %s", project_path, e)
 
         return all_deps
+
+    def _collect_yarn_deps_from_location(
+        self, location_path: str, location_name: str = "root"
+    ) -> dict[str, str]:
+        """Collect yarn dependencies from a specific location.
+
+        Args:
+            location_path: Full path to the directory containing yarn.lock
+            location_name: Descriptive name for logging (e.g., "root", "subdir/path")
+
+        Returns:
+            Dictionary mapping package names to versions, or empty dict if yarn.lock doesn't exist
+        """
+        yarn_lock_path = path_join(location_path, "yarn.lock")
+        if not path_exists(yarn_lock_path):
+            logger.debug("No yarn.lock found at %s (%s)", location_name, location_path)
+            return {}
+
+        logger.info("Collecting yarn dependencies from %s", location_name)
+
+        # Check if yarn is installed
+        try:
+            yarn_version = output_from_command("yarn --version 2>/dev/null")
+            logger.debug("Yarn version: %s", yarn_version.strip())
+        except Exception as e:
+            logger.error(
+                "Yarn is not installed or not in PATH. Please install yarn to analyze this project. Error: %s",
+                e,
+            )
+            return {}
+
+        # Use existing _get_yarn_dependencies method
+        deps = self._get_yarn_dependencies(location_path)
+        logger.info("Found %d dependencies at %s", len(deps), location_name)
+        return deps
 
     def _extract_license_from_pkg_data(self, pkg_data: dict[str, Any]) -> list[str]:
         if "license" in pkg_data and pkg_data["license"]:
@@ -349,7 +389,8 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
             found = False
             for meta in updated_metadata:
-                if meta.name == dep_name:
+                # Match by both name and version to support multiple versions of same package
+                if meta.name == dep_name and meta.version == version:
                     found = True
                     if (
                         not meta.origin or not validate_git_url(meta.origin)
@@ -359,8 +400,6 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                         meta.license = license
                     if not meta.copyright and copyright:
                         meta.copyright = copyright
-                    if not meta.version and version:
-                        meta.version = version
                     break
 
             if not found:
@@ -481,22 +520,53 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         all_deps: dict[str, str] = {}
 
         if package_manager == "yarn":
-            # Check if yarn is installed
-            try:
-                yarn_version = output_from_command("yarn --version 2>/dev/null")
-                logger.debug("Yarn version: %s", yarn_version.strip())
-            except Exception as e:
-                logger.error(
-                    "Yarn is not installed or not in PATH. Please install yarn to analyze this project. Error: %s",
-                    e,
-                )
-                return updated_metadata
+            # Collect dependencies from multiple locations (root + subdirs)
+            # Use a set to keep all unique (package, version) combinations
+            unique_deps: set[tuple[str, str]] = set()
 
-            # For Yarn projects, use yarn list to get dependencies
-            all_deps = self._get_yarn_dependencies(project_path)
+            # Collect from root
+            root_deps = self._collect_yarn_deps_from_location(project_path, "root")
+            for pkg, ver in root_deps.items():
+                unique_deps.add((pkg, ver))
+
+            # Collect from subdirectories
+            for subdir in self.yarn_subdirs:
+                subdir_path = path_join(project_path, subdir)
+                if not path_exists(subdir_path):
+                    logger.warning(
+                        "Subdirectory %s does not exist in %s", subdir, project_path
+                    )
+                    continue
+
+                subdir_deps = self._collect_yarn_deps_from_location(subdir_path, subdir)
+                for pkg, ver in subdir_deps.items():
+                    unique_deps.add((pkg, ver))
+
+            # Group dependencies by package name to identify multiple versions
+            deps_by_package: dict[str, list[str]] = {}
+            for pkg, ver in unique_deps:
+                if pkg not in deps_by_package:
+                    deps_by_package[pkg] = []
+                if ver not in deps_by_package[pkg]:
+                    deps_by_package[pkg].append(ver)
+
+            # Log packages with multiple versions
+            for pkg, versions in deps_by_package.items():
+                if len(versions) > 1:
+                    logger.info(
+                        "Package %s has multiple versions: %s",
+                        pkg,
+                        ", ".join(sorted(versions)),
+                    )
+
+            # Flatten to dict - use first version for each package
+            # We'll handle multiple versions by processing all combinations
+            all_deps = {pkg: versions[0] for pkg, versions in deps_by_package.items()}
+
             if not all_deps:
                 logger.warning(
-                    "No dependencies found for Yarn project at %s", project_path
+                    "No dependencies found for Yarn project at %s and subdirectories",
+                    project_path,
                 )
         else:
             # For npm projects, use the existing npm logic
@@ -528,8 +598,28 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             logger.warning("No dependencies extracted from %s", project_path)
             return updated_metadata
 
-        logger.info("Found %d dependencies", len(all_deps))
+        logger.info("Found %d unique packages", len(all_deps))
 
         # Use private method to enrich metadata with NPM registry data
         # Handles scope filtering, version cleaning, fetching, and enrichment
-        return self._enrich_metadata_with_npm_registry(updated_metadata, all_deps)
+        updated_metadata = self._enrich_metadata_with_npm_registry(
+            updated_metadata, all_deps
+        )
+
+        # For yarn, process additional versions of packages (if any)
+        if package_manager == "yarn":
+            # Process additional versions (versions beyond the first for each package)
+            additional_deps: dict[str, str] = {}
+            for pkg, versions in deps_by_package.items():
+                for ver in versions[1:]:  # Skip first version (already processed)
+                    additional_deps[pkg] = ver
+
+            if additional_deps:
+                logger.info(
+                    "Processing %d additional package versions", len(additional_deps)
+                )
+                updated_metadata = self._enrich_metadata_with_npm_registry(
+                    updated_metadata, additional_deps
+                )
+
+        return updated_metadata
