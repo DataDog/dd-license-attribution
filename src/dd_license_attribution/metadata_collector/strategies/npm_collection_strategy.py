@@ -197,14 +197,6 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         return all_deps
 
-    def _clean_version_string(self, version: str) -> str:
-        if isinstance(version, str) and version:
-            if version.startswith(">="):
-                return version[2:]
-            elif version and version[0] in {"^", "~", ">"}:
-                return version[1:]
-        return version
-
     def _extract_license_from_pkg_data(self, pkg_data: dict[str, Any]) -> list[str]:
         if "license" in pkg_data and pkg_data["license"]:
             return [str(pkg_data["license"])]
@@ -348,10 +340,9 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         for idx, (dep_name, version) in enumerate(dependencies.items(), 1):
             if idx % 50 == 0 or idx == total_deps:
                 logger.info("Progress: %d/%d dependencies processed", idx, total_deps)
-            clean_version = self._clean_version_string(version)
 
             license, copyright, pkg_data = self._fetch_npm_registry_metadata(
-                dep_name, clean_version
+                dep_name, version
             )
 
             origin = self._determine_origin(pkg_data, dep_name)
@@ -368,15 +359,15 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                         meta.license = license
                     if not meta.copyright and copyright:
                         meta.copyright = copyright
-                    if not meta.version and clean_version:
-                        meta.version = clean_version
+                    if not meta.version and version:
+                        meta.version = version
                     break
 
             if not found:
                 updated_metadata.append(
                     Metadata(
                         name=dep_name,
-                        version=clean_version,
+                        version=version,
                         origin=origin,
                         local_src_path=None,
                         license=license,
@@ -404,7 +395,19 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         root_pkg = packages[root_key]
         if "dependencies" in root_pkg:
-            all_deps.update(root_pkg["dependencies"])
+            # Get dependency names from root, look up resolved versions
+            for dep_name in root_pkg["dependencies"].keys():
+                node_modules_key = f"node_modules/{dep_name}"
+                if (
+                    node_modules_key in packages
+                    and "version" in packages[node_modules_key]
+                ):
+                    all_deps[dep_name] = packages[node_modules_key]["version"]
+                else:
+                    logger.warning(
+                        "Dependency %s not found in package-lock.json packages",
+                        dep_name,
+                    )
 
         self._extract_transitive_dependencies(packages, all_deps)
         return all_deps
@@ -428,10 +431,22 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 if node_modules_key in packages:
                     pkg_data = packages[node_modules_key]
                     if "dependencies" in pkg_data:
-                        for dep_name, dep_version in pkg_data["dependencies"].items():
+                        for dep_name in pkg_data["dependencies"].keys():
                             if dep_name not in all_deps:
-                                all_deps[dep_name] = dep_version
-                                new_deps_found = True
+                                dep_node_modules_key = f"node_modules/{dep_name}"
+                                if (
+                                    dep_node_modules_key in packages
+                                    and "version" in packages[dep_node_modules_key]
+                                ):
+                                    all_deps[dep_name] = packages[dep_node_modules_key][
+                                        "version"
+                                    ]
+                                    new_deps_found = True
+                                else:
+                                    logger.warning(
+                                        "Transitive dependency %s not found in package-lock.json packages",
+                                        dep_name,
+                                    )
 
                 processed_packages.add(pkg_name)
 

@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 - PyPI collection strategy now performs case-insensitive key matching for project_urls dictionary to better handle different key capitalizations from PyPI metadata
 
+### Fixed
+- Fixed npm metadata collection using semver ranges instead of resolved versions, causing incorrect or failed npm registry API lookups
+
 ## [0.5.0] - 2025-10-29
 
 ### Added
