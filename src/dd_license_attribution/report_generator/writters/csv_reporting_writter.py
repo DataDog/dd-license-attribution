@@ -31,7 +31,9 @@ class CSVReportingWritter(ReportingWritter):
 
         field_names = ["component", "origin", "license", "copyright"]
         output = io.StringIO()
-        writer = csv.DictWriter(output, fieldnames=field_names, quoting=csv.QUOTE_ALL)
+        writer = csv.DictWriter(
+            output, fieldnames=field_names, quoting=csv.QUOTE_ALL, lineterminator="\r\n"
+        )
 
         writer.writeheader()
         combined_metadata: dict[tuple[str | None, str | None], RowOfData] = {}
