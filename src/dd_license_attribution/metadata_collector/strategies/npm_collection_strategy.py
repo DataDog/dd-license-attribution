@@ -119,6 +119,51 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         return aliases
 
+    def _extract_aliases_from_yarn_lock(self, project_path: str) -> dict[str, str]:
+        """
+        Extract Yarn aliases from yarn.lock file.
+
+        Aliases in yarn.lock appear as entries like:
+          "@datadog/source-map@npm:source-map@^0.6.0":
+            version "0.6.1"
+            resolved "..."
+
+        Args:
+            project_path: Path to the project root containing yarn.lock
+
+        Returns:
+            Dictionary mapping alias names to real package names
+            Example: {"@datadog/source-map": "source-map"}
+        """
+        aliases: dict[str, str] = {}
+        yarn_lock_path = path_join(project_path, "yarn.lock")
+
+        yarn_lock_content = open_file(yarn_lock_path)
+
+        # Match patterns like: "@datadog/source-map@npm:source-map@^0.6.0":
+        # This regex handles both scoped and unscoped packages
+        # Group 1: alias name (may include @scope/)
+        # Group 2: real package name (@scope/package or package)
+        alias_pattern = re.compile(
+            r'^"([^"]+)@npm:(@[^@]+|[^@]+)@[^"]+":$', re.MULTILINE
+        )
+
+        for match in alias_pattern.finditer(yarn_lock_content):
+            alias_name = match.group(1)
+            real_name = match.group(2)
+
+            if alias_name not in aliases:
+                aliases[alias_name] = real_name
+                logger.debug(
+                    "Detected Yarn alias from yarn.lock: %s -> %s",
+                    alias_name,
+                    real_name,
+                )
+
+        logger.debug("Extracted %d aliases from yarn.lock", len(aliases))
+
+        return aliases
+
     def _get_yarn_dependencies(self, project_path: str) -> dict[str, str]:
         """Get dependencies from a Yarn project.
 
@@ -164,9 +209,18 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 )
                 return all_deps
 
-            # Extract aliases from all trees (they appear in children arrays)
-            aliases = self._extract_yarn_aliases_from_tree(all_trees)
-            logger.debug("Found %d Yarn aliases", len(aliases))
+            # Extract aliases from yarn.lock file (authoritative source)
+            lock_aliases = self._extract_aliases_from_yarn_lock(project_path)
+            # Extract aliases from tree children (fallback/additional source)
+            tree_aliases = self._extract_yarn_aliases_from_tree(all_trees)
+            # Merge aliases - yarn.lock takes precedence
+            aliases = {**tree_aliases, **lock_aliases}
+            logger.debug(
+                "Found %d Yarn aliases (%d from yarn.lock, %d from tree)",
+                len(aliases),
+                len(lock_aliases),
+                len(tree_aliases),
+            )
 
             # Second pass: process packages and resolve aliases
             for tree in all_trees:
@@ -416,7 +470,107 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         return updated_metadata
 
-    def _get_npm_dependencies(self, lock_data: dict[str, Any]) -> dict[str, str]:
+    def _extract_aliases_from_package_lock(self, project_path: str) -> dict[str, str]:
+        """
+        Extract npm aliases from package-lock.json file.
+
+        In npm v7+, aliases appear in the packages section with entries like:
+          "": {
+            "dependencies": {
+              "@datadog/source-map": "npm:source-map@^0.6.0"
+            }
+          },
+          "node_modules/@datadog/source-map": {
+            "version": "0.6.1",
+            "resolved": "https://registry.npmjs.org/source-map/-/source-map-0.6.1.tgz",
+            "name": "source-map"
+          }
+
+        Args:
+            project_path: Path to the project root containing package-lock.json
+
+        Returns:
+            Dictionary mapping alias names to real package names
+            Example: {"@datadog/source-map": "source-map"}
+        """
+        aliases: dict[str, str] = {}
+        package_lock_path = path_join(project_path, "package-lock.json")
+
+        package_lock_content = open_file(package_lock_path)
+        lock_data = json.loads(package_lock_content)
+
+        if "packages" not in lock_data:
+            logger.debug("No 'packages' key in package-lock.json at %s", project_path)
+            return aliases
+
+        packages = lock_data["packages"]
+
+        # Find the root package (npm v7+ uses "" as root key)
+        if "" not in packages:
+            logger.debug(
+                "No root package found in package-lock.json at %s", project_path
+            )
+            return aliases
+
+        root_pkg = packages[""]
+        dependencies = root_pkg.get("dependencies", {})
+
+        # Check each dependency for alias syntax (npm:actual-package@version)
+        for dep_name, dep_spec in dependencies.items():
+            if isinstance(dep_spec, str) and dep_spec.startswith("npm:"):
+                # Parse "npm:real-package@version" format
+                # Remove "npm:" prefix
+                real_spec = dep_spec[4:]  # Remove "npm:" prefix
+
+                # Extract real package name (handle scoped packages)
+                # Format: real-package@version or @scope/real-package@version
+                if real_spec.startswith("@"):
+                    # Scoped package: @scope/package@version
+                    # Split on @ but keep the first @ as part of scope
+                    parts = real_spec.split("@")
+                    if len(parts) >= 3:  # ['', 'scope/package', 'version', ...]
+                        real_name = f"@{parts[1]}"
+                    else:
+                        continue
+                else:
+                    # Unscoped package: package@version
+                    parts = real_spec.split("@")
+                    if len(parts) >= 2:
+                        real_name = parts[0]
+                    else:
+                        continue
+
+                aliases[dep_name] = real_name
+                logger.debug(
+                    "Detected npm alias from package-lock.json: %s -> %s",
+                    dep_name,
+                    real_name,
+                )
+
+        # Also check node_modules entries for name mismatches
+        for key, pkg_data in packages.items():
+            if key.startswith("node_modules/") and isinstance(pkg_data, dict):
+                # Extract the package name from the key
+                package_path = key[len("node_modules/") :]
+
+                # Check if the "name" field exists and differs from the path
+                actual_name = pkg_data.get("name")
+                if actual_name and actual_name != package_path:
+                    # This is an alias - the path is the alias, name is real
+                    aliases[package_path] = actual_name
+                    logger.debug(
+                        "Detected npm alias from node_modules entry: %s -> %s",
+                        package_path,
+                        actual_name,
+                    )
+
+        logger.debug("Extracted %d aliases from package-lock.json", len(aliases))
+
+        return aliases
+
+    def _get_npm_dependencies(
+        self, lock_data: dict[str, Any], project_path: str
+    ) -> dict[str, str]:
         all_deps: dict[str, str] = {}
 
         if "packages" not in lock_data:
@@ -432,27 +586,36 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             )
             return all_deps
 
+        # Extract aliases from package-lock.json
+        aliases = self._extract_aliases_from_package_lock(project_path)
+        logger.debug("Found %d npm aliases in package-lock.json", len(aliases))
+
         root_pkg = packages[root_key]
         if "dependencies" in root_pkg:
             # Get dependency names from root, look up resolved versions
             for dep_name in root_pkg["dependencies"].keys():
+                # Resolve alias to real package name
+                real_name = aliases.get(dep_name, dep_name)
                 node_modules_key = f"node_modules/{dep_name}"
                 if (
                     node_modules_key in packages
                     and "version" in packages[node_modules_key]
                 ):
-                    all_deps[dep_name] = packages[node_modules_key]["version"]
+                    all_deps[real_name] = packages[node_modules_key]["version"]
                 else:
                     logger.warning(
                         "Dependency %s not found in package-lock.json packages",
                         dep_name,
                     )
 
-        self._extract_transitive_dependencies(packages, all_deps)
+        self._extract_transitive_dependencies(packages, all_deps, aliases)
         return all_deps
 
     def _extract_transitive_dependencies(
-        self, packages: dict[str, Any], all_deps: dict[str, str]
+        self,
+        packages: dict[str, Any],
+        all_deps: dict[str, str],
+        aliases: dict[str, str],
     ) -> None:
 
         processed_packages = set()
@@ -471,15 +634,17 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     pkg_data = packages[node_modules_key]
                     if "dependencies" in pkg_data:
                         for dep_name in pkg_data["dependencies"].keys():
-                            if dep_name not in all_deps:
+                            # Resolve alias to real package name
+                            real_dep_name = aliases.get(dep_name, dep_name)
+                            if real_dep_name not in all_deps:
                                 dep_node_modules_key = f"node_modules/{dep_name}"
                                 if (
                                     dep_node_modules_key in packages
                                     and "version" in packages[dep_node_modules_key]
                                 ):
-                                    all_deps[dep_name] = packages[dep_node_modules_key][
-                                        "version"
-                                    ]
+                                    all_deps[real_dep_name] = packages[
+                                        dep_node_modules_key
+                                    ]["version"]
                                     new_deps_found = True
                                 else:
                                     logger.warning(
@@ -589,7 +754,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
             try:
                 lock_data = json.loads(open_file(lock_path))
-                all_deps = self._get_npm_dependencies(lock_data)
+                all_deps = self._get_npm_dependencies(lock_data, project_path)
             except Exception as e:
                 logger.warning("Failed to read package-lock.json: %s", e)
                 return updated_metadata
