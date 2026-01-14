@@ -236,8 +236,12 @@ def test_npm_collection_strategy_adds_npm_metadata(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
     assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert mock_path_join.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert mock_open.call_count == 2  # package.json, package-lock.json
+    assert (
+        mock_path_join.call_count == 4
+    )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
+    assert (
+        mock_open.call_count == 3
+    )  # package.json, package-lock.json, package-lock.json (alias check)
     assert mock_requests.call_count == 2
 
 
@@ -346,8 +350,12 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
     assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert mock_path_join.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert mock_open.call_count == 2  # package.json, package-lock.json
+    assert (
+        mock_path_join.call_count == 4
+    )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
+    assert (
+        mock_open.call_count == 3
+    )  # package.json, package-lock.json, package-lock.json (alias check)
     assert mock_requests.call_count == 4
 
 
@@ -412,8 +420,12 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
     assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert mock_path_join.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert mock_open.call_count == 2  # package.json, package-lock.json
+    assert (
+        mock_path_join.call_count == 4
+    )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
+    assert (
+        mock_open.call_count == 3
+    )  # package.json, package-lock.json, package-lock.json (alias check)
     assert mock_requests.call_count == 1
 
 
@@ -456,6 +468,7 @@ def test_npm_collection_strategy_handles_missing_packages_key(
     mock_output_from_command.assert_called_once_with(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
+    # When packages key is missing, _get_npm_dependencies returns early before calling alias extraction
     assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
     assert mock_path_join.call_count == 3  # package.json, yarn.lock, package-lock.json
     assert mock_open.call_count == 2  # package.json, package-lock.json
@@ -501,6 +514,7 @@ def test_npm_collection_strategy_handles_missing_root_package(
     mock_output_from_command.assert_called_once_with(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
+    # When root package is missing, _get_npm_dependencies returns early before calling alias extraction
     assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
     assert mock_path_join.call_count == 3  # package.json, yarn.lock, package-lock.json
     assert mock_open.call_count == 2  # package.json, package-lock.json
@@ -563,8 +577,12 @@ def test_npm_collection_strategy_handles_registry_api_failures(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
     assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert mock_path_join.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert mock_open.call_count == 2  # package.json, package-lock.json
+    assert (
+        mock_path_join.call_count == 4
+    )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
+    assert (
+        mock_open.call_count == 3
+    )  # package.json, package-lock.json, package-lock.json (alias check)
     assert mock_requests.call_count == 2
 
 
@@ -622,8 +640,12 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
     assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert mock_path_join.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert mock_open.call_count == 2  # package.json, package-lock.json
+    assert (
+        mock_path_join.call_count == 4
+    )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
+    assert (
+        mock_open.call_count == 3
+    )  # package.json, package-lock.json, package-lock.json (alias check)
     assert mock_requests.call_count == 1
 
 
@@ -1180,6 +1202,16 @@ def test_get_yarn_dependencies_success(
     # Yarn output has multiple JSON objects on separate lines
     yarn_output = """{"type":"tree","data":{"type":"list","trees":[{"name":"lodash@4.17.21","children":[]},{"name":"react@18.2.0","children":[{"name":"loose-envify@1.4.0"}]},{"name":"loose-envify@1.4.0","children":[]}]}}"""
 
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=lambda *args: "/".join(args),
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        return_value="",  # Empty yarn.lock, no aliases
+    )
     mock_output_from_command = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.output_from_command",
@@ -1214,6 +1246,16 @@ def test_get_yarn_dependencies_with_scoped_packages(
 
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=lambda *args: "/".join(args),
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        return_value="",  # Empty yarn.lock, no aliases
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.output_from_command",
         return_value=yarn_output,
     )
@@ -1239,6 +1281,16 @@ def test_get_yarn_dependencies_with_aliases(
 
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=lambda *args: "/".join(args),
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        return_value="",  # Empty yarn.lock, no aliases from lock file (aliases are in tree)
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.output_from_command",
         return_value=yarn_output,
     )
@@ -1259,6 +1311,16 @@ def test_get_yarn_dependencies_empty_output(
         "package1", source_code_manager_mock, ProjectScope.ALL
     )
 
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=lambda *args: "/".join(args),
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        return_value="",  # Empty yarn.lock, no aliases
+    )
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.output_from_command",
@@ -1286,6 +1348,16 @@ def test_get_yarn_dependencies_invalid_json(
 
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=lambda *args: "/".join(args),
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        return_value="",  # Empty yarn.lock, no aliases
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.output_from_command",
         return_value="not valid json\nanother line\n",
     )
@@ -1310,6 +1382,16 @@ def test_get_yarn_dependencies_command_failure(
         "package1", source_code_manager_mock, ProjectScope.ALL
     )
 
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=lambda *args: "/".join(args),
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        return_value="",  # Empty yarn.lock, no aliases
+    )
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.output_from_command",
@@ -1343,6 +1425,8 @@ def test_npm_collection_strategy_with_yarn_project(
     def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
         if "package.json" in path:
             return json.dumps(package_json)
+        if "yarn.lock" in path:
+            return ""  # Empty yarn.lock, no aliases
         raise FileNotFoundError
 
     def fake_path_join(*args: Any) -> str:
@@ -1529,6 +1613,11 @@ def test_collect_yarn_deps_from_location_with_existing_lock(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.path_join",
         side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        return_value="",  # Empty yarn.lock, no aliases
     )
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
@@ -1987,3 +2076,651 @@ def test_augment_metadata_with_version_conflicts(
         "react" in record.message and "multiple versions" in record.message
         for record in caplog.records
     )
+
+
+# ============================================================================
+# Tests for Yarn alias support from yarn.lock
+# ============================================================================
+
+
+def test_extract_aliases_from_yarn_lock_with_aliases(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test _extract_aliases_from_yarn_lock extracts various alias formats."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    # Mock yarn.lock content with various alias formats
+    yarn_lock_content = """
+# Yarn lockfile v1
+
+"@datadog/source-map@npm:source-map@^0.6.0":
+  version "0.6.1"
+  resolved "https://registry.yarnpkg.com/source-map/-/source-map-0.6.1.tgz"
+  integrity sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==
+
+"@company/lib@npm:@other/real-lib@^1.0.0":
+  version "1.2.3"
+  resolved "https://registry.yarnpkg.com/@other/real-lib/-/real-lib-1.2.3.tgz"
+
+"alias@npm:real-package@^2.0.0":
+  version "2.1.0"
+  resolved "https://registry.yarnpkg.com/real-package/-/real-package-2.1.0.tgz"
+
+"regular-package@^1.0.0":
+  version "1.0.5"
+  resolved "https://registry.yarnpkg.com/regular-package/-/regular-package-1.0.5.tgz"
+"""
+
+    def fake_exists(path: str) -> bool:
+        return "yarn.lock" in path
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "yarn.lock" in path:
+            return yarn_lock_content
+        raise FileNotFoundError
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+
+    result = strategy._extract_aliases_from_yarn_lock("/test/path")
+
+    assert len(result) == 3
+    assert result["@datadog/source-map"] == "source-map"
+    assert result["@company/lib"] == "@other/real-lib"
+    assert result["alias"] == "real-package"
+    # Regular packages should not be in aliases
+    assert "regular-package" not in result
+
+
+def test_extract_aliases_from_yarn_lock_no_aliases(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test _extract_aliases_from_yarn_lock with no aliases returns empty dict."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    yarn_lock_content = """
+# Yarn lockfile v1
+
+"lodash@^4.17.0":
+  version "4.17.21"
+  resolved "https://registry.yarnpkg.com/lodash/-/lodash-4.17.21.tgz"
+
+"react@^18.0.0":
+  version "18.2.0"
+  resolved "https://registry.yarnpkg.com/react/-/react-18.2.0.tgz"
+"""
+
+    def fake_exists(path: str) -> bool:
+        return "yarn.lock" in path
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "yarn.lock" in path:
+            return yarn_lock_content
+        raise FileNotFoundError
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+
+    result = strategy._extract_aliases_from_yarn_lock("/test/path")
+
+    assert len(result) == 0
+
+
+def test_get_yarn_dependencies_resolves_aliases_from_lock(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that _get_yarn_dependencies resolves aliases from yarn.lock."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    yarn_lock_content = """
+"@datadog/source-map@npm:source-map@^0.6.0":
+  version "0.6.1"
+  resolved "https://registry.yarnpkg.com/source-map/-/source-map-0.6.1.tgz"
+"""
+
+    # Yarn list output shows the alias name
+    yarn_output = """{"type":"tree","data":{"trees":[{"name":"@datadog/source-map@0.6.1","children":[]}]}}"""
+
+    def fake_exists(path: str) -> bool:
+        return True
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "yarn.lock" in path:
+            return yarn_lock_content
+        raise FileNotFoundError
+
+    def fake_output(cmd: str) -> str:
+        if "yarn list" in cmd:
+            return yarn_output
+        return "1.22.0"
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+
+    result = strategy._get_yarn_dependencies("/test/path")
+
+    # Should resolve @datadog/source-map to source-map
+    assert "source-map" in result
+    assert result["source-map"] == "0.6.1"
+    # Alias name should not be in result
+    assert "@datadog/source-map" not in result
+
+
+def test_augment_metadata_with_yarn_aliases_from_lock(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test end-to-end yarn alias resolution."""
+    source_code_manager_mock = create_source_code_manager_mock()
+
+    package_json = {"name": "test-package", "version": "1.0.0"}
+
+    yarn_lock_content = """
+"@datadog/source-map@npm:source-map@^0.6.0":
+  version "0.6.1"
+  resolved "https://registry.yarnpkg.com/source-map/-/source-map-0.6.1.tgz"
+"""
+
+    yarn_output = """{"type":"tree","data":{"trees":[{"name":"@datadog/source-map@0.6.1","children":[]}]}}"""
+
+    def fake_exists(path: str) -> bool:
+        return True
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "yarn.lock" in path:
+            return yarn_lock_content
+        elif "package.json" in path:
+            return json.dumps(package_json)
+        raise FileNotFoundError
+
+    def fake_output(cmd: str) -> str:
+        if "yarn --version" in cmd:
+            return "1.22.0"
+        elif "yarn list" in cmd:
+            return yarn_output
+        return ""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+
+    # Mock npm registry response for the REAL package name
+    mock_get = mocker.patch("requests.get")
+    mock_response = mock.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"license": "BSD-3-Clause", "author": "Mozilla"}
+    mock_get.return_value = mock_response
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Should have metadata for real package name, not alias
+    assert len(result) == 2
+    dep_meta = next((m for m in result if m.name == "source-map"), None)
+    assert dep_meta is not None
+    assert dep_meta.version == "0.6.1"
+    assert dep_meta.license == ["BSD-3-Clause"]
+
+    # Verify npm registry was called with REAL package name, not alias
+    mock_get.assert_called_once()
+    call_url = mock_get.call_args[0][0]
+    assert "source-map/0.6.1" in call_url
+    assert "@datadog" not in call_url
+
+
+def test_yarn_lock_aliases_precedence_over_tree_aliases(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that yarn.lock aliases take precedence over tree-extracted aliases."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    # yarn.lock says alias1 -> real-package-a
+    yarn_lock_content = """
+"alias1@npm:real-package-a@^1.0.0":
+  version "1.0.0"
+  resolved "https://registry.yarnpkg.com/real-package-a/-/real-package-a-1.0.0.tgz"
+"""
+
+    # yarn list tree says alias1 -> real-package-b (different)
+    yarn_output = """{"type":"tree","data":{"trees":[{"name":"alias1@1.0.0","children":[{"name":"alias1@npm:real-package-b@^1.0.0"}]}]}}"""
+
+    def fake_exists(path: str) -> bool:
+        return True
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "yarn.lock" in path:
+            return yarn_lock_content
+        raise FileNotFoundError
+
+    def fake_output(cmd: str) -> str:
+        if "yarn list" in cmd:
+            return yarn_output
+        return "1.22.0"
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+
+    result = strategy._get_yarn_dependencies("/test/path")
+
+    # yarn.lock should take precedence, so alias1 -> real-package-a
+    assert "real-package-a" in result
+    assert "real-package-b" not in result
+    assert "alias1" not in result
+
+
+# ============================================================================
+# Tests for npm alias support from package-lock.json
+# ============================================================================
+
+
+def test_extract_aliases_from_package_lock_with_aliases(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test _extract_aliases_from_package_lock extracts various alias formats."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    package_lock = {
+        "packages": {
+            "": {
+                "dependencies": {
+                    "@datadog/source-map": "npm:source-map@^0.6.0",
+                    "@company/lib": "npm:@other/real-lib@^1.0.0",
+                    "alias": "npm:real-package@^2.0.0",
+                    "regular-dep": "^1.0.0",
+                }
+            },
+            "node_modules/@datadog/source-map": {
+                "version": "0.6.1",
+                "resolved": "https://registry.npmjs.org/source-map/-/source-map-0.6.1.tgz",
+                "name": "source-map",
+            },
+            "node_modules/@company/lib": {
+                "version": "1.2.3",
+                "resolved": "https://registry.npmjs.org/@other/real-lib/-/real-lib-1.2.3.tgz",
+                "name": "@other/real-lib",
+            },
+            "node_modules/alias": {
+                "version": "2.1.0",
+                "resolved": "https://registry.npmjs.org/real-package/-/real-package-2.1.0.tgz",
+                "name": "real-package",
+            },
+            "node_modules/regular-dep": {
+                "version": "1.0.5",
+            },
+        }
+    }
+
+    def fake_exists(path: str) -> bool:
+        return "package-lock.json" in path
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "package-lock.json" in path:
+            return json.dumps(package_lock)
+        raise FileNotFoundError
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+
+    result = strategy._extract_aliases_from_package_lock("/test/path")
+
+    # Should extract aliases from both root dependencies and node_modules entries
+    assert len(result) >= 3
+    assert result["@datadog/source-map"] == "source-map"
+    assert result["@company/lib"] == "@other/real-lib"
+    assert result["alias"] == "real-package"
+    # Regular dependencies should not be in aliases
+    assert "regular-dep" not in result or result.get("regular-dep") == "regular-dep"
+
+
+def test_extract_aliases_from_package_lock_no_aliases(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test _extract_aliases_from_package_lock with no aliases returns empty dict."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    package_lock = {
+        "packages": {
+            "": {
+                "dependencies": {
+                    "lodash": "^4.17.0",
+                    "react": "^18.0.0",
+                }
+            },
+            "node_modules/lodash": {
+                "version": "4.17.21",
+            },
+            "node_modules/react": {
+                "version": "18.2.0",
+            },
+        }
+    }
+
+    def fake_exists(path: str) -> bool:
+        return "package-lock.json" in path
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "package-lock.json" in path:
+            return json.dumps(package_lock)
+        raise FileNotFoundError
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+
+    result = strategy._extract_aliases_from_package_lock("/test/path")
+
+    assert len(result) == 0
+
+
+def test_get_npm_dependencies_resolves_aliases_from_lock(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that _get_npm_dependencies resolves aliases from package-lock.json."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    package_lock = {
+        "packages": {
+            "": {
+                "dependencies": {
+                    "@datadog/source-map": "npm:source-map@^0.6.0",
+                }
+            },
+            "node_modules/@datadog/source-map": {
+                "version": "0.6.1",
+                "name": "source-map",
+            },
+        }
+    }
+
+    def fake_exists(path: str) -> bool:
+        return "package-lock.json" in path
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "package-lock.json" in path:
+            return json.dumps(package_lock)
+        raise FileNotFoundError
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+
+    result = strategy._get_npm_dependencies(package_lock, "/test/path")
+
+    # Should resolve @datadog/source-map to source-map
+    assert "source-map" in result
+    assert result["source-map"] == "0.6.1"
+    # Alias name should not be in result
+    assert "@datadog/source-map" not in result
+
+
+def test_augment_metadata_with_npm_aliases_from_lock(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test end-to-end npm alias resolution."""
+    source_code_manager_mock = create_source_code_manager_mock()
+
+    package_json = {"name": "test-package", "version": "1.0.0"}
+
+    package_lock = {
+        "packages": {
+            "": {
+                "dependencies": {
+                    "@datadog/source-map": "npm:source-map@^0.6.0",
+                }
+            },
+            "node_modules/@datadog/source-map": {
+                "version": "0.6.1",
+                "name": "source-map",
+            },
+        }
+    }
+
+    def fake_exists(path: str) -> bool:
+        if "yarn.lock" in path:
+            return False
+        return True
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "package-lock.json" in path:
+            return json.dumps(package_lock)
+        elif "package.json" in path:
+            return json.dumps(package_json)
+        raise FileNotFoundError
+
+    def fake_output(cmd: str) -> str:
+        return "npm install completed"
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+
+    # Mock npm registry response for the REAL package name
+    mock_get = mocker.patch("requests.get")
+    mock_response = mock.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"license": "BSD-3-Clause", "author": "Mozilla"}
+    mock_get.return_value = mock_response
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Should have metadata for real package name, not alias
+    assert len(result) == 2
+    dep_meta = next((m for m in result if m.name == "source-map"), None)
+    assert dep_meta is not None
+    assert dep_meta.version == "0.6.1"
+    assert dep_meta.license == ["BSD-3-Clause"]
+
+    # Verify npm registry was called with REAL package name, not alias
+    mock_get.assert_called_once()
+    call_url = mock_get.call_args[0][0]
+    assert "source-map/0.6.1" in call_url
+    assert "@datadog" not in call_url
