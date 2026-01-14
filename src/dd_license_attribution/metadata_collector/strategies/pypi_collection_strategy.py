@@ -27,6 +27,7 @@ from dd_license_attribution.metadata_collector.strategies.abstract_collection_st
     MetadataCollectionStrategy,
 )
 from dd_license_attribution.utils.custom_splitting import CustomSplit
+from dd_license_attribution.utils.license_utils import is_long_license
 
 
 class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
@@ -147,7 +148,12 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
                     and pypi_info["license"] is not None
                     and len(pypi_info["license"]) != 0
                 ):
-                    find_pkg.license = pypi_info["license"].split(",")
+                    # Only split on commas if it's not a long license text
+                    # Long licenses (full text with newlines) should not be split
+                    if is_long_license(pypi_info["license"]):
+                        find_pkg.license = [pypi_info["license"]]
+                    else:
+                        find_pkg.license = pypi_info["license"].split(",")
                 if "version" in pypi_info and pypi_info["version"] is not None:
                     find_pkg.version = pypi_info["version"]
                 if (
@@ -166,7 +172,12 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
                     and pypi_info["license"] is not None
                     and len(pypi_info["license"]) != 0
                 ):
-                    extracted_license = pypi_info["license"].split(",")
+                    # Only split on commas if it's not a long license text
+                    # Long licenses (full text with newlines) should not be split
+                    if is_long_license(pypi_info["license"]):
+                        extracted_license = [pypi_info["license"]]
+                    else:
+                        extracted_license = pypi_info["license"].split(",")
                 extracted_copyright = []
                 if (
                     "author" in pypi_info
