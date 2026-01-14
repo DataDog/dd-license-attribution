@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Fixed
 - Fixed npm metadata collection using semver ranges instead of resolved versions, causing incorrect or failed npm registry API lookups
+- Fixed CSV output to use consistent Windows-style line endings (`\r\n`) across all platforms and Python versions, preventing line ending inconsistencies between different Python versions
 
 ## [0.5.0] - 2025-10-29
 
