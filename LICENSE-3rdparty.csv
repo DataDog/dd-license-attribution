@@ -62,7 +62,7 @@
 "pygmars","https://github.com/aboutcode-org/pygmars","['Apache-2.0']","['nexB. Inc. and others']"
 "pyicu","https://gitlab.pyicu.org/main/pyicu","['MIT']","['Andi Vajda']"
 "pymaven-patch","https://github.com/aboutcode-org/pymaven","['Apache-2']","['Walter Scheper']"
-"pyparsing","https://github.com/pyparsing/pyparsing","['MIT']","['pyparsing']"
+"pyparsing","https://github.com/pyparsing/pyparsing","['MIT']","['Paul McGuire']"
 "pytz","https://pythonhosted.org/pytz","['MIT']","['Stuart Bishop']"
 "rdflib","https://github.com/RDFLib/rdflib","['BSD-3-Clause']","[""Daniel 'eikeon' Krech""]"
 "requests","https://github.com/psf/requests","['Apache-2.0']","['Kenneth Reitz']"

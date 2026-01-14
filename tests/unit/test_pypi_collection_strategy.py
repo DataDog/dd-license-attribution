@@ -913,3 +913,177 @@ def test_pypi_collection_strategy_handles_case_insensitive_project_url_keys(
             ),
         ]
     )
+
+
+def test_pypi_collection_strategy_does_not_split_long_license_text(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that long license text (full license content) is not split on commas."""
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = ("package1", None)
+    python_env_manager_mock = mocker.Mock()
+
+    # Mock source code retrieval
+    source_code_manager_mock.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/package1",
+        branch="main",
+        local_root_path="cache_dir/20220101_000000Z/org-package1/main",
+        local_full_path="cache_dir/20220101_000000Z/org-package1/main",
+    )
+
+    # Mock Python environment
+    python_env_manager_mock.get_environment.return_value = (
+        "cache_dir/20220101_000000Z/org_package1_virtualenv"
+    )
+
+    # Mock dependencies (package with full license text from PyPI)
+    get_dependencies_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[
+            ("package_with_long_license", "1.0.0"),
+        ],
+    )
+
+    # Mock PyPI response with full license text (not just SPDX identifier)
+    long_license_text = """BSD 3-Clause License
+
+Copyright (c) 2022, Jupyter
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission."""
+
+    mock_request = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy.requests.get"
+    )
+    mock_request.return_value = MockedRequestsResponse(
+        200,
+        {
+            "info": {
+                "name": "package_with_long_license",
+                "version": "1.0.0",
+                "license": long_license_text,
+                "author": "Test Author",
+                "project_urls": {"Homepage": "https://github.com/org/package1"},
+            }
+        },
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "https://github.com/org/package1",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            version=None,
+            license=[],
+            copyright=[],
+        )
+    ]
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Verify that the long license text was NOT split on commas
+    assert len(result) == 2
+    assert result[0].name == "package1"
+    assert result[1].name == "package_with_long_license"
+
+    # Verify the license is a single-element list (not split on commas)
+    assert len(result[1].license) == 1
+    assert result[1].license[0] == long_license_text
+    assert result[1].version == "1.0.0"
+    assert result[1].copyright == ["Test Author"]
+
+
+def test_pypi_collection_strategy_splits_short_license_on_comma(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that short license identifiers (SPDX) are still split on commas."""
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = ("package1", None)
+    python_env_manager_mock = mocker.Mock()
+
+    # Mock source code retrieval
+    source_code_manager_mock.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/package1",
+        branch="main",
+        local_root_path="cache_dir/20220101_000000Z/org-package1/main",
+        local_full_path="cache_dir/20220101_000000Z/org-package1/main",
+    )
+
+    # Mock Python environment
+    python_env_manager_mock.get_environment.return_value = (
+        "cache_dir/20220101_000000Z/org_package1_virtualenv"
+    )
+
+    # Mock dependencies (package with comma-separated licenses)
+    _ = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[
+            ("package_with_multiple_licenses", "1.0.0"),
+        ],
+    )
+
+    # Mock PyPI response with comma-separated SPDX identifiers
+    mock_request = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy.requests.get"
+    )
+    mock_request.return_value = MockedRequestsResponse(
+        200,
+        {
+            "info": {
+                "name": "package_with_multiple_licenses",
+                "version": "1.0.0",
+                "license": "MIT, Apache-2.0",  # Short licenses should be split
+                "author": "Test Author",
+                "project_urls": {"Homepage": "https://github.com/org/package1"},
+            }
+        },
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "https://github.com/org/package1",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            version=None,
+            license=[],
+            copyright=[],
+        )
+    ]
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Verify that short licenses were split on commas
+    assert len(result) == 2
+    assert result[0].name == "package1"
+    assert result[1].name == "package_with_multiple_licenses"
+
+    # Verify the licenses were split
+    assert len(result[1].license) == 2
+    assert "MIT" in result[1].license
+    assert " Apache-2.0" in result[1].license
+    assert result[1].version == "1.0.0"
+    assert result[1].copyright == ["Test Author"]
