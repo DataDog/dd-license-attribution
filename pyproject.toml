@@ -34,7 +34,7 @@ dev = [
     "pytest-cov",
     "pytest-mock",
     "mypy",
-    "black",
+    "black==25.12.0",
     "isort",
     "mutmut",
     "types-pytz",
@@ -94,3 +94,6 @@ ignore_missing_imports = true
 
 [tool.isort]
 profile = "black"
+
+[tool.black]
+required-version = "25.12.0"
