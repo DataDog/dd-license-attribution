@@ -150,7 +150,6 @@ class AnthropicClient:
             model: Model to use (default: claude-3-7-sonnet-20250219)
         """
         self.client = anthropic.Anthropic(api_key=api_key)
-        logger.debug("Initialized Anthropic client with API key: %s", api_key)
         self.model = model
         logger.debug("Initialized Anthropic client with model: %s", model)
 
