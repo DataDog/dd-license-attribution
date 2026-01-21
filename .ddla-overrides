@@ -239,5 +239,22 @@
         "The cryptography developers <cryptography-dev@python.org>"
       ]
     }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "component": "multiregex",
+      "origin": "pypi:multiregex"
+    },
+    "replacement": {
+      "name": "multiregex",
+      "origin": "https://github.com/quantco/multiregex",
+      "license": [
+        "BSD-3-Clause"
+      ],
+      "copyright": [
+        "QuantCo Inc"
+      ]
+    }
   }
 ]

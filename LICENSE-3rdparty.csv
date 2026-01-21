@@ -44,7 +44,7 @@
 "markdown-it-py","https://github.com/executablebooks/markdown-it-py","['MIT']","['ExecutableBookProject']"
 "mdurl","https://github.com/executablebooks/mdurl","['MIT']","['Joyent, Inc. and other Node contributors', 'Taneli Hukkinen', 'Vitaly Puzrin, Alex Kocharin']"
 "more-itertools","https://github.com/more-itertools/more-itertools","['MIT']","['Erik Rose']"
-"multiregex","pypi:multiregex","[]","[]"
+"multiregex","https://github.com/Quantco/multiregex","['BSD-3-Clause']","['QuantCo Inc']"
 "normality","https://github.com/pudo/normality","['MIT']","['Friedrich Lindenberg', 'Gregor Aisch']"
 "packageurl-python","https://github.com/package-url/packageurl-python","['MIT']","['the purl authors']"
 "packaging","https://github.com/pypa/packaging","['BSD-3-Clause OR Apache-2.0']","['pypa']"
