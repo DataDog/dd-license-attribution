@@ -64,11 +64,12 @@ def clean_spdx_id(
             rich_help_panel="LLM Configuration",
         ),
     ] = None,
-    silent: Annotated[
+    yes: Annotated[
         bool,
         typer.Option(
-            "--silent",
-            help="Run in silent mode without asking for user confirmation of changes.",
+            "--yes",
+            "-y",
+            help="Automatically confirm all prompts without asking for user confirmation.",
             rich_help_panel="Execution Options",
         ),
     ] = False,
@@ -98,9 +99,9 @@ def clean_spdx_id(
         dd-license-attribution clean-spdx-id input.csv output.csv \\
             --llm-provider anthropic --api-key YOUR_KEY
 
-        # Silent mode (no confirmation prompts)
+        # Auto-confirm mode (no confirmation prompts)
         dd-license-attribution clean-spdx-id input.csv output.csv \\
-            --api-key YOUR_KEY --silent
+            --api-key YOUR_KEY --yes
     """
     # Setup logging
     log_level_map = {
@@ -148,7 +149,7 @@ def clean_spdx_id(
 
     # Validate output path is writable
     output_path = Path(output_csv)
-    if output_path.exists() and not silent:
+    if output_path.exists() and not yes:
         overwrite = typer.confirm(
             f"Output file {output_csv} already exists. Overwrite?", err=True
         )
@@ -166,7 +167,7 @@ def clean_spdx_id(
         strategy = License3rdPartyMetadataCollectionStrategy(str(input_path.absolute()))
         metadata_list = strategy.augment_metadata([])
 
-        # Define callback for interactive prompting (if not in silent mode)
+        # Define callback for interactive prompting (if not in auto-confirm mode)
         def prompt_for_change(change_info: dict[str, Any]) -> bool:
             """Prompt user to confirm each individual change."""
             logger.info(
@@ -182,7 +183,7 @@ def clean_spdx_id(
         cleaner = SPDXCleaner(llm_client)
         cleaned_metadata, changes = cleaner.clean_metadata(
             metadata_list,
-            change_callback=prompt_for_change if not silent else None,
+            change_callback=prompt_for_change if not yes else None,
         )
 
         # Display changes summary

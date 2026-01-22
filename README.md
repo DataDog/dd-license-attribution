@@ -37,7 +37,7 @@ For more advanced usage, see the sections below.
 
 ### Available Commands
 
-`dd-license-attribution` provides three main commands:
+`dd-license-attribution` provides the following commands:
 
 1. **`generate-sbom-csv`** - Generate a CSV report (SBOM) of third-party dependencies
 2. **`generate-overrides`** - Interactively generate override configuration files
@@ -236,7 +236,7 @@ dd-license-attribution clean-spdx-id input.csv output.csv --llm-provider anthrop
 - `--llm-provider`: Choose between `openai` (default) or `anthropic`
 - `--api-key`: Your LLM provider API key (can also use `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` environment variables)
 - `--model`: Specify a custom model (e.g., `gpt-4`, `gpt-3.5-turbo`, `claude-3-5-sonnet-20241022`)
-- `--silent`: Run without prompting for confirmation (automatic mode)
+- `--yes` / `-y`: Automatically confirm all prompts without asking for user confirmation
 - `--log-level`: Set logging level (DEBUG, INFO, WARNING, ERROR)
 
 **Interactive Mode (Default):**
@@ -248,26 +248,28 @@ dd-license-attribution clean-spdx-id LICENSE-3rdparty.csv LICENSE-cleaned.csv --
 
 # Output (for each conversion):
 # INFO: Converting long license text to SPDX for component: jupyter-core
-# 
+#
 # --- Proposed Change ---
 # Component: jupyter-core
 # Origin: https://github.com/jupyter/jupyter_core
 # Original: BSD 3-Clause License\n\nCopyright (c) 2022, Jupyter...
 # Converted to: BSD-3-Clause
-# 
+#
 # Apply this change? [Y/n]:
-# 
+#
 # (Repeats for each license that needs cleaning)
 ```
 
 This allows you to review and approve/reject each conversion individually in real-time as the LLM processes each license.
 
-**Silent Mode:**
+**Auto-Confirm Mode:**
 
-For automated workflows, use `--silent` to apply changes without prompts:
+For automated workflows, use `--yes` (or `-y`) to apply changes without prompts:
 
 ```bash
-dd-license-attribution clean-spdx-id LICENSE-3rdparty.csv LICENSE-cleaned.csv --api-key your_key --silent
+dd-license-attribution clean-spdx-id LICENSE-3rdparty.csv LICENSE-cleaned.csv --api-key your_key --yes
+# Or use the short form:
+dd-license-attribution clean-spdx-id LICENSE-3rdparty.csv LICENSE-cleaned.csv --api-key your_key -y
 ```
 
 **Complete Workflow Example:**
@@ -288,7 +290,7 @@ cat LICENSE-cleaned.csv
 - After using `--deep-scanning` which may extract full license texts
 - To standardize license identifiers across your SBOM
 
-**Note:** The AI-based cleaning requires API access to OpenAI or Anthropic and will incur costs based on your usage. Review the changes in interactive mode before accepting them to ensure accuracy.
+**Note:** The AI-based cleaning requires API access to OpenAI or Anthropic and may incur costs based on your usage. Review the changes in interactive mode before accepting them to ensure accuracy.
 
 ### Common Use Cases
 

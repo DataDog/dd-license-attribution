@@ -115,7 +115,7 @@ class TestCleanSPDXIdCommand:
                 "output.csv",
                 "--api-key",
                 "test-key",
-                "--silent",
+                "--yes",
             ],
         )
 
@@ -188,7 +188,7 @@ class TestCleanSPDXIdCommand:
                 "anthropic",
                 "--api-key",
                 "test-key",
-                "--silent",
+                "--yes",
             ],
         )
 
@@ -253,7 +253,7 @@ class TestCleanSPDXIdCommand:
                 "test-key",
                 "--model",
                 "gpt-3.5-turbo",
-                "--silent",
+                "--yes",
             ],
         )
 
@@ -270,7 +270,7 @@ class TestCleanSPDXIdCommand:
 
         result = runner.invoke(
             app,
-            ["clean-spdx-id", "input.csv", "output.csv", "--silent"],
+            ["clean-spdx-id", "input.csv", "output.csv", "--yes"],
         )
 
         assert result.exit_code == 1
@@ -291,7 +291,7 @@ class TestCleanSPDXIdCommand:
                 "output.csv",
                 "--api-key",
                 "test-key",
-                "--silent",
+                "--yes",
             ],
         )
 
@@ -306,7 +306,7 @@ class TestCleanSPDXIdCommand:
     )
     @patch("dd_license_attribution.cli.clean_spdx_id_command.SPDXCleaner")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.create_llm_client")
-    def test_clean_spdx_id_with_modifications_silent_mode(
+    def test_clean_spdx_id_with_modifications_auto_confirm_mode(
         self,
         mock_create_llm_client: Mock,
         mock_spdx_cleaner_class: Mock,
@@ -315,7 +315,7 @@ class TestCleanSPDXIdCommand:
         mock_write_file: Mock,
         mock_path: Mock,
     ) -> None:
-        """Test execution with modifications in silent mode."""
+        """Test execution with modifications in auto-confirm mode."""
         # Mock Path objects
         mock_input_path = Mock()
         mock_input_path.exists.return_value = True
@@ -354,7 +354,7 @@ class TestCleanSPDXIdCommand:
                 "output.csv",
                 "--api-key",
                 "test-key",
-                "--silent",
+                "--yes",
             ],
         )
 
@@ -554,7 +554,7 @@ class TestCleanSPDXIdCommand:
                 "test-key",
                 "--log-level",
                 "INVALID",
-                "--silent",
+                "--yes",
             ],
         )
 
@@ -597,7 +597,7 @@ class TestCleanSPDXIdCommand:
                 "output.csv",
                 "--api-key",
                 "test-key",
-                "--silent",
+                "--yes",
             ],
         )
 
@@ -652,7 +652,7 @@ class TestCleanSPDXIdCommand:
                 "output.csv",
                 "--api-key",
                 "test-key",
-                "--silent",
+                "--yes",
             ],
         )
 
@@ -769,7 +769,7 @@ class TestCleanSPDXIdCommand:
                 "output.csv",
                 "--llm-provider",
                 "anthropic",
-                "--silent",
+                "--yes",
             ],
         )
 
@@ -841,7 +841,7 @@ class TestCleanSPDXIdCommand:
                 "clean-spdx-id",
                 "input.csv",
                 "output.csv",
-                "--silent",
+                "--yes",
             ],
         )
 
@@ -867,7 +867,7 @@ class TestCleanSPDXIdCommand:
                 "output.csv",
                 "--llm-provider",
                 "anthropic",
-                "--silent",
+                "--yes",
             ],
         )
 
