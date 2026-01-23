@@ -171,12 +171,13 @@ def clean_spdx_id(
         # Define callback for interactive prompting (if not in auto-confirm mode)
         def prompt_for_change(change_info: dict[str, Any]) -> bool:
             """Prompt user to confirm each individual change."""
-            logger.info(
-                "\n--- Proposed Change ---\nComponent: %s\nOrigin: %s\nOriginal: %s\nConverted to: %s",
-                change_info["component"],
-                change_info["origin"],
-                change_info["original"],
-                change_info["converted"],
+            # Use typer.echo instead of logging to avoid mixing with log output
+            typer.echo(
+                f"\n--- Proposed Change ---\n"
+                f"Component: {change_info['component']}\n"
+                f"Origin: {change_info['origin']}\n"
+                f"Original: {change_info['original']}\n"
+                f"Converted to: {change_info['converted']}"
             )
             return typer.confirm("Apply this change?", err=True, default=True)
 
