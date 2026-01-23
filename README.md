@@ -41,7 +41,7 @@ For more advanced usage, see the sections below.
 
 1. **`generate-sbom-csv`** - Generate a CSV report (SBOM) of third-party dependencies
 2. **`generate-overrides`** - Interactively generate override configuration files
-3. **`clean-spdx-id`** - Convert long license descriptions to valid SPDX identifiers using AI
+3. **`clean-spdx-id`** - Convert long license descriptions to valid SPDX license expressions using AI
 
 Run `dd-license-attribution --help` to see all available commands.
 
@@ -207,7 +207,7 @@ dd-license-attribution generate-sbom-csv --override-spec .ddla-overrides https:/
 
 #### Cleaning License Identifiers with AI
 
-Sometimes the license information extracted by automated tools contains long license text instead of concise SPDX identifiers. For example, instead of "BSD-3-Clause", you might see the entire BSD license text. The `clean-spdx-id` command uses Large Language Models (LLMs) to intelligently convert these long descriptions into proper SPDX identifiers.
+Sometimes the license information extracted by automated tools contains long license text instead of concise SPDX license expressions. For example, instead of "BSD-3-Clause", you might see the entire BSD license text. The `clean-spdx-id` command uses Large Language Models (LLMs) to intelligently convert these long descriptions into proper SPDX license expressions, including composite licenses (e.g., "MIT OR Apache-2.0").
 
 **Prerequisites:**
 - An API key for OpenAI or Anthropic Claude
@@ -286,9 +286,9 @@ cat LICENSE-cleaned.csv
 ```
 
 **When to Use:**
-- When you see long license text instead of SPDX identifiers (e.g., full MIT or BSD license text)
+- When you see long license text instead of SPDX license expressions (e.g., full MIT or BSD license text)
 - After using `--deep-scanning` which may extract full license texts
-- To standardize license identifiers across your SBOM
+- To standardize license expressions across your SBOM (including composite licenses like "MIT OR Apache-2.0")
 
 **Note:** The AI-based cleaning requires API access to OpenAI or Anthropic and may incur costs based on your usage. Review the changes in interactive mode before accepting them to ensure accuracy.
 
@@ -330,7 +330,7 @@ dd-license-attribution generate-sbom-csv --override-spec .ddla-overrides https:/
 
 #### Cleaning License Identifiers
 ```bash
-# Clean up long license descriptions and convert to SPDX identifiers
+# Clean up long license descriptions and convert to SPDX license expressions
 export OPENAI_API_KEY=your_key
 dd-license-attribution clean-spdx-id LICENSE-3rdparty.csv LICENSE-cleaned.csv
 ```

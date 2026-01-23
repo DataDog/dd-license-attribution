@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - Support for GitHub renamed/transferred repositories
 - Support for Yarn package manager in npm collection
 - New `--yarn-subdir` CLI option for specifying subdirectories with additional `yarn.lock` files in monorepos
-- New `clean-spdx-id` CLI command to convert long license descriptions to valid SPDX identifiers using LLMs (OpenAI, Anthropic)
+- New `clean-spdx-id` CLI command to convert long license descriptions to valid SPDX license expressions using LLMs (OpenAI, Anthropic), including support for composite licenses (e.g., "MIT OR Apache-2.0")
 
 ### Changed
 - PyPI collection strategy now performs case-insensitive key matching for project_urls dictionary to better handle different key capitalizations from PyPI metadata

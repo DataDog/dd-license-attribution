@@ -53,7 +53,7 @@ class TestOpenAIClient:
 
     @patch("dd_license_attribution.license_cleaner.llm_client.openai.OpenAI")
     def test_convert_to_spdx_success(self, mock_openai_class: Mock) -> None:
-        """Test successful conversion of license text to SPDX identifier."""
+        """Test successful conversion of license text to SPDX license expression."""
         mock_client = Mock()
         mock_openai_class.return_value = mock_client
 
@@ -256,6 +256,54 @@ class TestOpenAIClient:
 
         mock_client.chat.completions.create.assert_called_once()
 
+    @patch("dd_license_attribution.license_cleaner.llm_client.openai.OpenAI")
+    def test_convert_to_spdx_composite_license_expression(
+        self, mock_openai_class: Mock
+    ) -> None:
+        """Test successful conversion to composite SPDX license expression."""
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_message = Mock()
+        mock_message.content = "MIT OR Apache-2.0"
+        mock_choice.message = mock_message
+        mock_response.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = mock_response
+
+        client = OpenAIClient(api_key=self.api_key)
+        license_text = "Dual licensed under MIT or Apache 2.0"
+
+        result = client.convert_to_spdx(license_text)
+
+        assert result == "MIT OR Apache-2.0"
+        mock_client.chat.completions.create.assert_called_once()
+
+    @patch("dd_license_attribution.license_cleaner.llm_client.openai.OpenAI")
+    def test_convert_to_spdx_license_with_exception(
+        self, mock_openai_class: Mock
+    ) -> None:
+        """Test successful conversion to SPDX license expression with exception."""
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+
+        mock_response = Mock()
+        mock_choice = Mock()
+        mock_message = Mock()
+        mock_message.content = "GPL-2.0-only WITH Classpath-exception-2.0"
+        mock_choice.message = mock_message
+        mock_response.choices = [mock_choice]
+        mock_client.chat.completions.create.return_value = mock_response
+
+        client = OpenAIClient(api_key=self.api_key)
+        license_text = "GPL 2.0 with Classpath exception"
+
+        result = client.convert_to_spdx(license_text)
+
+        assert result == "GPL-2.0-only WITH Classpath-exception-2.0"
+        mock_client.chat.completions.create.assert_called_once()
+
 
 class TestAnthropicClient:
     """Test Anthropic client for license conversion."""
@@ -293,7 +341,7 @@ class TestAnthropicClient:
 
     @patch("dd_license_attribution.license_cleaner.llm_client.anthropic.Anthropic")
     def test_convert_to_spdx_success(self, mock_anthropic_class: Mock) -> None:
-        """Test successful conversion of license text to SPDX identifier."""
+        """Test successful conversion of license text to SPDX license expression."""
         mock_client = Mock()
         mock_anthropic_class.return_value = mock_client
 
@@ -468,6 +516,50 @@ class TestAnthropicClient:
         result = client.convert_to_spdx(license_text)
         assert result == "UNKNOWN"
 
+        mock_client.messages.create.assert_called_once()
+
+    @patch("dd_license_attribution.license_cleaner.llm_client.anthropic.Anthropic")
+    def test_convert_to_spdx_composite_license_expression(
+        self, mock_anthropic_class: Mock
+    ) -> None:
+        """Test successful conversion to composite SPDX license expression."""
+        mock_client = Mock()
+        mock_anthropic_class.return_value = mock_client
+
+        mock_response = Mock()
+        mock_content = Mock()
+        mock_content.text = "MIT OR Apache-2.0"
+        mock_response.content = [mock_content]
+        mock_client.messages.create.return_value = mock_response
+
+        client = AnthropicClient(api_key=self.api_key)
+        license_text = "Dual licensed under MIT or Apache 2.0"
+
+        result = client.convert_to_spdx(license_text)
+
+        assert result == "MIT OR Apache-2.0"
+        mock_client.messages.create.assert_called_once()
+
+    @patch("dd_license_attribution.license_cleaner.llm_client.anthropic.Anthropic")
+    def test_convert_to_spdx_license_with_exception(
+        self, mock_anthropic_class: Mock
+    ) -> None:
+        """Test successful conversion to SPDX license expression with exception."""
+        mock_client = Mock()
+        mock_anthropic_class.return_value = mock_client
+
+        mock_response = Mock()
+        mock_content = Mock()
+        mock_content.text = "GPL-2.0-only WITH Classpath-exception-2.0"
+        mock_response.content = [mock_content]
+        mock_client.messages.create.return_value = mock_response
+
+        client = AnthropicClient(api_key=self.api_key)
+        license_text = "GPL 2.0 with Classpath exception"
+
+        result = client.convert_to_spdx(license_text)
+
+        assert result == "GPL-2.0-only WITH Classpath-exception-2.0"
         mock_client.messages.create.assert_called_once()
 
 

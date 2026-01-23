@@ -5,7 +5,7 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2026-present Datadog, Inc.
 
-# SPDX license cleaner that converts long license descriptions to SPDX identifiers
+# SPDX license cleaner that converts long license descriptions to SPDX license expressions
 
 import logging
 from typing import Any, Callable
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 class SPDXCleaner:
-    """Cleans license descriptions by converting them to SPDX identifiers."""
+    """Cleans license descriptions by converting them to SPDX license expressions."""
 
     def __init__(self, llm_client: LLMClient) -> None:
         """

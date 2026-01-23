@@ -5,7 +5,7 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2026-present Datadog, Inc.
 
-# LLM client interface for converting license text to SPDX identifiers
+# LLM client interface for converting license text to SPDX license expressions
 
 import logging
 from typing import Protocol
@@ -17,17 +17,17 @@ logger = logging.getLogger(__name__)
 
 
 class LLMClient(Protocol):
-    """Protocol for LLM clients that can convert license text to SPDX identifiers."""
+    """Protocol for LLM clients that can convert license text to SPDX license expressions."""
 
     def convert_to_spdx(self, license_text: str) -> str:
         """
-        Convert a long license description to a valid SPDX identifier.
+        Convert a long license description to a valid SPDX license expression.
 
         Args:
             license_text: The long license description text
 
         Returns:
-            The SPDX identifier (e.g., "BSD-3-Clause", "MIT", "Apache-2.0")
+            The SPDX license expression (e.g., "BSD-3-Clause", "MIT OR Apache-2.0", "GPL-2.0-only WITH Classpath-exception-2.0")
         """
         ...
 
@@ -48,7 +48,7 @@ class OpenAIClient:
         logger.debug("Initialized OpenAI client with model: %s", model)
 
     def convert_to_spdx(self, license_text: str) -> str:
-        """Convert license text to SPDX identifier using OpenAI."""
+        """Convert license text to SPDX license expression using OpenAI."""
         prompt = self._build_prompt(license_text)
 
         logger.debug("Requesting SPDX conversion from OpenAI")
@@ -58,7 +58,7 @@ class OpenAIClient:
                 messages=[
                     {
                         "role": "system",
-                        "content": "You are a license identification expert. Your task is to identify the SPDX license identifier from license text. Respond ONLY with the SPDX identifier, nothing else. If you cannot identify the license, respond with 'UNKNOWN'.",
+                        "content": "You are a license identification expert. Your task is to identify the SPDX license expression from license text. Respond ONLY with the SPDX license expression, nothing else. Use operators like OR, AND, WITH for composite licenses (e.g., 'MIT OR Apache-2.0', 'GPL-2.0-only WITH Classpath-exception-2.0'). If you cannot identify the license, respond with 'UNKNOWN'.",
                     },
                     {"role": "user", "content": prompt},
                 ],
@@ -66,11 +66,13 @@ class OpenAIClient:
                 max_tokens=50,
             )
 
-            spdx_id = response.choices[0].message.content
-            if spdx_id:
-                spdx_id = spdx_id.strip()
-                logger.debug("OpenAI returned SPDX identifier: %s", spdx_id)
-                return spdx_id
+            spdx_expression = response.choices[0].message.content
+            if spdx_expression:
+                spdx_expression = spdx_expression.strip()
+                logger.debug(
+                    "OpenAI returned SPDX license expression: %s", spdx_expression
+                )
+                return spdx_expression
             else:
                 logger.warning("OpenAI returned empty response")
                 return "UNKNOWN"
@@ -129,13 +131,14 @@ class OpenAIClient:
 
     def _build_prompt(self, license_text: str) -> str:
         """Build the prompt for the LLM."""
-        return f"""Identify the SPDX license identifier for the following license text.
-Respond with ONLY the SPDX identifier (e.g., "BSD-3-Clause", "MIT", "Apache-2.0").
+        return f"""Identify the SPDX license expression for the following license text.
+Respond with ONLY the SPDX license expression (e.g., "BSD-3-Clause", "MIT OR Apache-2.0", "GPL-2.0-only WITH Classpath-exception-2.0").
+Use operators like OR, AND, WITH for composite licenses.
 
 License text:
 {license_text}
 
-SPDX identifier:"""
+SPDX license expression:"""
 
 
 class AnthropicClient:
@@ -154,7 +157,7 @@ class AnthropicClient:
         logger.debug("Initialized Anthropic client with model: %s", model)
 
     def convert_to_spdx(self, license_text: str) -> str:
-        """Convert license text to SPDX identifier using Anthropic Claude."""
+        """Convert license text to SPDX license expression using Anthropic Claude."""
         prompt = self._build_prompt(license_text)
 
         logger.debug("Requesting SPDX conversion from Anthropic")
@@ -163,21 +166,23 @@ class AnthropicClient:
                 model=self.model,
                 max_tokens=50,
                 temperature=0,
-                system="You are a license identification expert. Your task is to identify the SPDX license identifier from license text. Respond ONLY with the SPDX identifier, nothing else. If you cannot identify the license, respond with 'UNKNOWN'.",
+                system="You are a license identification expert. Your task is to identify the SPDX license expression from license text. Respond ONLY with the SPDX license expression, nothing else. Use operators like OR, AND, WITH for composite licenses (e.g., 'MIT OR Apache-2.0', 'GPL-2.0-only WITH Classpath-exception-2.0'). If you cannot identify the license, respond with 'UNKNOWN'.",
                 messages=[{"role": "user", "content": prompt}],
             )
 
             # Get text from response (only TextBlock has .text attribute)
             content_block = response.content[0]
             if hasattr(content_block, "text"):
-                spdx_id = content_block.text
+                spdx_expression = content_block.text
             else:
-                spdx_id = None
+                spdx_expression = None
 
-            if spdx_id:
-                spdx_id = spdx_id.strip()
-                logger.debug("Anthropic returned SPDX identifier: %s", spdx_id)
-                return spdx_id
+            if spdx_expression:
+                spdx_expression = spdx_expression.strip()
+                logger.debug(
+                    "Anthropic returned SPDX license expression: %s", spdx_expression
+                )
+                return spdx_expression
             else:
                 logger.warning("Anthropic returned empty response")
                 return "UNKNOWN"
@@ -239,13 +244,14 @@ class AnthropicClient:
 
     def _build_prompt(self, license_text: str) -> str:
         """Build the prompt for the LLM."""
-        return f"""Identify the SPDX license identifier for the following license text.
-Respond with ONLY the SPDX identifier (e.g., "BSD-3-Clause", "MIT", "Apache-2.0").
+        return f"""Identify the SPDX license expression for the following license text.
+Respond with ONLY the SPDX license expression (e.g., "BSD-3-Clause", "MIT OR Apache-2.0", "GPL-2.0-only WITH Classpath-exception-2.0").
+Use operators like OR, AND, WITH for composite licenses.
 
 License text:
 {license_text}
 
-SPDX identifier:"""
+SPDX license expression:"""
 
 
 def create_llm_client(
