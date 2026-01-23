@@ -202,6 +202,33 @@ class TestOpenAIClient:
         mock_client.chat.completions.create.assert_called_once()
 
     @patch("dd_license_attribution.license_cleaner.llm_client.openai.OpenAI")
+    def test_convert_to_spdx_not_found_error(self, mock_openai_class: Mock) -> None:
+        """Test handling of NotFoundError for non-existent models."""
+        import openai
+
+        mock_client = Mock()
+        mock_openai_class.return_value = mock_client
+        # OpenAI returns 404 NotFoundError for invalid/non-existent models
+        mock_client.chat.completions.create.side_effect = openai.NotFoundError(
+            message="The model `invalid-model-xyz` does not exist or you do not have access to it.",
+            response=Mock(status_code=404),
+            body={
+                "message": "The model `invalid-model-xyz` does not exist or you do not have access to it.",
+                "type": "invalid_request_error",
+                "param": None,
+                "code": "model_not_found",
+            },
+        )
+
+        client = OpenAIClient(api_key=self.api_key)
+        license_text = "Some license text"
+
+        with pytest.raises(openai.NotFoundError):
+            client.convert_to_spdx(license_text)
+
+        mock_client.chat.completions.create.assert_called_once()
+
+    @patch("dd_license_attribution.license_cleaner.llm_client.openai.OpenAI")
     def test_convert_to_spdx_context_length_exceeded_returns_unknown(
         self, mock_openai_class: Mock
     ) -> None:
@@ -213,12 +240,10 @@ class TestOpenAIClient:
 
         # Create a context length exceeded error (BadRequestError)
         error_body = {
-            "error": {
-                "message": "This model's maximum context length is 8192 tokens. However, your messages resulted in 9306 tokens.",
-                "type": "invalid_request_error",
-                "param": "messages",
-                "code": "context_length_exceeded",
-            }
+            "message": "This model's maximum context length is 8192 tokens. However, your messages resulted in 9306 tokens.",
+            "type": "invalid_request_error",
+            "param": "messages",
+            "code": "context_length_exceeded",
         }
         mock_client.chat.completions.create.side_effect = openai.BadRequestError(
             message="Bad Request",
@@ -482,6 +507,34 @@ class TestAnthropicClient:
         license_text = "Some license text"
 
         with pytest.raises(anthropic.APIConnectionError):
+            client.convert_to_spdx(license_text)
+
+        mock_client.messages.create.assert_called_once()
+
+    @patch("dd_license_attribution.license_cleaner.llm_client.anthropic.Anthropic")
+    def test_convert_to_spdx_not_found_error(self, mock_anthropic_class: Mock) -> None:
+        """Test handling of NotFoundError for non-existent models."""
+        import anthropic
+
+        mock_client = Mock()
+        mock_anthropic_class.return_value = mock_client
+        # Anthropic returns 404 NotFoundError for invalid/non-existent models
+        mock_client.messages.create.side_effect = anthropic.NotFoundError(
+            message="model: invalid-model-xyz",
+            response=Mock(status_code=404),
+            body={
+                "type": "error",
+                "error": {
+                    "type": "not_found_error",
+                    "message": "model: invalid-model-xyz",
+                },
+            },
+        )
+
+        client = AnthropicClient(api_key=self.api_key)
+        license_text = "Some license text"
+
+        with pytest.raises(anthropic.NotFoundError):
             client.convert_to_spdx(license_text)
 
         mock_client.messages.create.assert_called_once()

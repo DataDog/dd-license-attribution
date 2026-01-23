@@ -80,15 +80,12 @@ class OpenAIClient:
         except openai.BadRequestError as e:
             # Handle HTTP errors (non-200 status codes)
             # Special handling for context length exceeded errors
-            # Check multiple possible locations for the error code
             is_context_error = False
 
-            # Check if error code is in the exception body
+            # Check if error code is in the exception body (OpenAI error body is flat, not nested)
             if hasattr(e, "body") and isinstance(e.body, dict):
-                error_dict = e.body.get("error", {})
-                if isinstance(error_dict, dict):
-                    if error_dict.get("code") == "context_length_exceeded":
-                        is_context_error = True
+                if e.body.get("code") == "context_length_exceeded":
+                    is_context_error = True
 
             # Also check the error message for context length indicators
             if not is_context_error and hasattr(e, "message"):
