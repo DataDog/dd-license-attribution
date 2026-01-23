@@ -85,7 +85,7 @@
 "uritools","https://github.com/tkem/uritools","['MIT']","['Thomas Kemmer']"
 "urllib3","https://github.com/urllib3/urllib3","['MIT']","['Andrey Petrov and contributors']"
 "urlpy","https://github.com/aboutcode-org/urlpy","['MIT']","['nexB Inc (based on code from Dan Lecocq)']"
-"wcwidth","https://github.com/jquast/wcwidth","['MIT']","['Jeff Quast']"
+"wcwidth","https://github.com/jquast/wcwidth","['HPND-Markus-Kuhn', 'MIT']","['Jeff Quast']"
 "webencodings","https://github.com/gsnedders/python-webencodings","['BSD']","['Geoffrey Sneddon']"
 "xmltodict","https://github.com/martinblech/xmltodict","['MIT']","['Martin Blech']"
 "zipp","https://github.com/jaraco/zipp","['MIT']","['Jason R. Coombs']"
