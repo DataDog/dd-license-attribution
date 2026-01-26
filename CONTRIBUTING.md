@@ -96,6 +96,19 @@ Contract tests are available to validate assumptions of external tools/libraries
 These tests do not run by default. To execute them, run `pytest tests/contract`.
 CI runs the contract tests before attempting to run the unit tests.
 
+**Note on LLM API contract tests**: Some contract tests for OpenAI and Anthropic APIs require valid API keys and will be skipped if the keys are not available. To run these tests:
+
+```bash
+# Set API keys as environment variables
+export OPENAI_API_KEY="your-openai-api-key"
+export ANTHROPIC_API_KEY="your-anthropic-api-key"
+
+# Run contract tests
+pipenv run pytest tests/contract/test_llm_apis.py -v
+```
+
+These tests make minimal API calls to keep costs low (using small `max_tokens` values and cost-effective models).
+
 ## Contributing to issues
 
 ### Contributing to reporting bugs
