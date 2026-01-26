@@ -34,7 +34,7 @@ dev = [
     "pytest-cov",
     "pytest-mock",
     "mypy",
-    "black==25.12.0",
+    "black==26.1.0",
     "isort",
     "mutmut",
     "types-pytz",
