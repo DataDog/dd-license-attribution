@@ -156,10 +156,10 @@ class SourceCodeManager(ArtifactManager):
 
         owner = parsed_url.owner
         repo = parsed_url.repo
-        status, result = self.github_client.repos[owner][repo].get()
+        status, api_result = self.github_client.repos[owner][repo].get()
 
-        if status == 301 and result and "url" in result:
-            redirect_url = result["url"]
+        if status == 301 and api_result and "url" in api_result:
+            redirect_url = api_result["url"]
             logger.debug("Repository has moved, following redirect: %s", redirect_url)
 
             # Check if the redirect is still to GitHub
@@ -170,11 +170,11 @@ class SourceCodeManager(ArtifactManager):
                 endpoint = self.github_client
                 for part in path_parts:
                     endpoint = endpoint[part]
-                status, result = endpoint.get()
+                status, api_result = endpoint.get()
 
-        if status == 200:
-            canonical_repo_url = result.get("html_url")
-            api_url = result.get("url")
+        if status == 200 and api_result:
+            canonical_repo_url = api_result.get("html_url")
+            api_url = api_result.get("url")
             logger.debug(
                 "Resolved canonical URLs - Repo URL: %s, API URL: %s",
                 canonical_repo_url,
