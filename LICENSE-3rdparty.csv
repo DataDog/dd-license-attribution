@@ -46,7 +46,7 @@
 "intbitset","https://github.com/inveniosoftware-contrib/intbitset","['LGPL-3.0-or-later']","['Invenio collaboration', 'maintained by Philippe Ombredanne and AboutCode.org']"
 "jaraco.functools","https://github.com/jaraco/jaraco.functools","['MIT']","['Jason R. Coombs']"
 "javaproperties","https://github.com/jwodder/javaproperties","['MIT']","['John Thorvald Wodder II']"
-"jiter","https://github.com/pydantic/jiter","['MIT']","[]"
+"jiter","https://github.com/pydantic/jiter","['MIT']","['Samuel Colvin']"
 "jsonstreams","https://github.com/dcbaker/jsonstreams","['MIT']","['Dylan Baker']"
 "license-expression","https://github.com/aboutcode-org/license-expression","['Apache-2.0']","['nexB. Inc. and others']"
 "lxml","https://github.com/lxml/lxml","['BSD-3-Clause']","['lxml dev team']"
