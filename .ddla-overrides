@@ -237,5 +237,21 @@
         "QuantCo Inc"
       ]
     }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "component": "jiter"
+    },
+    "replacement": {
+      "name": "jiter",
+      "origin": "https://github.com/pydantic/jiter",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "Samuel Colvin"
+      ]
+    }
   }
 ]
