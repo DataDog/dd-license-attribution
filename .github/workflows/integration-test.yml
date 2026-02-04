@@ -49,7 +49,18 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          dd-license-attribution generate-sbom-csv --override-spec=.ddla-overrides https://github.com/DataDog/dd-license-attribution > ddla-output.txt
+          # For PRs: Use mirror configuration to test against the PR branch
+          # For main: Test against main branch directly (no mirror needed)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BRANCH_NAME="${{ github.head_ref }}"
+            echo "Testing PR branch: ${BRANCH_NAME}"
+            echo "[{\"original_url\": \"https://github.com/DataDog/dd-license-attribution\", \"mirror_url\": \"https://github.com/DataDog/dd-license-attribution\", \"ref_mapping\": {\"branch:main\": \"branch:${BRANCH_NAME}\"}}]" > mirrors.json
+            dd-license-attribution generate-sbom-csv --override-spec=.ddla-overrides --use-mirrors=mirrors.json https://github.com/DataDog/dd-license-attribution > ddla-output.txt
+          else
+            echo "Testing main branch"
+            dd-license-attribution generate-sbom-csv --override-spec=.ddla-overrides https://github.com/DataDog/dd-license-attribution > ddla-output.txt
+          fi
+          
           if ! cmp -s LICENSE-3rdparty.csv ddla-output.txt; then
             echo "Error: LICENSE-3rdparty.csv differs from ddla-output.txt"
             echo "Diff between files:"
