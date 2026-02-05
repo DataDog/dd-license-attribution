@@ -27,8 +27,7 @@ def test_get_licenses_returns_expected_structure() -> None:
     """
     # Create a temporary file with MIT license text
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write(
-            """
+        f.write("""
 MIT License
 
 Copyright (c) 2024 Test Author
@@ -50,8 +49,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-"""
-        )
+""")
         temp_file_path = f.name
 
     try:
@@ -110,13 +108,11 @@ def test_get_copyrights_returns_expected_structure() -> None:
     """
     # Create a temporary file with copyright text
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write(
-            """
+        f.write("""
 Copyright (c) 2024 Test Company
 
 This product includes software developed by Test Author.
-"""
-        )
+""")
         temp_file_path = f.name
 
     try:
@@ -229,13 +225,11 @@ def test_scancode_handles_combined_licenses() -> None:
     """
     # Create a file with dual-licensed text
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
-        f.write(
-            """
+        f.write("""
 Licensed under MIT License
 
 Also licensed under Apache License 2.0
-"""
-        )
+""")
         temp_file_path = f.name
 
     try:

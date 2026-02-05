@@ -83,6 +83,7 @@ def test_github_repository_collection_strategy_raise_exception_if_error_calling_
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
     )
+    source_code_manager_mock.get_repository_info.return_value = (404, "Not Found")
 
     github_parse_mock = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
@@ -112,7 +113,9 @@ def test_github_repository_collection_strategy_raise_exception_if_error_calling_
 
     # parse_git_url is called with the canonical URL returned by get_canonical_urls
     github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
-    repo_info_mock.get.assert_called_once_with()
+    source_code_manager_mock.get_repository_info.assert_called_once_with(
+        "test_owner", "test_repo"
+    )
 
 
 def test_github_repository_collection_strategy_returns_uses_repo_owner_when_no_copyright_set(
@@ -129,6 +132,10 @@ def test_github_repository_collection_strategy_returns_uses_repo_owner_when_no_c
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
+    )
+    source_code_manager_mock.get_repository_info.return_value = (
+        200,
+        {"owner": {"login": "test_owner"}, "license": {"spdx_id": "test_license"}},
     )
 
     github_parse_mock = mocker.patch(
@@ -168,7 +175,9 @@ def test_github_repository_collection_strategy_returns_uses_repo_owner_when_no_c
 
     # parse_git_url is called with the canonical URL returned by get_canonical_urls
     github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
-    repo_info_mock.get.assert_called_once_with()
+    source_code_manager_mock.get_repository_info.assert_called_once_with(
+        "test_owner", "test_repo"
+    )
 
 
 def test_github_repository_collection_strategy_do_not_override_license_on_noassertion_result(
@@ -185,6 +194,10 @@ def test_github_repository_collection_strategy_do_not_override_license_on_noasse
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
+    )
+    source_code_manager_mock.get_repository_info.return_value = (
+        200,
+        {"owner": {"login": "test_owner"}, "license": {"spdx_id": "NOASSERTION"}},
     )
 
     github_parse_mock = mocker.patch(
@@ -248,7 +261,7 @@ def test_github_repository_collection_strategy_do_not_override_license_on_noasse
         ]
     )
 
-    assert repo_info_mock.get.call_count == 2
+    assert source_code_manager_mock.get_repository_info.call_count == 2
 
 
 def test_github_repository_collection_strategy_do_not_override_license_if_previously_set_and_updating_copyright(
@@ -265,6 +278,10 @@ def test_github_repository_collection_strategy_do_not_override_license_if_previo
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
+    )
+    source_code_manager_mock.get_repository_info.return_value = (
+        200,
+        {"owner": {"login": "test_owner"}, "license": {"spdx_id": "test_license"}},
     )
 
     github_parse_mock = mocker.patch(
@@ -304,7 +321,9 @@ def test_github_repository_collection_strategy_do_not_override_license_if_previo
 
     # parse_git_url is called with the canonical URL returned by get_canonical_urls
     github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
-    repo_info_mock.get.assert_called_once_with()
+    source_code_manager_mock.get_repository_info.assert_called_once_with(
+        "test_owner", "test_repo"
+    )
 
 
 def test_github_repository_collection_strategy_do_not_override_copyright_if_previously_set_and_updating_license(
@@ -321,6 +340,10 @@ def test_github_repository_collection_strategy_do_not_override_copyright_if_prev
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
+    )
+    source_code_manager_mock.get_repository_info.return_value = (
+        200,
+        {"owner": {"login": "test_owner"}, "license": {"spdx_id": "test_license"}},
     )
 
     github_parse_mock = mocker.patch(
@@ -360,7 +383,9 @@ def test_github_repository_collection_strategy_do_not_override_copyright_if_prev
 
     # parse_git_url is called with the canonical URL returned by get_canonical_urls
     github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
-    repo_info_mock.get.assert_called_once_with()
+    source_code_manager_mock.get_repository_info.assert_called_once_with(
+        "test_owner", "test_repo"
+    )
 
 
 def test_github_repository_collection_strategy_follows_redirects(
@@ -386,6 +411,13 @@ def test_github_repository_collection_strategy_follows_redirects(
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/aboutcode-org/pkginfo",  # Canonical URL after redirect
         "https://api.github.com/repos/aboutcode-org/pkginfo",
+    )
+    source_code_manager_mock.get_repository_info.return_value = (
+        200,
+        {
+            "owner": {"login": "aboutcode-org"},
+            "license": {"spdx_id": "MIT"},
+        },
     )
 
     github_parse_mock = mocker.patch(
@@ -427,7 +459,9 @@ def test_github_repository_collection_strategy_follows_redirects(
     github_parse_mock.assert_called_once_with(
         "https://github.com/aboutcode-org/pkginfo"
     )
-    new_repo_mock.get.assert_called_once_with()
+    source_code_manager_mock.get_repository_info.assert_called_once_with(
+        "aboutcode-org", "pkginfo"
+    )
 
 
 def test_github_repository_collection_strategy_raises_on_unparseable_redirect(
@@ -470,3 +504,68 @@ def test_github_repository_collection_strategy_raises_on_unparseable_redirect(
     assert updated_metadata == initial_metadata
     # parse_git_url is not called when api_url is None (early return)
     github_parse_mock.assert_not_called()
+
+
+def test_github_repository_collection_strategy_uses_source_code_manager_not_direct_api(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that GitHubRepositoryMetadataCollectionStrategy uses source_code_manager.get_repository_info instead of direct GitHub API calls."""
+    # Mock GitHub client (should not be called directly)
+    github_client_mock = mocker.Mock(spec_set=GitHub)
+
+    # Mock source_code_manager
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/DataDog/dd-license-attribution",
+        "https://api.github.com/repos/DataDog/dd-license-attribution",
+    )
+    # Mock get_repository_info to return repository information
+    source_code_manager_mock.get_repository_info.return_value = (
+        200,
+        {
+            "html_url": "https://github.com/DataDog/dd-license-attribution",
+            "url": "https://api.github.com/repos/DataDog/dd-license-attribution",
+            "license": {"spdx_id": "Apache-2.0"},
+            "owner": {"login": "DataDog"},
+        },
+    )
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(
+            True, "github", "DataDog", "dd-license-attribution"
+        ),
+    )
+
+    strategy = GitHubRepositoryMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name=None,
+            version=None,
+            origin="https://github.com/DataDog/dd-license-attribution",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    # Verify metadata was augmented correctly
+    assert len(updated_metadata) == 1
+    assert updated_metadata[0].license == ["Apache-2.0"]
+    assert updated_metadata[0].copyright == ["DataDog"]
+    assert (
+        updated_metadata[0].origin
+        == "https://github.com/DataDog/dd-license-attribution"
+    )
+
+    # CRITICAL: Verify that source_code_manager.get_repository_info was called
+    # This confirms we're using the cached repository info instead of making direct API calls
+    source_code_manager_mock.get_repository_info.assert_called_once_with(
+        "DataDog", "dd-license-attribution"
+    )

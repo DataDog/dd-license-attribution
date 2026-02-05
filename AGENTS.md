@@ -15,6 +15,8 @@ All code changes must comply with these non-negotiable requirements:
 
 ## 📄 File Headers and Licensing
 
+**⚠️ IMPORTANT NOTE**: When creating new files, always use the **current calendar year** in the copyright line (e.g., 2026 for files created in 2026). Do NOT use outdated years like 2025.
+
 ### Required File Header Format
 
 **MANDATORY**: Every Python source file (`.py`) and test file must include the following header at the very top:
@@ -25,8 +27,10 @@ All code changes must comply with these non-negotiable requirements:
 # Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
 #
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
-# Copyright 2025-present Datadog, Inc.
+# Copyright 2026-present Datadog, Inc.
 ```
+
+**Note**: Replace `2026` with the current year when creating the file.
 
 ### Header Components
 
@@ -42,7 +46,8 @@ All code changes must comply with these non-negotiable requirements:
 
 3. **Copyright Notice**:
    - Company: Datadog (https://www.datadoghq.com/)
-   - Year: `YYYY-present` where YYYY is the year the file was first created (e.g., `2025-present` for files created in 2025)
+   - Year: `YYYY-present` where YYYY is the **current year** when the file is first created
+   - **IMPORTANT**: Use the current calendar year (e.g., `2026-present` for files created in 2026, `2027-present` for files created in 2027, etc.)
 
 ### When to Include Headers
 
@@ -59,13 +64,13 @@ All code changes must comply with these non-negotiable requirements:
 ### Examples
 
 ```python
-# ✅ CORRECT: Complete header with SPDX identifier
+# ✅ CORRECT: Complete header with SPDX identifier (use current year - 2026)
 # SPDX-License-Identifier: Apache-2.0
 #
 # Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
 #
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
-# Copyright 2025-present Datadog, Inc.
+# Copyright 2026-present Datadog, Inc.
 
 import logging
 from typing import Any
@@ -75,7 +80,7 @@ from typing import Any
 # Unless explicitly stated otherwise all files in this repository are licensed under the Apache License Version 2.0.
 #
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
-# Copyright 2025-present Datadog, Inc.
+# Copyright 2026-present Datadog, Inc.
 
 import logging
 # ... rest of file ...
@@ -85,7 +90,7 @@ import logging
 # SPDX-License-Identifier: Apache-2.0
 #
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
-# Copyright 2025-present Datadog, Inc.
+# Copyright 2026-present Datadog, Inc.
 ```
 
 ## 📋 Pre-Commit Validation Checklist

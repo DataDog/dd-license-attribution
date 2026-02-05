@@ -55,9 +55,11 @@ class GitHubRepositoryMetadataCollectionStrategy(MetadataCollectionStrategy):
 
             if not package.copyright or not package.license:
                 # get the repository information
-                status, repository = self.client.repos[owner][repo].get()
+                status, repository = self.source_code_manager.get_repository_info(
+                    owner, repo
+                )
 
-                if status == 200:
+                if status == 200 and repository:
                     if not package.copyright:
                         package.copyright = [repository["owner"]["login"]]
                     if repository["license"] and not package.license:
