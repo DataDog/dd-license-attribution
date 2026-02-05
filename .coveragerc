@@ -1,12 +1,26 @@
 [report]
+omit =
+    src/dd_license_attribution/cli/*
+    src/dd_license_attribution/config/*
+    src/dd_license_attribution/adaptors/*
 exclude_lines =
     # Have to re-enable the standard pragma
     pragma: no cover
 
+    # Don't complain about abstract methods, they aren't run
+    @abstractmethod
+
     # Don't complain if tests don't hit defensive assertion code:
+    raise AssertionError
     raise NotImplementedError
+
+    # Don't complain if non-runnable code isn't run:
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
 
 [run]
 omit =
     src/dd_license_attribution/cli/*
     src/dd_license_attribution/config/*
+    src/dd_license_attribution/adaptors/*
+

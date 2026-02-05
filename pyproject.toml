@@ -96,4 +96,4 @@ ignore_missing_imports = true
 profile = "black"
 
 [tool.black]
-required-version = "25.12.0"
+required-version = "26.1.0"
