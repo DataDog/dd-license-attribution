@@ -187,7 +187,9 @@ class SourceCodeManager(ArtifactManager):
         """Get repository information from GitHub API with caching.
 
         This method fetches repository information from the GitHub API and caches the result.
-        It handles redirects (301) for renamed or transferred repositories.
+        It automatically follows redirects (301) for renamed or transferred repositories when
+        the redirect target is still a GitHub URL. If a redirect points to a non-GitHub URL,
+        the 301 status is returned without following.
 
         Args:
             owner: The repository owner
@@ -195,12 +197,15 @@ class SourceCodeManager(ArtifactManager):
 
         Returns:
             A tuple of (status_code, repository_dict) where:
-            - status_code: The HTTP status code from the GitHub API (200, 301, 404, etc.)
+            - status_code: The HTTP status code - typically 200 (success), 404 (not found),
+              403 (forbidden), etc. A 301 will only be returned if the redirect is to a
+              non-GitHub URL (rare edge case).
             - repository_dict: The repository information dict on success, None on error
 
         Examples:
-            (200, {"html_url": "...", "license": {...}, ...})
-            (404, None)
+            (200, {"html_url": "...", "license": {...}, ...})  # Normal case
+            (404, None)  # Repository not found
+            (301, {"url": "https://example.com/..."})  # Redirect to non-GitHub URL (rare)
         """
         cache_key = f"{owner}/{repo}"
 
