@@ -1345,3 +1345,216 @@ def test_get_canonical_urls_caches_different_urls_separately(
     # Verify initialization mocks (used during SourceCodeManager.__init__)
     path_exists_mock.assert_called_once_with("cache_dir")
     list_dir_mock.assert_called_once_with("cache_dir")
+
+
+# Tests for error handling and edge cases
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
+def test_extract_ref_with_commit_hash(run_command_mock: Mock) -> None:
+    """Test extract_ref with commit hash fallback when branch/tag validation fails."""
+    from dd_license_attribution.artifact_management.source_code_manager import (
+        extract_ref,
+    )
+
+    # extract_ref tries progressively longer prefixes:
+    # 1. "abc123def456" - fails (returns non-zero)
+    # 2. "abc123def456/path" - fails
+    # 3. "abc123def456/path/to" - fails
+    # 4. "abc123def456/path/to/file" - fails
+    # Then tries hash fallback:
+    # 5. "abc123def456" as hash - succeeds (returns 0)
+    run_command_mock.side_effect = [1, 1, 1, 1, 0]
+
+    ref = "abc123def456/path/to/file"
+    url = "https://github.com/owner/repo"
+
+    result = extract_ref(ref, url)
+
+    assert result == "abc123def456"
+    assert run_command_mock.call_count == 5
+    # Verify the hash check was called
+    run_command_mock.assert_any_call(f"git ls-remote {url} | grep -q abc123def456")
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
+def test_extract_ref_with_invalid_hash_returns_empty(run_command_mock: Mock) -> None:
+    """Test extract_ref returns empty string when hash validation also fails."""
+    from dd_license_attribution.artifact_management.source_code_manager import (
+        extract_ref,
+    )
+
+    # extract_ref tries progressively longer prefixes:
+    # 1. "invalid_ref" - fails (returns non-zero)
+    # 2. "invalid_ref/path" - fails
+    # Then tries hash fallback:
+    # 3. "invalid_ref" as hash - also fails (returns non-zero)
+    run_command_mock.side_effect = [1, 1, 1]
+
+    ref = "invalid_ref/path"
+    url = "https://github.com/owner/repo"
+
+    result = extract_ref(ref, url)
+
+    assert result == ""
+    assert run_command_mock.call_count == 3
+
+
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+def test_discover_default_branch_with_exception(
+    output_from_command_mock: Mock,
+) -> None:
+    """Test _discover_default_branch raises NonAccessibleRepository on git command failure."""
+    from dd_license_attribution.artifact_management.source_code_manager import (
+        NonAccessibleRepository,
+        SourceCodeManager,
+    )
+
+    output_from_command_mock.side_effect = Exception("git command failed")
+
+    github_client_mock = Mock()
+    source_code_manager = SourceCodeManager("cache_dir", github_client_mock, 86400)
+
+    url = "https://github.com/owner/repo"
+
+    with pytest.raises(NonAccessibleRepository) as exc_info:
+        source_code_manager._discover_default_branch(url)
+
+    assert "Could not discover default branch for" in str(exc_info.value)
+    assert url in str(exc_info.value)
+    output_from_command_mock.assert_called_once_with(
+        f"git ls-remote --symref {url} HEAD"
+    )
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_get_code_returns_none_when_api_url_is_none(
+    path_exists_mock: Mock,
+    list_dir_mock: Mock,
+    git_url_parse_mock: Mock,
+) -> None:
+    """Test get_code returns None when canonical URL resolution returns None for api_url."""
+    # Configure mocks
+    path_exists_mock.return_value = True
+    list_dir_mock.return_value = []
+
+    # First call: original URL parse (valid GitHub URL)
+    # Second call: in get_canonical_urls (valid GitHub URL)
+    # Third call: after get_canonical_urls returns (should not be reached)
+    parsed_url_original = GitUrlParseMock(
+        valid=True,
+        owner="test_owner",
+        repo="test_repo",
+        branch="",
+        path="",
+        path_raw="",
+    )
+    parsed_url_canonical = GitUrlParseMock(
+        valid=True,
+        owner="test_owner",
+        repo="test_repo",
+        branch="",
+        path="",
+        path_raw="",
+    )
+
+    git_url_parse_mock.side_effect = [
+        parsed_url_original,
+        parsed_url_canonical,
+    ]
+
+    # Mock GitHub client to return 404
+    github_client_mock = Mock()
+    repo_mock = Mock()
+    repo_mock.get.return_value = (404, {"message": "Not Found"})
+    owner_mock = Mock()
+    owner_mock.__getitem__ = Mock(return_value=repo_mock)
+    repos_mock = Mock()
+    repos_mock.__getitem__ = Mock(return_value=owner_mock)
+    github_client_mock.repos = repos_mock
+
+    source_code_manager = SourceCodeManager("cache_dir", github_client_mock, 86400)
+
+    request_url = "https://github.com/test_owner/test_repo"
+    code_ref = source_code_manager.get_code(request_url)
+
+    # Should return None because api_url is None (GitHub API returned 404)
+    assert code_ref is None
+    assert git_url_parse_mock.call_count == 2
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_get_code_returns_none_when_canonical_url_parse_invalid(
+    path_exists_mock: Mock,
+    list_dir_mock: Mock,
+    git_url_parse_mock: Mock,
+) -> None:
+    """Test get_code returns None when parsed canonical URL is invalid."""
+    # Configure mocks
+    path_exists_mock.return_value = True
+    list_dir_mock.return_value = []
+
+    # First call: original URL parse (valid GitHub URL)
+    # Second call: in get_canonical_urls (valid)
+    # Third call: parsing canonical URL (invalid - edge case)
+    parsed_url_original = GitUrlParseMock(
+        valid=True,
+        owner="test_owner",
+        repo="test_repo",
+        branch="",
+        path="",
+        path_raw="",
+    )
+    parsed_url_in_canonical = GitUrlParseMock(
+        valid=True,
+        owner="test_owner",
+        repo="test_repo",
+        branch="",
+        path="",
+        path_raw="",
+    )
+    parsed_url_after_canonical = GitUrlParseMock(
+        valid=False,  # Invalid after canonicalization (edge case)
+        owner="",
+        repo="",
+        branch="",
+        path="",
+        path_raw="",
+    )
+
+    git_url_parse_mock.side_effect = [
+        parsed_url_original,
+        parsed_url_in_canonical,
+        parsed_url_after_canonical,
+    ]
+
+    # Mock GitHub client to return valid response
+    github_client_mock = Mock()
+    repo_mock = Mock()
+    repo_mock.get.return_value = (
+        200,
+        {
+            "html_url": "https://some-invalid-url",  # Malformed URL that parses as invalid
+            "url": "https://api.github.com/repos/test_owner/test_repo",
+        },
+    )
+    owner_mock = Mock()
+    owner_mock.__getitem__ = Mock(return_value=repo_mock)
+    repos_mock = Mock()
+    repos_mock.__getitem__ = Mock(return_value=owner_mock)
+    github_client_mock.repos = repos_mock
+
+    source_code_manager = SourceCodeManager("cache_dir", github_client_mock, 86400)
+
+    request_url = "https://github.com/test_owner/test_repo"
+    code_ref = source_code_manager.get_code(request_url)
+
+    # Should return None because canonical URL parses as invalid
+    assert code_ref is None
+    assert git_url_parse_mock.call_count == 3

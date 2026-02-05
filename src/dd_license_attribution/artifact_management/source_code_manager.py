@@ -9,6 +9,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from typing import Any
 
 # Get application-specific logger
 logger = logging.getLogger("dd_license_attribution")
@@ -111,6 +112,7 @@ class SourceCodeManager(ArtifactManager):
         self.mirrors = mirrors or []
         self.github_client = github_client
         self._canonical_urls_cache: dict[str, tuple[str, str | None]] = {}
+        self._repository_info_cache: dict[str, tuple[int, dict[str, Any] | None]] = {}
         logger.info(
             "SourceCodeManager initialized with %d mirror(s) with %d seconds TTL.",
             len(self.mirrors),
@@ -156,25 +158,11 @@ class SourceCodeManager(ArtifactManager):
 
         owner = parsed_url.owner
         repo = parsed_url.repo
-        status, result = self.github_client.repos[owner][repo].get()
+        status, repository = self.get_repository_info(owner, repo)
 
-        if status == 301 and result and "url" in result:
-            redirect_url = result["url"]
-            logger.debug("Repository has moved, following redirect: %s", redirect_url)
-
-            # Check if the redirect is still to GitHub
-            api_prefix = "https://api.github.com/"
-            if redirect_url.startswith(api_prefix):
-                path = redirect_url[len(api_prefix) :]
-                path_parts = path.split("/")
-                endpoint = self.github_client
-                for part in path_parts:
-                    endpoint = endpoint[part]
-                status, result = endpoint.get()
-
-        if status == 200:
-            canonical_repo_url = result.get("html_url")
-            api_url = result.get("url")
+        if status == 200 and repository:
+            canonical_repo_url: str = repository.get("html_url", "")
+            api_url: str | None = repository.get("url")
             logger.debug(
                 "Resolved canonical URLs - Repo URL: %s, API URL: %s",
                 canonical_repo_url,
@@ -192,6 +180,65 @@ class SourceCodeManager(ArtifactManager):
         fallback_result = (original_url, None)
         self._canonical_urls_cache[url] = fallback_result
         return fallback_result
+
+    def get_repository_info(
+        self, owner: str, repo: str
+    ) -> tuple[int, dict[str, Any] | None]:
+        """Get repository information from GitHub API with caching.
+
+        This method fetches repository information from the GitHub API and caches the result.
+        It handles redirects (301) for renamed or transferred repositories.
+
+        Args:
+            owner: The repository owner
+            repo: The repository name
+
+        Returns:
+            A tuple of (status_code, repository_dict) where:
+            - status_code: The HTTP status code from the GitHub API (200, 301, 404, etc.)
+            - repository_dict: The repository information dict on success, None on error
+
+        Examples:
+            (200, {"html_url": "...", "license": {...}, ...})
+            (404, None)
+        """
+        cache_key = f"{owner}/{repo}"
+
+        # Check cache
+        if cache_key in self._repository_info_cache:
+            logger.debug("Returning cached repository info for: %s/%s", owner, repo)
+            return self._repository_info_cache[cache_key]
+
+        logger.debug("Fetching repository info for: %s/%s", owner, repo)
+        status, result = self.github_client.repos[owner][repo].get()
+
+        # Handle redirects (301) for renamed/transferred repositories
+        if status == 301 and result and "url" in result:
+            redirect_url = result["url"]
+            logger.debug(
+                "Repository %s/%s has moved, following redirect: %s",
+                owner,
+                repo,
+                redirect_url,
+            )
+
+            # Check if the redirect is still to GitHub
+            api_prefix = "https://api.github.com/"
+            if redirect_url.startswith(api_prefix):
+                path = redirect_url[len(api_prefix) :]
+                path_parts = path.split("/")
+                endpoint = self.github_client
+                for part in path_parts:
+                    endpoint = endpoint[part]
+                status, result = endpoint.get()
+
+        # Cache the result (including errors) and return
+        cached_result = (status, result)
+        self._repository_info_cache[cache_key] = cached_result
+        logger.debug(
+            "Cached repository info for %s/%s with status %s", owner, repo, status
+        )
+        return cached_result
 
     def _discover_default_branch(self, url: str) -> str:
         """Discover the default branch for a repository.
