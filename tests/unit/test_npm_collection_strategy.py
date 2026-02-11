@@ -2633,9 +2633,9 @@ def test_augment_metadata_with_npm_aliases_from_lock(
     """Test end-to-end npm alias resolution."""
     source_code_manager_mock = create_source_code_manager_mock()
 
-    package_json = {"name": "test-package", "version": "1.0.0"}
+    package_json: dict[str, Any] = {"name": "test-package", "version": "1.0.0"}
 
-    package_lock = {
+    package_lock: dict[str, Any] = {
         "packages": {
             "": {
                 "dependencies": {
@@ -2724,3 +2724,261 @@ def test_augment_metadata_with_npm_aliases_from_lock(
     call_url = mock_get.call_args[0][0]
     assert "source-map/0.6.1" in call_url
     assert "@datadog" not in call_url
+
+
+# ===== Tests for local_project_path mode (npm-package ecosystem) =====
+
+
+def test_npm_local_project_path_skips_get_code(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """When local_project_path is set, get_code() should NOT be called."""
+    source_code_manager_mock = mock.Mock()
+
+    package_lock: dict[str, Any] = {
+        "packages": {
+            "": {"dependencies": {"dep1": "^1.0.0"}},
+            "node_modules/dep1": {"version": "1.0.5", "dependencies": {}},
+        }
+    }
+
+    def fake_exists(path: str) -> bool:
+        return True
+
+    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
+        if "package-lock.json" in path:
+            return json.dumps(package_lock)
+        raise FileNotFoundError
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "requests.get",
+        return_value=mock.Mock(
+            status_code=200,
+            json=lambda: {"license": "MIT", "author": "Alice"},
+        ),
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "express",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        local_project_path="/tmp/npm_resolve/express",
+    )
+
+    result = strategy.augment_metadata([])
+
+    # get_code should NOT be called
+    source_code_manager_mock.get_code.assert_not_called()
+    # get_canonical_urls should NOT be called
+    source_code_manager_mock.get_canonical_urls.assert_not_called()
+    # Should have the dependency
+    assert len(result) == 1
+    assert result[0].name == "dep1"
+    assert result[0].version == "1.0.5"
+
+
+def test_npm_local_project_path_only_root_project_fetches_from_registry(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """In ONLY_ROOT_PROJECT mode with local_project_path, fetch from npm registry."""
+    source_code_manager_mock = mock.Mock()
+
+    package_lock: dict[str, Any] = {
+        "packages": {
+            "": {"dependencies": {"express": "^4.18.0"}},
+            "node_modules/express": {"version": "4.18.2", "dependencies": {}},
+        }
+    }
+
+    def fake_exists(path: str) -> bool:
+        return True
+
+    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
+        if "package-lock.json" in path:
+            return json.dumps(package_lock)
+        raise FileNotFoundError
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mock_requests = mocker.patch(
+        "requests.get",
+        return_value=mock.Mock(
+            status_code=200,
+            json=lambda: {
+                "license": "MIT",
+                "author": "TJ Holowaychuk",
+                "repository": {"url": "https://github.com/expressjs/express"},
+            },
+        ),
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "express",
+        source_code_manager_mock,
+        ProjectScope.ONLY_ROOT_PROJECT,
+        local_project_path="/tmp/npm_resolve/express",
+    )
+
+    result = strategy.augment_metadata([])
+
+    source_code_manager_mock.get_code.assert_not_called()
+    assert len(result) == 1
+    assert result[0].name == "express"
+    assert result[0].version == "4.18.2"
+    assert result[0].license == ["MIT"]
+    assert result[0].copyright == ["TJ Holowaychuk"]
+    assert result[0].origin == "https://github.com/expressjs/express"
+    mock_requests.assert_called_once_with(
+        "https://registry.npmjs.org/express/4.18.2", timeout=5
+    )
+
+
+def test_npm_local_project_path_all_mode_processes_lock_deps(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """In ALL mode with local_project_path, process package-lock.json deps normally."""
+    source_code_manager_mock = mock.Mock()
+
+    package_lock: dict[str, Any] = {
+        "packages": {
+            "": {"dependencies": {"express": "^4.18.0"}},
+            "node_modules/express": {
+                "version": "4.18.2",
+                "dependencies": {"accepts": "~1.3.8"},
+            },
+            "node_modules/accepts": {"version": "1.3.8", "dependencies": {}},
+        }
+    }
+
+    def fake_exists(path: str) -> bool:
+        return True
+
+    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
+        if "package-lock.json" in path:
+            return json.dumps(package_lock)
+        raise FileNotFoundError
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mock_requests = mocker.patch(
+        "requests.get",
+        side_effect=[
+            mock.Mock(
+                status_code=200,
+                json=lambda: {"license": "MIT", "author": "Express Team"},
+            ),
+            mock.Mock(
+                status_code=200,
+                json=lambda: {"license": "MIT", "author": "Accepts Author"},
+            ),
+        ],
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "express",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        local_project_path="/tmp/npm_resolve/express",
+    )
+
+    result = strategy.augment_metadata([])
+
+    source_code_manager_mock.get_code.assert_not_called()
+    assert len(result) == 2
+    dep_names = {m.name for m in result}
+    assert "express" in dep_names
+    assert "accepts" in dep_names
+    assert mock_requests.call_count == 2
+
+
+def test_npm_local_project_path_no_lock_file_returns_unchanged(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """When lock file is missing in local_project_path mode, return metadata unchanged."""
+    source_code_manager_mock = mock.Mock()
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        return_value=False,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "express",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        local_project_path="/tmp/npm_resolve/express",
+    )
+
+    initial = [
+        Metadata(
+            name="existing",
+            origin=None,
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        )
+    ]
+    result = strategy.augment_metadata(initial)
+
+    assert result == initial
+    source_code_manager_mock.get_code.assert_not_called()
