@@ -216,6 +216,133 @@ def test_use_mirrors_valid_config(
     assert result.exit_code == 0
 
 
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.NpmPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+def test_ecosystem_npm_builds_correct_strategy_pipeline(
+    mock_metadata_collector: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_npm_resolver: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_npm_resolver.return_value.resolve_package.return_value = "/tmp/npm_resolve/express"
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "express",
+            "--ecosystem",
+            "npm",
+            "--no-gh-auth",
+        ],
+    )
+    assert result.exit_code == 0
+
+    strategies = mock_metadata_collector.call_args[0][0]
+    strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
+
+    # npm ecosystem pipeline should include these strategies
+    assert "NpmMetadataCollectionStrategy" in strategy_classes
+    assert "ScanCodeToolkitMetadataCollectionStrategy" in strategy_classes
+    assert "GitHubRepositoryMetadataCollectionStrategy" in strategy_classes
+    assert "CleanupCopyrightMetadataStrategy" in strategy_classes
+
+    # npm ecosystem pipeline should NOT include these strategies
+    assert "GitHubSbomMetadataCollectionStrategy" not in strategy_classes
+    assert "GoPkgMetadataCollectionStrategy" not in strategy_classes
+    assert "PypiMetadataCollectionStrategy" not in strategy_classes
+
+    # Verify NpmPackageResolver was called
+    mock_npm_resolver.assert_called_once()
+    mock_npm_resolver.return_value.resolve_package.assert_called_once_with("express")
+
+
+def test_ecosystem_invalid_value_rejected() -> None:
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "some-package",
+            "--ecosystem",
+            "invalid",
+            "--no-gh-auth",
+        ],
+        color=False,
+    )
+    assert result.exit_code != 0
+    assert "Unsupported ecosystem" in result.stderr or "Unsupported ecosystem" in result.output
+
+
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.NpmPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+def test_ecosystem_npm_resolver_failure_exits(
+    mock_metadata_collector: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_npm_resolver: Mock,
+) -> None:
+    mock_npm_resolver.return_value.resolve_package.return_value = None
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "nonexistent-package",
+            "--ecosystem",
+            "npm",
+            "--no-gh-auth",
+        ],
+    )
+    assert result.exit_code == 1
+    mock_npm_resolver.return_value.resolve_package.assert_called_once_with(
+        "nonexistent-package"
+    )
+
+
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.NpmPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+def test_ecosystem_npm_passes_local_project_path_to_strategy(
+    mock_metadata_collector: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_npm_resolver: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_npm_resolver.return_value.resolve_package.return_value = "/tmp/npm_resolve/express"
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "express",
+            "--ecosystem",
+            "npm",
+            "--no-gh-auth",
+        ],
+    )
+    assert result.exit_code == 0
+
+    strategies = mock_metadata_collector.call_args[0][0]
+    npm_strategy = next(
+        s
+        for s in strategies
+        if s.__class__.__name__ == "NpmMetadataCollectionStrategy"
+    )
+    assert npm_strategy.local_project_path == "/tmp/npm_resolve/express"
+
+
+# NOTE: test_cache_ttl_without_cache_dir and test_transitive_root_same_time must
+# come last because the cache_validation_callback closure retains mutable state
+# across test invocations, which can corrupt subsequent tests.
+
+
 def test_cache_ttl_without_cache_dir() -> None:
     result = runner.invoke(
         app,

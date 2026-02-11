@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 
 ### Added
+- New `--ecosystem` CLI option for `generate-sbom-csv` to accept package names by ecosystem. Supports `npm` (e.g., `ddla generate-sbom-csv --ecosystem npm --no-gh-auth express`)
 - Support for GitHub renamed/transferred repositories
 - Support for Yarn package manager in npm collection
 - New `--yarn-subdir` CLI option for specifying subdirectories with additional `yarn.lock` files in monorepos

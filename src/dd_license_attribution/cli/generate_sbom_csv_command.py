@@ -22,6 +22,9 @@ from dd_license_attribution.adaptors.os import create_dirs, path_exists
 from dd_license_attribution.artifact_management.artifact_manager import (
     validate_cache_dir,
 )
+from dd_license_attribution.artifact_management.npm_package_resolver import (
+    NpmPackageResolver,
+)
 from dd_license_attribution.artifact_management.python_env_manager import (
     PyEnvRuntimeError,
     PythonEnvManager,
@@ -191,9 +194,17 @@ def generate_sbom_csv(
     package: Annotated[
         str,
         typer.Argument(
-            help="The package to analyze. This has to be a GitHub repository URL."
+            help="The package to analyze. A GitHub repository URL, or a package name when --ecosystem is set."
         ),
     ],
+    ecosystem: Annotated[
+        str | None,
+        typer.Option(
+            "--ecosystem",
+            help="Treat the package argument as a package name in the given ecosystem instead of a GitHub repository URL. Supported: 'npm'.",
+            rich_help_panel="Scanning Options",
+        ),
+    ] = None,
     deep_scanning: Annotated[
         bool,
         typer.Option(
@@ -361,6 +372,12 @@ def generate_sbom_csv(
             f"Invalid log level. Must be one of: DEBUG, ERROR, WARNING, INFO. Provided: {log_level}"
         )
 
+    supported_ecosystems = ["npm"]
+    if ecosystem is not None and ecosystem not in supported_ecosystems:
+        raise typer.BadParameter(
+            f"Unsupported ecosystem: '{ecosystem}'. Supported ecosystems: {', '.join(supported_ecosystems)}."
+        )
+
     if not only_root_project and not only_transitive_dependencies:
         project_scope = ProjectScope.ALL
     elif only_root_project:
@@ -443,57 +460,105 @@ def generate_sbom_csv(
         logger.error(str(e))
         sys.exit(1)
 
-    if enabled_strategies["GitHubSbomMetadataCollectionStrategy"]:
-        strategies.append(
-            GitHubSbomMetadataCollectionStrategy(
-                github_client, source_code_manager, project_scope
+    if ecosystem == "npm":
+        # npm-package mode: resolve the npm package and build npm-specific pipeline
+        # Use a separate temp directory for npm resolution to avoid colliding with
+        # SourceCodeManager's cache directory structure (which expects only
+        # timestamp-formatted subdirectories).
+        npm_temp_dir = tempfile.TemporaryDirectory()
+        resolver = NpmPackageResolver(npm_temp_dir.name)
+        local_project_path = resolver.resolve_package(package)
+        if local_project_path is None:
+            logger.error(
+                "Failed to resolve npm package: %s", package
             )
-        )
+            sys.exit(1)
 
-    if enabled_strategies["GoPkgsMetadataCollectionStrategy"]:
-        strategies.append(
-            GoPkgMetadataCollectionStrategy(package, source_code_manager, project_scope)
-        )
-
-    python_env_manager = PythonEnvManager(cache_dir, cache_ttl)
-
-    if enabled_strategies["PythonPipMetadataCollectionStrategy"]:
-        strategies.append(
-            PypiMetadataCollectionStrategy(
-                package, source_code_manager, python_env_manager, project_scope
-            )
-        )
-
-    if enabled_strategies["NpmMetadataCollectionStrategy"]:
-        strategies.append(
-            NpmMetadataCollectionStrategy(
-                package,
-                source_code_manager,
-                project_scope,
-                yarn_subdirs=yarn_subdirs or [],
-            )
-        )
-
-    if enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"]:
-        if deep_scanning:
+        if enabled_strategies["NpmMetadataCollectionStrategy"]:
             strategies.append(
-                ScanCodeToolkitMetadataCollectionStrategy(source_code_manager)
-            )
-        else:
-            strategies.append(
-                ScanCodeToolkitMetadataCollectionStrategy(
+                NpmMetadataCollectionStrategy(
+                    package,
                     source_code_manager,
-                    cli_config.default_config.preset_license_file_locations,
-                    cli_config.default_config.preset_copyright_file_locations,
+                    project_scope,
+                    local_project_path=local_project_path,
                 )
             )
 
-    if enabled_strategies["GitHubRepositoryMetadataCollectionStrategy"]:
-        strategies.append(
-            GitHubRepositoryMetadataCollectionStrategy(
-                github_client, source_code_manager
+        if enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"]:
+            if deep_scanning:
+                strategies.append(
+                    ScanCodeToolkitMetadataCollectionStrategy(source_code_manager)
+                )
+            else:
+                strategies.append(
+                    ScanCodeToolkitMetadataCollectionStrategy(
+                        source_code_manager,
+                        cli_config.default_config.preset_license_file_locations,
+                        cli_config.default_config.preset_copyright_file_locations,
+                    )
+                )
+
+        if enabled_strategies["GitHubRepositoryMetadataCollectionStrategy"]:
+            strategies.append(
+                GitHubRepositoryMetadataCollectionStrategy(
+                    github_client, source_code_manager
+                )
             )
-        )
+    else:
+        # Standard GitHub repository mode
+        if enabled_strategies["GitHubSbomMetadataCollectionStrategy"]:
+            strategies.append(
+                GitHubSbomMetadataCollectionStrategy(
+                    github_client, source_code_manager, project_scope
+                )
+            )
+
+        if enabled_strategies["GoPkgsMetadataCollectionStrategy"]:
+            strategies.append(
+                GoPkgMetadataCollectionStrategy(
+                    package, source_code_manager, project_scope
+                )
+            )
+
+        python_env_manager = PythonEnvManager(cache_dir, cache_ttl)
+
+        if enabled_strategies["PythonPipMetadataCollectionStrategy"]:
+            strategies.append(
+                PypiMetadataCollectionStrategy(
+                    package, source_code_manager, python_env_manager, project_scope
+                )
+            )
+
+        if enabled_strategies["NpmMetadataCollectionStrategy"]:
+            strategies.append(
+                NpmMetadataCollectionStrategy(
+                    package,
+                    source_code_manager,
+                    project_scope,
+                    yarn_subdirs=yarn_subdirs or [],
+                )
+            )
+
+        if enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"]:
+            if deep_scanning:
+                strategies.append(
+                    ScanCodeToolkitMetadataCollectionStrategy(source_code_manager)
+                )
+            else:
+                strategies.append(
+                    ScanCodeToolkitMetadataCollectionStrategy(
+                        source_code_manager,
+                        cli_config.default_config.preset_license_file_locations,
+                        cli_config.default_config.preset_copyright_file_locations,
+                    )
+                )
+
+        if enabled_strategies["GitHubRepositoryMetadataCollectionStrategy"]:
+            strategies.append(
+                GitHubRepositoryMetadataCollectionStrategy(
+                    github_client, source_code_manager
+                )
+            )
 
     override_strategy = None
     if override_spec:
