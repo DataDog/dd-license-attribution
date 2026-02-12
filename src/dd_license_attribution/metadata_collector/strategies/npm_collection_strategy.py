@@ -586,81 +586,39 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             return all_deps
 
         packages = lock_data["packages"]
-        # Find the root package key
-        root_key = "" if "" in packages else "./" if "./" in packages else None
-        if root_key is None:
-            logger.warning(
-                "A root package wasn't found. Collecting NodeJS dependencies from none NodeJS projects is not supported yet."
-            )
-            return all_deps
 
         # Extract aliases from package-lock.json
         aliases = self._extract_aliases_from_package_lock(project_path)
         logger.debug("Found %d npm aliases in package-lock.json", len(aliases))
 
-        root_pkg = packages[root_key]
-        if "dependencies" in root_pkg:
-            # Get dependency names from root, look up resolved versions
-            for dep_name in root_pkg["dependencies"].keys():
-                # Resolve alias to real package name
-                real_name = aliases.get(dep_name, dep_name)
-                node_modules_key = f"node_modules/{dep_name}"
-                if (
-                    node_modules_key in packages
-                    and "version" in packages[node_modules_key]
-                ):
-                    all_deps[real_name] = packages[node_modules_key]["version"]
-                else:
-                    logger.warning(
-                        "Dependency %s not found in package-lock.json packages",
-                        dep_name,
-                    )
+        # Iterate all entries in packages that start with "node_modules/"
+        # This discovers all dependencies (direct, transitive, nested, optional, peer)
+        # without requiring BFS tree-walking through the dependencies field.
+        for key, pkg_data in packages.items():
+            if not key.startswith("node_modules/"):
+                continue
+            if not isinstance(pkg_data, dict):
+                continue
 
-        self._extract_transitive_dependencies(packages, all_deps, aliases)
+            # Skip entries without a resolved version
+            if "version" not in pkg_data:
+                continue
+
+            # Skip dev-only dependencies
+            if pkg_data.get("dev", False):
+                continue
+
+            # Extract package name from the key (handles nested and scoped packages)
+            pkg_name = key.rsplit("node_modules/", 1)[-1]
+
+            # Resolve alias to real package name
+            real_name = aliases.get(pkg_name, pkg_name)
+
+            # Keep first version encountered per package name
+            if real_name not in all_deps:
+                all_deps[real_name] = pkg_data["version"]
+
         return all_deps
-
-    def _extract_transitive_dependencies(
-        self,
-        packages: dict[str, Any],
-        all_deps: dict[str, str],
-        aliases: dict[str, str],
-    ) -> None:
-
-        processed_packages = set()
-
-        new_deps_found = True
-        while new_deps_found:
-            new_deps_found = False
-            current_deps = list(all_deps.items())
-
-            for pkg_name, _ in current_deps:
-                if pkg_name in processed_packages:
-                    continue
-
-                node_modules_key = f"node_modules/{pkg_name}"
-                if node_modules_key in packages:
-                    pkg_data = packages[node_modules_key]
-                    if "dependencies" in pkg_data:
-                        for dep_name in pkg_data["dependencies"].keys():
-                            # Resolve alias to real package name
-                            real_dep_name = aliases.get(dep_name, dep_name)
-                            if real_dep_name not in all_deps:
-                                dep_node_modules_key = f"node_modules/{dep_name}"
-                                if (
-                                    dep_node_modules_key in packages
-                                    and "version" in packages[dep_node_modules_key]
-                                ):
-                                    all_deps[real_dep_name] = packages[
-                                        dep_node_modules_key
-                                    ]["version"]
-                                    new_deps_found = True
-                                else:
-                                    logger.warning(
-                                        "Transitive dependency %s not found in package-lock.json packages",
-                                        dep_name,
-                                    )
-
-                processed_packages.add(pkg_name)
 
     def _augment_metadata_from_local_path(
         self, metadata: list[Metadata]

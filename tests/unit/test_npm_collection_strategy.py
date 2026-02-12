@@ -485,7 +485,9 @@ def test_npm_collection_strategy_handles_missing_root_package(
         "packages": {"node_modules/dep1": {"version": "1.0.0", "dependencies": {}}}
     }
 
-    requests_responses: list[mock.Mock] = []
+    requests_responses: list[mock.Mock] = [
+        mock.Mock(status_code=200, json=lambda: {"license": "MIT", "author": "Alice"}),
+    ]
 
     (
         mock_exists,
@@ -509,16 +511,37 @@ def test_npm_collection_strategy_handles_missing_root_package(
         ),
     ]
     result = strategy.augment_metadata(initial_metadata)
-    # Should return original metadata when root package is missing
-    assert result == initial_metadata
+    # Flat iteration discovers dep1 even without a root package key
+    expected_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+        Metadata(
+            name="dep1",
+            version="1.0.0",
+            origin="npm:dep1",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["Alice"],
+        ),
+    ]
+    assert result == expected_metadata
     mock_output_from_command.assert_called_once_with(
-        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+        "CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
-    # When root package is missing, _get_npm_dependencies returns early before calling alias extraction
     assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert mock_path_join.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert mock_open.call_count == 2  # package.json, package-lock.json
-    mock_requests.assert_not_called()
+    assert (
+        mock_path_join.call_count == 4
+    )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
+    assert (
+        mock_open.call_count == 3
+    )  # package.json, package-lock.json, package-lock.json (alias check)
+    assert mock_requests.call_count == 1
 
 
 def test_npm_collection_strategy_handles_registry_api_failures(
@@ -894,9 +917,8 @@ def test_npm_handles_complex_semver_ranges(
 
 def test_npm_handles_missing_node_modules_entry(
     mocker: pytest_mock.MockFixture,
-    caplog: LogCaptureFixture,
 ) -> None:
-    """Test that missing node_modules entries are handled gracefully with warnings."""
+    """Test that packages without node_modules entries are silently skipped."""
     source_code_manager_mock = create_source_code_manager_mock()
     package_json: dict[str, Any] = {}
     package_lock: dict[str, Any] = {
@@ -946,8 +968,7 @@ def test_npm_handles_missing_node_modules_entry(
         ),
     ]
 
-    with caplog.at_level(logging.WARNING):
-        result = strategy.augment_metadata(initial_metadata)
+    result = strategy.augment_metadata(initial_metadata)
 
     # Verify that only dependencies with node_modules entries are added
     expected_metadata = [
@@ -978,17 +999,8 @@ def test_npm_handles_missing_node_modules_entry(
     ]
     assert result == expected_metadata
 
-    # Verify warnings were logged for missing dependencies
-    assert any(
-        "dep2 not found in package-lock.json packages" in record.message
-        for record in caplog.records
-    )
-    assert any(
-        "transitive1 not found in package-lock.json packages" in record.message
-        for record in caplog.records
-    )
-
-    # Only 2 requests should be made (for dep1 and dep3, not dep2)
+    # Only 2 requests should be made (for dep1 and dep3)
+    # dep2 and transitive1 are silently skipped since they have no node_modules entries
     assert mock_requests.call_count == 2
 
 
@@ -2724,6 +2736,176 @@ def test_augment_metadata_with_npm_aliases_from_lock(
     call_url = mock_get.call_args[0][0]
     assert "source-map/0.6.1" in call_url
     assert "@datadog" not in call_url
+
+
+# ============================================================================
+# Tests for flat iteration of node_modules entries
+# ============================================================================
+
+
+def test_npm_discovers_nested_node_modules(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that packages at nested node_modules paths are discovered."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    lock_data: dict[str, Any] = {
+        "packages": {
+            "": {"dependencies": {"a": "^1.0.0"}},
+            "node_modules/a": {
+                "version": "1.0.0",
+            },
+            "node_modules/a/node_modules/semver": {
+                "version": "6.3.1",
+            },
+        }
+    }
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "package-lock.json" in path:
+            return json.dumps(lock_data)
+        raise FileNotFoundError
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        return_value=True,
+    )
+    mock_path_join = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mock_open = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+
+    result = strategy._get_npm_dependencies(lock_data, "/test/path")
+
+    assert "a" in result
+    assert result["a"] == "1.0.0"
+    # Nested semver at node_modules/a/node_modules/semver is discovered
+    assert "semver" in result
+    assert result["semver"] == "6.3.1"
+
+    # Verify alias extraction was called
+    mock_path_join.assert_called_once_with("/test/path", "package-lock.json")
+    mock_open.assert_called_once()
+
+
+def test_npm_excludes_dev_dependencies(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that entries with 'dev': true are excluded from results."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    lock_data: dict[str, Any] = {
+        "packages": {
+            "": {
+                "dependencies": {"prod-dep": "^1.0.0"},
+                "devDependencies": {"dev-dep": "^2.0.0"},
+            },
+            "node_modules/prod-dep": {"version": "1.0.0"},
+            "node_modules/dev-dep": {"version": "2.0.0", "dev": True},
+        }
+    }
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "package-lock.json" in path:
+            return json.dumps(lock_data)
+        raise FileNotFoundError
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        return_value=True,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+
+    result = strategy._get_npm_dependencies(lock_data, "/test/path")
+
+    assert "prod-dep" in result
+    assert result["prod-dep"] == "1.0.0"
+    assert "dev-dep" not in result
+
+
+def test_npm_includes_optional_and_peer_dependencies(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that optional and peer deps (without dev flag) are included."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    lock_data: dict[str, Any] = {
+        "packages": {
+            "": {"dependencies": {"dep": "^1.0.0"}},
+            "node_modules/dep": {"version": "1.0.0"},
+            "node_modules/optional-dep": {"version": "2.0.0", "optional": True},
+            "node_modules/peer-dep": {"version": "3.0.0", "peer": True},
+            "node_modules/dev-optional": {
+                "version": "4.0.0",
+                "dev": True,
+                "optional": True,
+            },
+        }
+    }
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "package-lock.json" in path:
+            return json.dumps(lock_data)
+        raise FileNotFoundError
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        return_value=True,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+
+    result = strategy._get_npm_dependencies(lock_data, "/test/path")
+
+    assert "dep" in result
+    assert "optional-dep" in result
+    assert "peer-dep" in result
+    # dev flag takes precedence — dev-optional should be excluded
+    assert "dev-optional" not in result
 
 
 # ===== Tests for local_project_path mode (npm-package ecosystem) =====
