@@ -264,6 +264,69 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         return all_deps
 
+    def _get_npm_list_dependencies(self, project_path: str) -> dict[str, str]:
+        """Get dependencies from an npm project using npm list.
+
+        This discovers all packages npm sees, including vendored dependencies
+        that are require()'d but not in package-lock.json.
+
+        Args:
+            project_path: Path to the project root
+
+        Returns:
+            Dictionary mapping package names to versions
+        """
+        all_deps: dict[str, str] = {}
+
+        try:
+            # Use npm list to get all dependencies (excluding dev dependencies)
+            logger.debug("Running npm list in %s", project_path)
+            output = output_from_command(
+                f"cd {project_path} && npm list --json --production --all 2>/dev/null"
+            )
+            logger.debug("npm list output length: %d characters", len(output))
+
+            # Parse JSON output (single object, not JSON Lines like yarn)
+            data = json.loads(output)
+
+            # Recursively extract all dependencies from the tree
+            if "dependencies" in data:
+                self._extract_npm_list_deps_recursive(data["dependencies"], all_deps)
+
+        except json.JSONDecodeError as e:
+            logger.error("npm list did not produce valid JSON: %s", e)
+            return all_deps
+        except Exception as e:
+            logger.warning("Failed to run npm list for %s: %s", project_path, e)
+
+        return all_deps
+
+    def _extract_npm_list_deps_recursive(
+        self, deps: dict[str, Any], all_deps: dict[str, str]
+    ) -> None:
+        """Recursively extract package names and versions from npm list tree.
+
+        Args:
+            deps: Dependencies dict from npm list output
+            all_deps: Accumulator dict to populate (modified in place)
+        """
+        for pkg_name, pkg_data in deps.items():
+            if not isinstance(pkg_data, dict):
+                continue
+
+            # Get version from this entry
+            version = pkg_data.get("version", "")
+
+            # Keep first version encountered per package name
+            if pkg_name not in all_deps and version:
+                all_deps[pkg_name] = version
+
+            # Recursively process nested dependencies
+            if "dependencies" in pkg_data:
+                self._extract_npm_list_deps_recursive(
+                    pkg_data["dependencies"], all_deps
+                )
+
     def _collect_yarn_deps_from_location(
         self, location_path: str, location_name: str = "root"
     ) -> dict[str, str]:
@@ -668,17 +731,21 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             )
             return updated_metadata
 
-        # For ALL or ONLY_TRANSITIVE_DEPENDENCIES: parse lock file and enrich
-        lock_path = path_join(project_path, "package-lock.json")
-        if not path_exists(lock_path):
-            logger.warning("No package-lock.json found in %s", project_path)
-            return updated_metadata
-
+        # For ALL or ONLY_TRANSITIVE_DEPENDENCIES: use npm list to discover all dependencies
         try:
-            lock_data = json.loads(open_file(lock_path))
-            all_deps = self._get_npm_dependencies(lock_data, project_path)
+            # First ensure dependencies are installed
+            logger.debug("Running npm install for %s", project_path)
+            output_from_command(
+                f"CWD=`pwd`; cd {project_path} && npm install --production; cd $CWD"
+            )
+
+            # Then use npm list to discover all packages
+            all_deps = self._get_npm_list_dependencies(project_path)
+
         except Exception as e:
-            logger.warning("Failed to read package-lock.json: %s", e)
+            logger.warning(
+                "Failed to run npm install/list for %s: %s", self.top_package, e
+            )
             return updated_metadata
 
         if not all_deps:
@@ -807,29 +874,22 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     project_path,
                 )
         else:
-            # For npm projects, use the existing npm logic
-            # Run npm install --package-lock-only to generate package-lock.json
+            # For npm projects, use npm list to discover all dependencies
+            # This includes vendored packages that are require()'d but not in package-lock.json
             try:
+                # First ensure dependencies are installed
+                logger.debug("Running npm install for %s", project_path)
                 output_from_command(
-                    f"CWD=`pwd`; cd {project_path} && "
-                    "npm install --package-lock-only --force; cd $CWD"
+                    f"CWD=`pwd`; cd {project_path} && npm install --production; cd $CWD"
                 )
+
+                # Then use npm list to discover all packages
+                all_deps = self._get_npm_list_dependencies(project_path)
+
             except Exception as e:
                 logger.warning(
-                    "Failed to run npm install for %s: %s", self.top_package, e
+                    "Failed to run npm install/list for %s: %s", self.top_package, e
                 )
-                return updated_metadata
-
-            lock_path = path_join(project_path, "package-lock.json")
-            if not path_exists(lock_path):
-                logger.warning("No package-lock.json found in %s", project_path)
-                return updated_metadata
-
-            try:
-                lock_data = json.loads(open_file(lock_path))
-                all_deps = self._get_npm_dependencies(lock_data, project_path)
-            except Exception as e:
-                logger.warning("Failed to read package-lock.json: %s", e)
                 return updated_metadata
 
         if not all_deps:

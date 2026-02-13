@@ -62,6 +62,28 @@ def setup_npm_strategy_mocks(
         return result
 
     def fake_output_from_command(command: str) -> str:
+        # Handle npm list commands
+        if "npm list" in command:
+            # Convert package_lock structure to npm list format
+            npm_list_output: dict[str, Any] = {
+                "version": "1.0.0",
+                "name": "test-project",
+                "dependencies": {},
+            }
+
+            # Extract dependencies from package_lock
+            packages = package_lock.get("packages", {})
+            for key, pkg_data in packages.items():
+                if key.startswith("node_modules/") and isinstance(pkg_data, dict):
+                    pkg_name = key.rsplit("node_modules/", 1)[-1]
+                    if "version" in pkg_data and not pkg_data.get("dev", False):
+                        npm_list_output["dependencies"][pkg_name] = {
+                            "version": pkg_data["version"]
+                        }
+
+            return json.dumps(npm_list_output)
+
+        # Handle npm install commands
         return "npm install completed successfully"
 
     # Mock all the required functions
@@ -232,16 +254,17 @@ def test_npm_collection_strategy_adds_npm_metadata(
         ),
     ]
     assert result == expected_metadata
-    mock_output_from_command.assert_called_once_with(
-        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    # Verify npm install and npm list were called
+    assert mock_output_from_command.call_count == 2
+    mock_output_from_command.assert_any_call(
+        "CWD=`pwd`; cd cache_dir/org_package1 && npm install --production; cd $CWD"
     )
-    assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert (
-        mock_path_join.call_count == 4
-    )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
-    assert (
-        mock_open.call_count == 3
-    )  # package.json, package-lock.json, package-lock.json (alias check)
+    mock_output_from_command.assert_any_call(
+        "cd cache_dir/org_package1 && npm list --json --production --all 2>/dev/null"
+    )
+    assert mock_exists.call_count == 2  # package.json, yarn.lock
+    assert mock_path_join.call_count == 2  # package.json, yarn.lock
+    assert mock_open.call_count == 1  # package.json
     assert mock_requests.call_count == 2
 
 
@@ -346,16 +369,17 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
         ),
     ]
     assert result == expected_metadata
-    mock_output_from_command.assert_called_once_with(
-        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    # Verify npm install and npm list were called
+    assert mock_output_from_command.call_count == 2
+    mock_output_from_command.assert_any_call(
+        "CWD=`pwd`; cd cache_dir/org_package1 && npm install --production; cd $CWD"
     )
-    assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert (
-        mock_path_join.call_count == 4
-    )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
-    assert (
-        mock_open.call_count == 3
-    )  # package.json, package-lock.json, package-lock.json (alias check)
+    mock_output_from_command.assert_any_call(
+        "cd cache_dir/org_package1 && npm list --json --production --all 2>/dev/null"
+    )
+    assert mock_exists.call_count == 2  # package.json, yarn.lock
+    assert mock_path_join.call_count == 2  # package.json, yarn.lock
+    assert mock_open.call_count == 1  # package.json
     assert mock_requests.call_count == 4
 
 
@@ -416,16 +440,17 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
         ),
     ]
     assert result == expected_metadata
-    mock_output_from_command.assert_called_once_with(
-        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    # Verify npm install and npm list were called
+    assert mock_output_from_command.call_count == 2
+    mock_output_from_command.assert_any_call(
+        "CWD=`pwd`; cd cache_dir/org_package1 && npm install --production; cd $CWD"
     )
-    assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert (
-        mock_path_join.call_count == 4
-    )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
-    assert (
-        mock_open.call_count == 3
-    )  # package.json, package-lock.json, package-lock.json (alias check)
+    mock_output_from_command.assert_any_call(
+        "cd cache_dir/org_package1 && npm list --json --production --all 2>/dev/null"
+    )
+    assert mock_exists.call_count == 2  # package.json, yarn.lock
+    assert mock_path_join.call_count == 2  # package.json, yarn.lock
+    assert mock_open.call_count == 1  # package.json
     assert mock_requests.call_count == 1
 
 
@@ -464,14 +489,18 @@ def test_npm_collection_strategy_handles_missing_packages_key(
         ),
     ]
     result = strategy.augment_metadata(initial_metadata)
-    # Should return original metadata when packages key is missing
-    mock_output_from_command.assert_called_once_with(
-        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    # Should return original metadata when packages key is missing (npm list returns no deps)
+    # Verify npm install and npm list were called
+    assert mock_output_from_command.call_count == 2
+    mock_output_from_command.assert_any_call(
+        "CWD=`pwd`; cd cache_dir/org_package1 && npm install --production; cd $CWD"
     )
-    # When packages key is missing, _get_npm_dependencies returns early before calling alias extraction
-    assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert mock_path_join.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert mock_open.call_count == 2  # package.json, package-lock.json
+    mock_output_from_command.assert_any_call(
+        "cd cache_dir/org_package1 && npm list --json --production --all 2>/dev/null"
+    )
+    assert mock_exists.call_count == 2  # package.json, yarn.lock
+    assert mock_path_join.call_count == 2  # package.json, yarn.lock
+    assert mock_open.call_count == 1  # package.json
     mock_requests.assert_not_called()
     assert result == initial_metadata
 
@@ -531,16 +560,17 @@ def test_npm_collection_strategy_handles_missing_root_package(
         ),
     ]
     assert result == expected_metadata
-    mock_output_from_command.assert_called_once_with(
-        "CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    # Verify npm install and npm list were called
+    assert mock_output_from_command.call_count == 2
+    mock_output_from_command.assert_any_call(
+        "CWD=`pwd`; cd cache_dir/org_package1 && npm install --production; cd $CWD"
     )
-    assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert (
-        mock_path_join.call_count == 4
-    )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
-    assert (
-        mock_open.call_count == 3
-    )  # package.json, package-lock.json, package-lock.json (alias check)
+    mock_output_from_command.assert_any_call(
+        "cd cache_dir/org_package1 && npm list --json --production --all 2>/dev/null"
+    )
+    assert mock_exists.call_count == 2  # package.json, yarn.lock
+    assert mock_path_join.call_count == 2  # package.json, yarn.lock
+    assert mock_open.call_count == 1  # package.json
     assert mock_requests.call_count == 1
 
 
@@ -596,16 +626,17 @@ def test_npm_collection_strategy_handles_registry_api_failures(
     assert dep2_meta is not None
     assert dep1_meta.license == []  # Should be empty due to 404
     assert dep2_meta.license == ["Apache-2.0"]  # Should have license
-    mock_output_from_command.assert_called_once_with(
-        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    # Verify npm install and npm list were called
+    assert mock_output_from_command.call_count == 2
+    mock_output_from_command.assert_any_call(
+        "CWD=`pwd`; cd cache_dir/org_package1 && npm install --production; cd $CWD"
     )
-    assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert (
-        mock_path_join.call_count == 4
-    )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
-    assert (
-        mock_open.call_count == 3
-    )  # package.json, package-lock.json, package-lock.json (alias check)
+    mock_output_from_command.assert_any_call(
+        "cd cache_dir/org_package1 && npm list --json --production --all 2>/dev/null"
+    )
+    assert mock_exists.call_count == 2  # package.json, yarn.lock
+    assert mock_path_join.call_count == 2  # package.json, yarn.lock
+    assert mock_open.call_count == 1  # package.json
     assert mock_requests.call_count == 2
 
 
@@ -659,16 +690,17 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
     assert dep_meta.version == "1.0.0"
     assert dep_meta.license == []
     assert dep_meta.copyright == []
-    mock_output_from_command.assert_called_once_with(
-        f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+    # Verify npm install and npm list were called
+    assert mock_output_from_command.call_count == 2
+    mock_output_from_command.assert_any_call(
+        "CWD=`pwd`; cd cache_dir/org_package1 && npm install --production; cd $CWD"
     )
-    assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert (
-        mock_path_join.call_count == 4
-    )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
-    assert (
-        mock_open.call_count == 3
-    )  # package.json, package-lock.json, package-lock.json (alias check)
+    mock_output_from_command.assert_any_call(
+        "cd cache_dir/org_package1 && npm list --json --production --all 2>/dev/null"
+    )
+    assert mock_exists.call_count == 2  # package.json, yarn.lock
+    assert mock_path_join.call_count == 2  # package.json, yarn.lock
+    assert mock_open.call_count == 1  # package.json
     assert mock_requests.call_count == 1
 
 
@@ -709,12 +741,13 @@ def test_npm_collection_strategy_handles_npm_install_failure(
     with caplog.at_level(logging.WARNING):
         result = strategy.augment_metadata(initial_metadata)
 
-    expected_warning = "Failed to run npm install for package1: npm not found"
+    expected_warning = "Failed to run npm install/list for package1: npm not found"
     assert any(expected_warning in record.message for record in caplog.records)
 
     assert result == initial_metadata
+    # Verify npm install was attempted (npm list wouldn't run if install fails)
     mock_output_from_command.assert_called_once_with(
-        "CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
+        "CWD=`pwd`; cd cache_dir/org_package1 && npm install --production; cd $CWD"
     )
     assert mock_exists.call_count == 2  # package.json, yarn.lock
     assert mock_path_join.call_count == 2  # package.json, yarn.lock
@@ -2677,6 +2710,17 @@ def test_augment_metadata_with_npm_aliases_from_lock(
         raise FileNotFoundError
 
     def fake_output(cmd: str) -> str:
+        # Handle npm list commands
+        if "npm list" in cmd:
+            # Return npm list output with the aliased package resolved to real name
+            npm_list_output = {
+                "version": "1.0.0",
+                "name": "test-package",
+                "dependencies": {
+                    "source-map": {"version": "0.6.1"}  # Real package name, not alias
+                },
+            }
+            return json.dumps(npm_list_output)
         return "npm install completed"
 
     mocker.patch(
@@ -2935,6 +2979,19 @@ def test_npm_local_project_path_skips_get_code(
     def fake_path_join(*args: Any) -> str:
         return "/".join(args)
 
+    def fake_output(cmd: str) -> str:
+        # Handle npm list commands
+        if "npm list" in cmd:
+            npm_list_output = {
+                "version": "1.0.0",
+                "name": "test-project",
+                "dependencies": {
+                    "dep1": {"version": "1.0.5"},
+                },
+            }
+            return json.dumps(npm_list_output)
+        return "npm install completed"
+
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.path_exists",
@@ -2949,6 +3006,11 @@ def test_npm_local_project_path_skips_get_code(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.open_file",
         side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
     )
     mocker.patch(
         "requests.get",
@@ -3077,6 +3139,21 @@ def test_npm_local_project_path_all_mode_processes_lock_deps(
     def fake_path_join(*args: Any) -> str:
         return "/".join(args)
 
+    def fake_output(cmd: str) -> str:
+        # Handle npm list commands
+        if "npm list" in cmd:
+            # Return npm list output matching the package_lock structure
+            npm_list_output = {
+                "version": "4.18.2",
+                "name": "express",
+                "dependencies": {
+                    "express": {"version": "4.18.2"},
+                    "accepts": {"version": "1.3.8"},
+                },
+            }
+            return json.dumps(npm_list_output)
+        return "npm install completed"
+
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.path_exists",
@@ -3091,6 +3168,11 @@ def test_npm_local_project_path_all_mode_processes_lock_deps(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.open_file",
         side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
     )
     mock_requests = mocker.patch(
         "requests.get",
@@ -3164,3 +3246,95 @@ def test_npm_local_project_path_no_lock_file_returns_unchanged(
 
     assert result == initial
     source_code_manager_mock.get_code.assert_not_called()
+
+
+# ============================================================================
+# Tests for npm list --json dependency discovery
+# ============================================================================
+
+
+def test_npm_list_discovers_dependencies(mocker: pytest_mock.MockFixture) -> None:
+    """Test _get_npm_list_dependencies parses npm list output correctly."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    npm_list_output = {
+        "version": "1.0.0",
+        "name": "test-project",
+        "dependencies": {
+            "express": {
+                "version": "4.22.1",
+                "dependencies": {
+                    "accepts": {
+                        "version": "1.3.8",
+                        "dependencies": {"mime-types": {"version": "2.1.35"}},
+                    }
+                },
+            },
+            "lodash": {"version": "4.17.21"},
+        },
+    }
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        return_value=json.dumps(npm_list_output),
+    )
+
+    result = strategy._get_npm_list_dependencies("/test/path")
+
+    assert "express" in result
+    assert result["express"] == "4.22.1"
+    assert "accepts" in result
+    assert result["accepts"] == "1.3.8"
+    assert "mime-types" in result
+    assert result["mime-types"] == "2.1.35"
+    assert "lodash" in result
+    assert result["lodash"] == "4.17.21"
+
+
+def test_npm_list_handles_missing_version(mocker: pytest_mock.MockFixture) -> None:
+    """Test that packages without version field are skipped."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    npm_list_output = {
+        "dependencies": {"pkg1": {"version": "1.0.0"}, "pkg2": {}}  # No version field
+    }
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        return_value=json.dumps(npm_list_output),
+    )
+
+    result = strategy._get_npm_list_dependencies("/test/path")
+
+    assert "pkg1" in result
+    assert "pkg2" not in result
+
+
+def test_npm_list_handles_command_failure(
+    mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture
+) -> None:
+    """Test that npm list command failures are handled gracefully."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=Exception("npm not found"),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        result = strategy._get_npm_list_dependencies("/test/path")
+
+    assert result == {}
+    assert any("Failed to run npm list" in record.message for record in caplog.records)
