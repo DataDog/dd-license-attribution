@@ -121,13 +121,9 @@ class TestResolvePackage:
 
         assert result is not None
         # @ and / are sanitized to _
-        mock_create_dirs.assert_called_once_with(
-            "/cache/_datadog_browser-sdk"
-        )
+        mock_create_dirs.assert_called_once_with("/cache/_datadog_browser-sdk")
 
-    def test_npm_failure_returns_none(
-        self, mocker: pytest_mock.MockFixture
-    ) -> None:
+    def test_npm_failure_returns_none(self, mocker: pytest_mock.MockFixture) -> None:
         def fake_path_join(*args: Any) -> str:
             return "/".join(args)
 

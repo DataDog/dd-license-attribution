@@ -227,7 +227,9 @@ def test_ecosystem_npm_builds_correct_strategy_pipeline(
     mock_npm_resolver: Mock,
 ) -> None:
     mock_metadata_collector.return_value.collect_metadata.return_value = []
-    mock_npm_resolver.return_value.resolve_package.return_value = "/tmp/npm_resolve/express"
+    mock_npm_resolver.return_value.resolve_package.return_value = (
+        "/tmp/npm_resolve/express"
+    )
 
     result = runner.invoke(
         app,
@@ -273,7 +275,10 @@ def test_ecosystem_invalid_value_rejected() -> None:
         color=False,
     )
     assert result.exit_code != 0
-    assert "Unsupported ecosystem" in result.stderr or "Unsupported ecosystem" in result.output
+    assert (
+        "Unsupported ecosystem" in result.stderr
+        or "Unsupported ecosystem" in result.output
+    )
 
 
 @patch("dd_license_attribution.cli.generate_sbom_csv_command.NpmPackageResolver")
@@ -315,7 +320,9 @@ def test_ecosystem_npm_passes_local_project_path_to_strategy(
     mock_npm_resolver: Mock,
 ) -> None:
     mock_metadata_collector.return_value.collect_metadata.return_value = []
-    mock_npm_resolver.return_value.resolve_package.return_value = "/tmp/npm_resolve/express"
+    mock_npm_resolver.return_value.resolve_package.return_value = (
+        "/tmp/npm_resolve/express"
+    )
 
     result = runner.invoke(
         app,
@@ -331,9 +338,7 @@ def test_ecosystem_npm_passes_local_project_path_to_strategy(
 
     strategies = mock_metadata_collector.call_args[0][0]
     npm_strategy = next(
-        s
-        for s in strategies
-        if s.__class__.__name__ == "NpmMetadataCollectionStrategy"
+        s for s in strategies if s.__class__.__name__ == "NpmMetadataCollectionStrategy"
     )
     assert npm_strategy.local_project_path == "/tmp/npm_resolve/express"
 

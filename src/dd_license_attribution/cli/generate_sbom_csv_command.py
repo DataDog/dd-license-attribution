@@ -469,9 +469,7 @@ def generate_sbom_csv(
         resolver = NpmPackageResolver(npm_temp_dir.name)
         local_project_path = resolver.resolve_package(package)
         if local_project_path is None:
-            logger.error(
-                "Failed to resolve npm package: %s", package
-            )
+            logger.error("Failed to resolve npm package: %s", package)
             sys.exit(1)
 
         if enabled_strategies["NpmMetadataCollectionStrategy"]:

@@ -82,10 +82,10 @@ class NpmPackageResolver:
                 "npm install --package-lock-only --force; cd $CWD"
             )
         except Exception as e:
-            logger.error(
-                "Failed to resolve npm package %s: %s", npm_package_spec, e
-            )
+            logger.error("Failed to resolve npm package %s: %s", npm_package_spec, e)
             return None
 
-        logger.info("Successfully resolved npm package %s to %s", npm_package_spec, resolve_dir)
+        logger.info(
+            "Successfully resolved npm package %s to %s", npm_package_spec, resolve_dir
+        )
         return resolve_dir
