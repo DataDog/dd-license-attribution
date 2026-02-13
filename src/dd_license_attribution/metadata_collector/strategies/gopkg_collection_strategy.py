@@ -107,11 +107,15 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             # Use branch cache initialized in constructor
             repo_url = f"https://{parts[0]}/{parts[1]}/{parts[2]}"
             if repo_url not in self._head_branch_cache:
-                self._head_branch_cache[repo_url] = (
-                    output_from_command(f"git ls-remote --symref {repo_url} HEAD")
-                    .split()[1]
-                    .removeprefix("refs/heads/")
-                )
+                ls_remote_output = output_from_command(
+                    f"git ls-remote --symref {repo_url} HEAD"
+                ).split()
+                if len(ls_remote_output) > 1:
+                    self._head_branch_cache[repo_url] = ls_remote_output[
+                        1
+                    ].removeprefix("refs/heads/")
+                else:
+                    return f"https://{path}"
             branch = self._head_branch_cache[repo_url]
             return f"{repo_url}/tree/{branch}/{parts[3]}"
         return f"https://{path}"
