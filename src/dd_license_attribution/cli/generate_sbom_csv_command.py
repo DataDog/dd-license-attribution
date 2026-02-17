@@ -478,6 +478,7 @@ def generate_sbom_csv(
                     package,
                     source_code_manager,
                     project_scope,
+                    yarn_subdirs=yarn_subdirs or [],
                     local_project_path=local_project_path,
                 )
             )

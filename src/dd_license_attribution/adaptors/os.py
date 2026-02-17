@@ -61,5 +61,9 @@ def write_file(file_path: str, content: str) -> None:
         file.write(content)
 
 
+def is_dir(path: str) -> bool:
+    return os.path.isdir(path)
+
+
 def path_join(path: str, *paths: str) -> str:
     return os.path.join(path, *paths)

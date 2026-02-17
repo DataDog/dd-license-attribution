@@ -3338,3 +3338,711 @@ def test_npm_list_handles_command_failure(
 
     assert result == {}
     assert any("Failed to run npm list" in record.message for record in caplog.records)
+
+
+# ============================================================================
+# Tests for vendored dependencies scanning (--yarn-subdir with --ecosystem npm)
+# ============================================================================
+
+
+def test_scan_vendored_package_dirs_with_dist_subdir(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Scan vendor/dist/ for package directories including scoped packages."""
+    source_code_manager_mock = mock.Mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "pkg1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        local_project_path="/tmp/test",
+    )
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_exists(path: str) -> bool:
+        # dist/ subdirectory exists
+        return path.endswith("/dist")
+
+    def fake_list_dir(path: str) -> list[str]:
+        if path.endswith("/dist"):
+            return ["jest-docblock", "lodash.sortby", "@datadog", "@opentelemetry"]
+        if path.endswith("/@datadog"):
+            return ["sketches-js", "source-map"]
+        if path.endswith("/@opentelemetry"):
+            return ["core"]
+        return []
+
+    def fake_is_dir(path: str) -> bool:
+        # All entries are directories except non-existent ones
+        return True
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.list_dir",
+        side_effect=fake_list_dir,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.is_dir",
+        side_effect=fake_is_dir,
+    )
+
+    result = strategy._scan_vendored_package_dirs("/vendor")
+
+    assert "jest-docblock" in result
+    assert "lodash.sortby" in result
+    assert "@datadog/sketches-js" in result
+    assert "@datadog/source-map" in result
+    assert "@opentelemetry/core" in result
+    assert len(result) == 5
+
+
+def test_scan_vendored_package_dirs_no_dist_falls_back_to_subdir(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """When no dist/ exists, scan the subdirectory itself."""
+    source_code_manager_mock = mock.Mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "pkg1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        local_project_path="/tmp/test",
+    )
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_exists(path: str) -> bool:
+        # dist/ does NOT exist
+        return False
+
+    def fake_list_dir(path: str) -> list[str]:
+        if path.endswith("/vendor"):
+            return ["pkg-a", "pkg-b"]
+        return []
+
+    def fake_is_dir(path: str) -> bool:
+        return True
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.list_dir",
+        side_effect=fake_list_dir,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.is_dir",
+        side_effect=fake_is_dir,
+    )
+
+    result = strategy._scan_vendored_package_dirs("/vendor")
+
+    assert result == ["pkg-a", "pkg-b"]
+
+
+def test_scan_vendored_package_dirs_skips_non_directory_entries(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Files in the vendor directory should be skipped."""
+    source_code_manager_mock = mock.Mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "pkg1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        local_project_path="/tmp/test",
+    )
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        return_value=False,  # no dist/
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.list_dir",
+        return_value=["package-a", "README.md", "index.js"],
+    )
+
+    def fake_is_dir(path: str) -> bool:
+        return path.endswith("/package-a")
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.is_dir",
+        side_effect=fake_is_dir,
+    )
+
+    result = strategy._scan_vendored_package_dirs("/vendor")
+
+    assert result == ["package-a"]
+
+
+def test_collect_vendored_deps_no_yarn_subdirs(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """When yarn_subdirs is empty, return empty dict."""
+    source_code_manager_mock = mock.Mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "pkg1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        yarn_subdirs=[],
+        local_project_path="/tmp/test",
+    )
+
+    result = strategy._collect_vendored_deps("/project", "pkg1")
+
+    assert result == {}
+
+
+def test_collect_vendored_deps_package_root_not_found(
+    mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture
+) -> None:
+    """When node_modules/package dir doesn't exist, log warning and return empty."""
+    source_code_manager_mock = mock.Mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "pkg1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        yarn_subdirs=["vendor"],
+        local_project_path="/tmp/test",
+    )
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        return_value=False,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        result = strategy._collect_vendored_deps("/project", "pkg1")
+
+    assert result == {}
+    assert any(
+        "Target package directory not found" in record.message
+        for record in caplog.records
+    )
+
+
+def test_collect_vendored_deps_subdir_not_found(
+    mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture
+) -> None:
+    """When vendor subdir doesn't exist inside package, log warning."""
+    source_code_manager_mock = mock.Mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "pkg1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        yarn_subdirs=["vendor"],
+        local_project_path="/tmp/test",
+    )
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_exists(path: str) -> bool:
+        # Package root exists, but vendor subdir doesn't
+        if path.endswith("/vendor"):
+            return False
+        return True
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+
+    with caplog.at_level(logging.WARNING):
+        result = strategy._collect_vendored_deps("/project", "pkg1")
+
+    assert result == {}
+    assert any(
+        "Subdirectory vendor does not exist" in record.message
+        for record in caplog.records
+    )
+
+
+def test_collect_vendored_deps_with_yarn_lock(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """When yarn.lock exists in subdir, use yarn to collect deps."""
+    source_code_manager_mock = mock.Mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "pkg1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        yarn_subdirs=["vendor"],
+        local_project_path="/tmp/test",
+    )
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_exists(path: str) -> bool:
+        return True
+
+    yarn_list_output = json.dumps(
+        {
+            "type": "tree",
+            "data": {
+                "trees": [
+                    {"name": "dep-a@1.0.0", "children": []},
+                    {"name": "dep-b@2.0.0", "children": []},
+                ]
+            },
+        }
+    )
+
+    yarn_lock_content = (
+        '# THIS IS AN AUTOGENERATED FILE\n\n"dep-a@^1.0.0":\n  version "1.0.0"\n'
+    )
+
+    def fake_open(path: str) -> str:
+        if "yarn.lock" in path:
+            return yarn_lock_content
+        raise FileNotFoundError
+
+    def fake_output(cmd: str) -> str:
+        if "yarn --version" in cmd:
+            return "1.22.19"
+        if "yarn list" in cmd:
+            return yarn_list_output
+        return ""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+
+    result = strategy._collect_vendored_deps("/project", "pkg1")
+
+    assert "dep-a" in result
+    assert "dep-b" in result
+    assert result["dep-a"] == "1.0.0"
+    assert result["dep-b"] == "2.0.0"
+
+
+def test_collect_vendored_deps_without_yarn_lock_scans_dirs(
+    mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture
+) -> None:
+    """When no yarn.lock, scan for package directories."""
+    source_code_manager_mock = mock.Mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "pkg1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        yarn_subdirs=["vendor"],
+        local_project_path="/tmp/test",
+    )
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_exists(path: str) -> bool:
+        # Package root and vendor exist, but no yarn.lock or package.json, and dist/ exists
+        if "yarn.lock" in path:
+            return False
+        if "package.json" in path:
+            return False
+        if path.endswith("/dist"):
+            return True
+        return True
+
+    def fake_list_dir(path: str) -> list[str]:
+        if path.endswith("/dist"):
+            return ["jest-docblock", "lodash.sortby", "@datadog"]
+        if path.endswith("/@datadog"):
+            return ["sketches-js"]
+        return []
+
+    def fake_is_dir(path: str) -> bool:
+        return True
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.list_dir",
+        side_effect=fake_list_dir,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.is_dir",
+        side_effect=fake_is_dir,
+    )
+
+    with caplog.at_level(logging.INFO):
+        result = strategy._collect_vendored_deps("/project", "pkg1")
+
+    assert "jest-docblock" in result
+    assert "lodash.sortby" in result
+    assert "@datadog/sketches-js" in result
+    assert len(result) == 3
+    # All vendored packages get "latest" as version
+    for ver in result.values():
+        assert ver == "latest"
+    assert any(
+        "scanning for vendored package directories" in record.message
+        for record in caplog.records
+    )
+
+
+def test_collect_vendored_deps_with_package_json(
+    mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture
+) -> None:
+    """When package.json exists (but no yarn.lock), use dependencies from package.json."""
+    source_code_manager_mock = mock.Mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "pkg1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        yarn_subdirs=["vendor"],
+        local_project_path="/tmp/test",
+    )
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_exists(path: str) -> bool:
+        # Package root and vendor exist, yarn.lock doesn't, but package.json does
+        if "yarn.lock" in path:
+            return False
+        if path.endswith("/package.json"):
+            return True
+        return True
+
+    package_json_data = {
+        "license": "(Apache-2.0 OR BSD-3-Clause)",
+        "dependencies": {
+            "@datadog/sketches-js": "2.1.1",
+            "@opentelemetry/core": ">=1.14.0 <1.31.0",
+            "jest-docblock": "^29.7.0",
+            "retry": "^0.13.1",
+        },
+    }
+
+    def fake_open(path: str) -> str:
+        if "package.json" in path:
+            return json.dumps(package_json_data)
+        raise FileNotFoundError
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+
+    with caplog.at_level(logging.INFO):
+        result = strategy._collect_vendored_deps("/project", "pkg1")
+
+    assert "@datadog/sketches-js" in result
+    assert "@opentelemetry/core" in result
+    assert "jest-docblock" in result
+    assert "retry" in result
+    assert len(result) == 4
+    # Version specs should be preserved from package.json
+    assert result["@datadog/sketches-js"] == "2.1.1"
+    assert result["@opentelemetry/core"] == ">=1.14.0 <1.31.0"
+    assert result["jest-docblock"] == "^29.7.0"
+    assert result["retry"] == "^0.13.1"
+    assert any(
+        "Found package.json in vendor" in record.message for record in caplog.records
+    )
+
+
+def test_augment_metadata_from_local_path_with_yarn_subdirs(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Full integration: local_project_path + yarn_subdirs merges vendored deps."""
+    source_code_manager_mock = mock.Mock()
+
+    package_lock: dict[str, Any] = {
+        "packages": {
+            "": {"dependencies": {"dd-trace": "^5.0.0"}},
+            "node_modules/dd-trace": {"version": "5.86.0", "dependencies": {}},
+            "node_modules/dep-a": {"version": "1.0.0", "dependencies": {}},
+        }
+    }
+
+    def fake_exists(path: str) -> bool:
+        if "yarn.lock" in path:
+            return False
+        if path.endswith("/dist"):
+            return True
+        return True
+
+    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
+        if "package-lock.json" in path:
+            return json.dumps(package_lock)
+        raise FileNotFoundError
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_output(cmd: str) -> str:
+        if "npm list" in cmd:
+            return json.dumps(
+                {
+                    "version": "1.0.0",
+                    "name": "test-project",
+                    "dependencies": {
+                        "dd-trace": {"version": "5.86.0"},
+                        "dep-a": {"version": "1.0.0"},
+                    },
+                }
+            )
+        return "npm install completed"
+
+    def fake_list_dir(path: str) -> list[str]:
+        if path.endswith("/dist"):
+            return ["jest-docblock", "lodash.sortby"]
+        return []
+
+    def fake_is_dir(path: str) -> bool:
+        return True
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.list_dir",
+        side_effect=fake_list_dir,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.is_dir",
+        side_effect=fake_is_dir,
+    )
+    mock_requests = mocker.patch(
+        "requests.get",
+        return_value=mock.Mock(
+            status_code=200,
+            json=lambda: {"license": "MIT", "author": "Test Author"},
+        ),
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "dd-trace",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        yarn_subdirs=["vendor"],
+        local_project_path="/tmp/npm_resolve/dd-trace",
+    )
+
+    result = strategy.augment_metadata([])
+
+    dep_names = {m.name for m in result}
+    # Should have npm deps + vendored deps
+    assert "dd-trace" in dep_names
+    assert "dep-a" in dep_names
+    assert "jest-docblock" in dep_names
+    assert "lodash.sortby" in dep_names
+    assert len(result) == 4
+    # npm registry should be called for all 4 deps
+    assert mock_requests.call_count == 4
+
+
+def test_augment_metadata_from_local_path_vendored_deps_dont_overwrite_npm_deps(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Vendored deps should not overwrite deps already found by npm list."""
+    source_code_manager_mock = mock.Mock()
+
+    package_lock: dict[str, Any] = {
+        "packages": {
+            "": {"dependencies": {"dd-trace": "^5.0.0"}},
+            "node_modules/dd-trace": {"version": "5.86.0", "dependencies": {}},
+            "node_modules/retry": {"version": "0.13.1", "dependencies": {}},
+        }
+    }
+
+    def fake_exists(path: str) -> bool:
+        if "yarn.lock" in path:
+            return False
+        if path.endswith("/dist"):
+            return True
+        return True
+
+    def fake_open(path: str, *args: Any, **kwargs: Any) -> Any:
+        if "package-lock.json" in path:
+            return json.dumps(package_lock)
+        raise FileNotFoundError
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_output(cmd: str) -> str:
+        if "npm list" in cmd:
+            return json.dumps(
+                {
+                    "version": "1.0.0",
+                    "name": "test-project",
+                    "dependencies": {
+                        "dd-trace": {"version": "5.86.0"},
+                        "retry": {"version": "0.13.1"},
+                    },
+                }
+            )
+        return "npm install completed"
+
+    def fake_list_dir(path: str) -> list[str]:
+        if path.endswith("/dist"):
+            # "retry" appears both in npm list and in vendor dirs
+            return ["retry", "jest-docblock"]
+        return []
+
+    def fake_is_dir(path: str) -> bool:
+        return True
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.list_dir",
+        side_effect=fake_list_dir,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.is_dir",
+        side_effect=fake_is_dir,
+    )
+    mock_requests = mocker.patch(
+        "requests.get",
+        return_value=mock.Mock(
+            status_code=200,
+            json=lambda: {"license": "MIT", "author": "Test Author"},
+        ),
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "dd-trace",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        yarn_subdirs=["vendor"],
+        local_project_path="/tmp/npm_resolve/dd-trace",
+    )
+
+    result = strategy.augment_metadata([])
+
+    dep_names = {m.name for m in result}
+    assert "dd-trace" in dep_names
+    assert "retry" in dep_names
+    assert "jest-docblock" in dep_names
+    # "retry" should appear only once (npm version, not overwritten by vendored)
+    retry_entries = [m for m in result if m.name == "retry"]
+    assert len(retry_entries) == 1
+    assert retry_entries[0].version == "0.13.1"
+    # npm registry called for: dd-trace, retry (from npm list) + jest-docblock (vendored)
+    assert mock_requests.call_count == 3

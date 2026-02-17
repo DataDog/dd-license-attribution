@@ -16,6 +16,8 @@ import requests
 from giturlparse import validate as validate_git_url
 
 from dd_license_attribution.adaptors.os import (
+    is_dir,
+    list_dir,
     open_file,
     output_from_command,
     path_exists,
@@ -683,6 +685,163 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         return all_deps
 
+    def _scan_vendored_package_dirs(self, subdir_path: str) -> list[str]:
+        """Scan a vendor directory for package directories.
+
+        Handles both regular packages (e.g., "jest-docblock") and scoped packages
+        (e.g., "@datadog/sketches-js"). Looks for a "dist/" subdirectory first
+        (common in bundled vendor dirs), falling back to the directory itself.
+
+        Args:
+            subdir_path: Path to the vendor subdirectory
+
+        Returns:
+            List of package names found in the directory
+        """
+        packages: list[str] = []
+
+        # Check if there's a dist/ subdirectory (common for bundled vendor dirs)
+        dist_path = path_join(subdir_path, "dist")
+        scan_path = dist_path if path_exists(dist_path) else subdir_path
+
+        try:
+            entries = list_dir(scan_path)
+        except Exception as e:
+            logger.warning("Failed to list directory %s: %s", scan_path, e)
+            return packages
+
+        for entry in entries:
+            entry_path = path_join(scan_path, entry)
+            if not is_dir(entry_path):
+                continue
+
+            if entry.startswith("@"):
+                # Scoped package directory - scan subdirectories
+                try:
+                    scope_entries = list_dir(entry_path)
+                except Exception:
+                    continue
+                for scope_entry in scope_entries:
+                    scope_entry_path = path_join(entry_path, scope_entry)
+                    if is_dir(scope_entry_path):
+                        packages.append(f"{entry}/{scope_entry}")
+            else:
+                packages.append(entry)
+
+        return packages
+
+    def _collect_vendored_deps(
+        self, project_path: str, target_package_name: str
+    ) -> dict[str, str]:
+        """Collect vendored dependencies from subdirectories inside an npm package.
+
+        After npm install, the target package is extracted to
+        node_modules/{target_package_name}/. This method looks for yarn_subdirs
+        inside that extracted package directory.
+
+        Collection strategy (in priority order):
+        1. If yarn.lock exists: use yarn to collect dependencies (GitHub repo approach)
+        2. If package.json exists: extract dependencies with their version specs
+        3. Otherwise: scan directories and use "latest" for all packages
+
+        Args:
+            project_path: Path to the synthetic project (contains node_modules/)
+            target_package_name: Name of the target npm package
+
+        Returns:
+            Dictionary mapping package names to version specs from all subdirectories
+        """
+        vendored_deps: dict[str, str] = {}
+
+        if not self.yarn_subdirs:
+            return vendored_deps
+
+        # The target package is installed at node_modules/{name}/
+        package_root = path_join(
+            path_join(project_path, "node_modules"), target_package_name
+        )
+        if not path_exists(package_root):
+            logger.warning("Target package directory not found at %s", package_root)
+            return vendored_deps
+
+        unique_deps: set[tuple[str, str]] = set()
+
+        for subdir in self.yarn_subdirs:
+            subdir_path = path_join(package_root, subdir)
+            if not path_exists(subdir_path):
+                logger.warning(
+                    "Subdirectory %s does not exist in %s", subdir, package_root
+                )
+                continue
+
+            # Try yarn.lock first (source repo approach)
+            yarn_lock_path = path_join(subdir_path, "yarn.lock")
+            if path_exists(yarn_lock_path):
+                subdir_deps = self._collect_yarn_deps_from_location(subdir_path, subdir)
+                for pkg, ver in subdir_deps.items():
+                    unique_deps.add((pkg, ver))
+            else:
+                # No yarn.lock: check for package.json with dependencies
+                package_json_path = path_join(subdir_path, "package.json")
+                if path_exists(package_json_path):
+                    logger.info(
+                        "Found package.json in %s, extracting dependencies", subdir
+                    )
+                    try:
+                        package_json_content = open_file(package_json_path)
+                        package_json_data = json.loads(package_json_content)
+                        deps = package_json_data.get("dependencies", {})
+                        for pkg_name, version_spec in deps.items():
+                            # Use version spec as-is from package.json
+                            # The npm registry will resolve specs like "^1.0.0" or ">=1.14.0 <1.31.0"
+                            unique_deps.add((pkg_name, version_spec))
+                        logger.info(
+                            "Found %d dependencies in package.json at %s",
+                            len(deps),
+                            subdir,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to parse package.json in %s: %s", subdir, e
+                        )
+                        # Fall back to directory scanning
+                        pkg_names = self._scan_vendored_package_dirs(subdir_path)
+                        for pkg_name in pkg_names:
+                            unique_deps.add((pkg_name, "latest"))
+                else:
+                    # No yarn.lock or package.json: scan for package directories (bundled vendor output)
+                    logger.info(
+                        "No yarn.lock or package.json in %s, scanning for vendored package directories",
+                        subdir,
+                    )
+                    pkg_names = self._scan_vendored_package_dirs(subdir_path)
+                    logger.info(
+                        "Found %d vendored package directories in %s",
+                        len(pkg_names),
+                        subdir,
+                    )
+                    for pkg_name in pkg_names:
+                        # Use "latest" as version since bundled dirs don't have version info
+                        unique_deps.add((pkg_name, "latest"))
+
+        # Group by package name and use first version per package
+        deps_by_package: dict[str, list[str]] = {}
+        for pkg, ver in unique_deps:
+            if pkg not in deps_by_package:
+                deps_by_package[pkg] = []
+            if ver not in deps_by_package[pkg]:
+                deps_by_package[pkg].append(ver)
+
+        vendored_deps = {pkg: versions[0] for pkg, versions in deps_by_package.items()}
+
+        if vendored_deps:
+            logger.info(
+                "Found %d vendored dependencies from subdirectories",
+                len(vendored_deps),
+            )
+
+        return vendored_deps
+
     def _augment_metadata_from_local_path(
         self, metadata: list[Metadata]
     ) -> list[Metadata]:
@@ -747,6 +906,15 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 "Failed to run npm install/list for %s: %s", self.top_package, e
             )
             return updated_metadata
+
+        # Collect vendored dependencies from subdirectories if yarn_subdirs is set
+        target_name, _ = self._resolve_root_package_version(project_path)
+        if target_name and self.yarn_subdirs:
+            vendored_deps = self._collect_vendored_deps(project_path, target_name)
+            # Merge vendored deps into all_deps (vendored deps don't overwrite existing)
+            for pkg, ver in vendored_deps.items():
+                if pkg not in all_deps:
+                    all_deps[pkg] = ver
 
         if not all_deps:
             logger.warning("No dependencies extracted from %s", project_path)
