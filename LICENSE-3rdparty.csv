@@ -4,6 +4,7 @@
 "PyYAML","https://github.com/yaml/pyyaml","['MIT']","['Kirill Simonov']"
 "Pygments","https://github.com/pygments/pygments","['BSD-2-Clause']","['Georg Brandl <georg@python.org>']"
 "agithub","https://github.com/mozilla/agithub","['MIT']","['Jonathan Paugh']"
+"annotated-doc","https://github.com/fastapi/annotated-doc","['MIT']","['Sebastian Ramirez']"
 "annotated-types","https://github.com/annotated-types/annotated-types","['MIT']","['the contributors']"
 "anthropic","https://github.com/anthropics/anthropic-sdk-python","['MIT']","['Anthropic, PBC.']"
 "anyio","https://github.com/agronholm/anyio","['MIT']","['Alex Gronholm']"
