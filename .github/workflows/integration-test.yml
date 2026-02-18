@@ -23,7 +23,7 @@ jobs:
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
-          cache: 'pip' # caching pip dependencies
+          cache: "pip" # caching pip dependencies
 
       - name: Set up Golang
         uses: actions/setup-go@7a3fe6cf4cb3a834922a1244abfce67bcef6a0c5 # 6.2.0
@@ -53,14 +53,16 @@ jobs:
           # For main: Test against main branch directly (no mirror needed)
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BRANCH_NAME="${{ github.head_ref }}"
+            # Use head repo so fork PRs clone the branch from the fork, not upstream
+            MIRROR_URL="https://github.com/${{ github.event.pull_request.head.repo.full_name }}"
             echo "Testing PR branch: ${BRANCH_NAME}"
-            echo "[{\"original_url\": \"https://github.com/DataDog/dd-license-attribution\", \"mirror_url\": \"https://github.com/DataDog/dd-license-attribution\", \"ref_mapping\": {\"branch:main\": \"branch:${BRANCH_NAME}\"}}]" > mirrors.json
+            echo "[{\"original_url\": \"https://github.com/DataDog/dd-license-attribution\", \"mirror_url\": \"${MIRROR_URL}\", \"ref_mapping\": {\"branch:main\": \"branch:${BRANCH_NAME}\"}}]" > mirrors.json
             dd-license-attribution generate-sbom-csv --override-spec=.ddla-overrides --use-mirrors=mirrors.json https://github.com/DataDog/dd-license-attribution > ddla-output.txt
           else
             echo "Testing main branch"
             dd-license-attribution generate-sbom-csv --override-spec=.ddla-overrides https://github.com/DataDog/dd-license-attribution > ddla-output.txt
           fi
-          
+
           if ! cmp -s LICENSE-3rdparty.csv ddla-output.txt; then
             echo "Error: LICENSE-3rdparty.csv differs from ddla-output.txt"
             echo "Diff between files:"
