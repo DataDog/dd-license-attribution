@@ -178,3 +178,7 @@ cython_debug/
 !.cursor/rules/*
 .cursor/
 
+# Claude Code
+.claude
+
+
