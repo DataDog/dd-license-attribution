@@ -343,6 +343,14 @@ def generate_sbom_csv(
             rich_help_panel="Scanning Options",
         ),
     ] = None,
+    branch: Annotated[
+        str | None,
+        typer.Option(
+            "--branch",
+            help="The branch to analyze. If not provided, the default branch of the repository will be used.",
+            rich_help_panel="Scanning Options",
+        ),
+    ] = None,
 ) -> None:
     """
     Generate a CSV report (SBOM) of third party dependencies for a given
@@ -437,11 +445,14 @@ def generate_sbom_csv(
 
     try:
         source_code_manager = SourceCodeManager(
-            cache_dir, github_client, cache_ttl, mirrors
+            cache_dir, github_client, cache_ttl, mirrors, branch_override=branch
         )
     except ValueError as e:
         logger.error(str(e))
         sys.exit(1)
+
+    if branch:
+        source_code_manager.set_branch_override_target(package)
 
     if enabled_strategies["GitHubSbomMetadataCollectionStrategy"]:
         strategies.append(

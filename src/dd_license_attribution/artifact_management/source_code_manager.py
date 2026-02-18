@@ -107,10 +107,13 @@ class SourceCodeManager(ArtifactManager):
         github_client: GitHub,
         local_cache_ttl: int = 86400,
         mirrors: list[MirrorSpec] | None = None,
+        branch_override: str | None = None,
     ) -> None:
         super().__init__(local_cache_dir, local_cache_ttl)
         self.mirrors = mirrors or []
         self.github_client = github_client
+        self.branch_override = branch_override
+        self._branch_override_repo_key: tuple[str, str] | None = None
         self._canonical_urls_cache: dict[str, tuple[str, str | None]] = {}
         self._repository_info_cache: dict[str, tuple[int, dict[str, Any] | None]] = {}
         logger.info(
@@ -118,6 +121,23 @@ class SourceCodeManager(ArtifactManager):
             len(self.mirrors),
             self.local_cache_ttl,
         )
+
+    def set_branch_override_target(self, package_url: str) -> None:
+        """Set the target repository for the branch override.
+
+        The branch override will only apply when get_code is called for a URL
+        that resolves to the same owner/repo as the given package URL.
+        """
+        canonical_url, _ = self.get_canonical_urls(package_url)
+        parsed = parse_git_url(canonical_url)
+        if parsed.valid and parsed.github:
+            self._branch_override_repo_key = (parsed.owner, parsed.repo)
+            logger.info(
+                "Branch override '%s' set for %s/%s",
+                self.branch_override,
+                parsed.owner,
+                parsed.repo,
+            )
 
     def get_canonical_urls(self, url: str) -> tuple[str, str | None]:
         """Get the canonical repository URL and API URL for a given URL.
@@ -379,6 +399,17 @@ class SourceCodeManager(ArtifactManager):
             validated_ref = extract_ref(original_parsed_url.branch, repository_url)
             if validated_ref != "":
                 branch = validated_ref
+        # Apply branch override only for the targeted repository
+        if (
+            branch == "default_branch"
+            and self.branch_override
+            and self._branch_override_repo_key
+            and (owner, repo) == self._branch_override_repo_key
+        ):
+            branch = self.branch_override
+            logger.debug(
+                "Applied branch override '%s' for %s/%s", branch, owner, repo
+            )
         if original_parsed_url.path_raw.startswith("/tree/"):
             path = original_parsed_url.path_raw.removeprefix(f"/tree/{branch}")
         elif original_parsed_url.path_raw.startswith("/blob/"):
