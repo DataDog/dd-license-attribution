@@ -231,17 +231,18 @@ def test_npm_collection_strategy_adds_npm_metadata(
             copyright=["Bob"],
         ),
     ]
-    assert result == expected_metadata
+    assert sorted(result, key=lambda m: m.name or "") == sorted(
+        expected_metadata, key=lambda m: m.name or ""
+    )
     mock_output_from_command.assert_called_once_with(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
-    assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert (
-        mock_path_join.call_count == 4
-    )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
-    assert (
-        mock_open.call_count == 3
-    )  # package.json, package-lock.json, package-lock.json (alias check)
+    # path_exists calls: package.json (1), yarn.lock (1), package-lock.json before install (1), package-lock.json after install (1) = 4
+    assert mock_exists.call_count == 4
+    # path_join calls: package.json (1), yarn.lock (1), package-lock.json in _collect (1), package-lock.json for aliases (1) = 4
+    assert mock_path_join.call_count == 4
+    # open_file calls: package.json (1), package-lock.json in _collect (1), package-lock.json for aliases (1) = 3
+    assert mock_open.call_count == 3
     assert mock_requests.call_count == 2
 
 
@@ -267,17 +268,20 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
     }
 
     requests_responses: list[mock.Mock] = [
-        mock.Mock(status_code=200, json=lambda: {"license": "MIT", "author": "Alice"}),
         mock.Mock(
-            status_code=200, json=lambda: {"license": "Apache-2.0", "author": "Bob"}
-        ),
+            status_code=200, json=lambda: {"license": "GPL-3.0", "author": "David"}
+        ),  # deep1
+        mock.Mock(
+            status_code=200, json=lambda: {"license": "MIT", "author": "Alice"}
+        ),  # dep1
+        mock.Mock(
+            status_code=200,
+            json=lambda: {"license": "Apache-2.0", "author": "Bob"},
+        ),  # transitive1
         mock.Mock(
             status_code=200,
             json=lambda: {"license": "BSD-3-Clause", "author": "Charlie"},
-        ),
-        mock.Mock(
-            status_code=200, json=lambda: {"license": "GPL-3.0", "author": "David"}
-        ),
+        ),  # transitive2
     ]
 
     (
@@ -345,17 +349,18 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
             copyright=["David"],
         ),
     ]
-    assert result == expected_metadata
+    assert sorted(result, key=lambda m: m.name or "") == sorted(
+        expected_metadata, key=lambda m: m.name or ""
+    )
     mock_output_from_command.assert_called_once_with(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
-    assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
-    assert (
-        mock_path_join.call_count == 4
-    )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
-    assert (
-        mock_open.call_count == 3
-    )  # package.json, package-lock.json, package-lock.json (alias check)
+    # path_exists calls: package.json (1), yarn.lock (1), package-lock.json before install (1), package-lock.json after install (1) = 4
+    assert mock_exists.call_count == 4
+    # path_join calls: package.json (1), yarn.lock (1), package-lock.json in _collect (1), package-lock.json for aliases (1) = 4
+    assert mock_path_join.call_count == 4
+    # open_file calls: package.json (1), package-lock.json in _collect (1), package-lock.json for aliases (1) = 3
+    assert mock_open.call_count == 3
     assert mock_requests.call_count == 4
 
 
@@ -419,7 +424,9 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
     mock_output_from_command.assert_called_once_with(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
-    assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
+    assert (
+        mock_exists.call_count == 4
+    )  # path_exists calls: package.json (1), yarn.lock (1), package-lock.json before install (1), package-lock.json after install (1) = 4
     assert (
         mock_path_join.call_count == 4
     )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
@@ -469,7 +476,9 @@ def test_npm_collection_strategy_handles_missing_packages_key(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
     # When packages key is missing, _get_npm_dependencies returns early before calling alias extraction
-    assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
+    assert (
+        mock_exists.call_count == 4
+    )  # package.json, yarn.lock, package-lock.json (x2)
     assert mock_path_join.call_count == 3  # package.json, yarn.lock, package-lock.json
     assert mock_open.call_count == 2  # package.json, package-lock.json
     mock_requests.assert_not_called()
@@ -515,7 +524,9 @@ def test_npm_collection_strategy_handles_missing_root_package(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
     # When root package is missing, _get_npm_dependencies returns early before calling alias extraction
-    assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
+    assert (
+        mock_exists.call_count == 4
+    )  # package.json, yarn.lock, package-lock.json (x2)
     assert mock_path_join.call_count == 3  # package.json, yarn.lock, package-lock.json
     assert mock_open.call_count == 2  # package.json, package-lock.json
     mock_requests.assert_not_called()
@@ -534,7 +545,7 @@ def test_npm_collection_strategy_handles_registry_api_failures(
         }
     }
 
-    requests_responses = [
+    requests_responses: list[mock.Mock] = [
         mock.Mock(status_code=404),  # dep1 not found
         mock.Mock(
             status_code=200, json=lambda: {"license": "Apache-2.0", "author": "Bob"}
@@ -576,7 +587,9 @@ def test_npm_collection_strategy_handles_registry_api_failures(
     mock_output_from_command.assert_called_once_with(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
-    assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
+    assert (
+        mock_exists.call_count == 4
+    )  # package.json, yarn.lock, package-lock.json (x2)
     assert (
         mock_path_join.call_count == 4
     )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
@@ -639,7 +652,9 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
     mock_output_from_command.assert_called_once_with(
         f"CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
-    assert mock_exists.call_count == 3  # package.json, yarn.lock, package-lock.json
+    assert (
+        mock_exists.call_count == 4
+    )  # package.json, yarn.lock, package-lock.json (x2)
     assert (
         mock_path_join.call_count == 4
     )  # package.json, yarn.lock, package-lock.json, package-lock.json (alias check)
@@ -686,15 +701,23 @@ def test_npm_collection_strategy_handles_npm_install_failure(
     with caplog.at_level(logging.WARNING):
         result = strategy.augment_metadata(initial_metadata)
 
-    expected_warning = "Failed to run npm install for package1: npm not found"
-    assert any(expected_warning in record.message for record in caplog.records)
+    # Check for warning about npm install failure (message format changed to use location_name)
+    assert any(
+        "Failed to run npm install" in record.message
+        and "npm not found" in record.message
+        for record in caplog.records
+    )
 
     assert result == initial_metadata
     mock_output_from_command.assert_called_once_with(
         "CWD=`pwd`; cd cache_dir/org_package1 && npm install --package-lock-only --force; cd $CWD"
     )
-    assert mock_exists.call_count == 2  # package.json, yarn.lock
-    assert mock_path_join.call_count == 2  # package.json, yarn.lock
+    # path_exists calls: package.json (1), yarn.lock (1), package-lock.json before install (1) = 3
+    # (npm install fails, so we return early and don't check after install)
+    assert mock_exists.call_count == 3
+    # path_join calls: package.json (1), yarn.lock (1), package-lock.json in _collect (1) = 3
+    # (No alias extraction since npm install failed)
+    assert mock_path_join.call_count == 3
     mock_open.assert_called_once()  # Only package.json
     mock_requests.assert_not_called()
 
@@ -888,7 +911,9 @@ def test_npm_handles_complex_semver_ranges(
             copyright=["Carol"],
         ),
     ]
-    assert result == expected_metadata
+    assert sorted(result, key=lambda m: m.name or "") == sorted(
+        expected_metadata, key=lambda m: m.name or ""
+    )
     assert mock_requests.call_count == 3
 
 
@@ -976,7 +1001,9 @@ def test_npm_handles_missing_node_modules_entry(
             copyright=["Carol"],
         ),
     ]
-    assert result == expected_metadata
+    assert sorted(result, key=lambda m: m.name or "") == sorted(
+        expected_metadata, key=lambda m: m.name or ""
+    )
 
     # Verify warnings were logged for missing dependencies
     assert any(
@@ -1740,7 +1767,10 @@ def test_augment_metadata_with_single_subdirectory(
     mock_get.return_value = mock_response
 
     strategy = NpmMetadataCollectionStrategy(
-        "package1", source_code_manager_mock, ProjectScope.ALL, yarn_subdirs=["subdir"]
+        "package1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        lockfile_subdirs=["subdir"],
     )
 
     initial_metadata = [
@@ -1848,7 +1878,7 @@ def test_augment_metadata_with_multiple_subdirectories(
         "package1",
         source_code_manager_mock,
         ProjectScope.ALL,
-        yarn_subdirs=["subdir1", "subdir2"],
+        lockfile_subdirs=["subdir1", "subdir2"],
     )
 
     initial_metadata = [
@@ -1945,7 +1975,7 @@ def test_augment_metadata_with_missing_subdirectory(
         "package1",
         source_code_manager_mock,
         ProjectScope.ALL,
-        yarn_subdirs=["missing-subdir"],
+        lockfile_subdirs=["missing-subdir"],
     )
 
     initial_metadata = [
@@ -2046,7 +2076,471 @@ def test_augment_metadata_with_version_conflicts(
     mock_get.return_value = mock_response
 
     strategy = NpmMetadataCollectionStrategy(
-        "package1", source_code_manager_mock, ProjectScope.ALL, yarn_subdirs=["subdir"]
+        "package1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        lockfile_subdirs=["subdir"],
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    with caplog.at_level(logging.INFO):
+        result = strategy.augment_metadata(initial_metadata)
+
+    # Should have root package + react@17.0.0 + react@18.0.0
+    assert len(result) == 3
+    react_entries = [m for m in result if m.name == "react"]
+    assert len(react_entries) == 2
+    versions = {m.version for m in react_entries}
+    assert "17.0.0" in versions
+    assert "18.0.0" in versions
+
+    # Should log that react has multiple versions
+    assert any(
+        "react" in record.message and "multiple versions" in record.message
+        for record in caplog.records
+    )
+
+
+# ============================================================================
+# Tests for multi-location package-lock.json support
+# ============================================================================
+
+
+def test_collect_npm_deps_from_location_with_existing_lock(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test _collect_npm_deps_from_location finds and processes package-lock.json."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    package_lock = {
+        "packages": {
+            "": {
+                "dependencies": {
+                    "lodash": "^4.17.21",
+                    "react": "^17.0.0",
+                }
+            },
+            "node_modules/lodash": {
+                "version": "4.17.21",
+            },
+            "node_modules/react": {
+                "version": "17.0.0",
+            },
+        }
+    }
+
+    def fake_exists(path: str) -> bool:
+        return "package-lock.json" in path
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "package-lock.json" in path:
+            return json.dumps(package_lock)
+        return ""
+
+    def fake_output(cmd: str) -> str:
+        return ""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+
+    result = strategy._collect_npm_deps_from_location("/test/path", "test-location")
+
+    assert len(result) == 2
+    assert result["lodash"] == "4.17.21"
+    assert result["react"] == "17.0.0"
+
+
+def test_collect_npm_deps_from_location_without_lock(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test _collect_npm_deps_from_location returns empty dict when no package-lock.json."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    def fake_exists(path: str) -> bool:
+        return False
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+
+    result = strategy._collect_npm_deps_from_location("/test/path", "test-location")
+
+    assert len(result) == 0
+
+
+def test_augment_metadata_with_npm_subdirs(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test augment_metadata collects from root and npm subdirectories."""
+    source_code_manager_mock = create_source_code_manager_mock()
+
+    package_json = {
+        "name": "test-package",
+        "version": "1.0.0",
+        "license": "MIT",
+    }
+
+    root_package_lock = {
+        "packages": {
+            "": {"dependencies": {"lodash": "^4.17.21"}},
+            "node_modules/lodash": {"version": "4.17.21"},
+        }
+    }
+
+    subdir1_package_lock = {
+        "packages": {
+            "": {"dependencies": {"react": "^17.0.0"}},
+            "node_modules/react": {"version": "17.0.0"},
+        }
+    }
+
+    subdir2_package_lock = {
+        "packages": {
+            "": {"dependencies": {"axios": "^1.0.0"}},
+            "node_modules/axios": {"version": "1.0.0"},
+        }
+    }
+
+    def fake_exists(path: str) -> bool:
+        # Return False for yarn.lock to ensure npm path is taken
+        if "yarn.lock" in path:
+            return False
+        if "package.json" in path:
+            return True
+        if "package-lock.json" in path:
+            return True
+        if any(sub in path for sub in ["subdir1", "subdir2"]):
+            return True
+        return False
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "package.json" in path:
+            return json.dumps(package_json)
+        if "package-lock.json" in path:
+            if "subdir1" in path:
+                return json.dumps(subdir1_package_lock)
+            elif "subdir2" in path:
+                return json.dumps(subdir2_package_lock)
+            return json.dumps(root_package_lock)
+        return ""
+
+    def fake_output(cmd: str) -> str:
+        return ""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+
+    # Mock requests for npm registry
+    mock_get = mocker.patch("requests.get")
+    mock_response = mock.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"license": "MIT"}
+    mock_get.return_value = mock_response
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        lockfile_subdirs=["subdir1", "subdir2"],
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Should have root package + lodash + react + axios
+    assert len(result) == 4
+    names = {m.name for m in result}
+    assert "lodash" in names
+    assert "react" in names
+    assert "axios" in names
+
+
+def test_augment_metadata_with_mixed_yarn_npm_subdirs(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test augment_metadata with mixed yarn and npm subdirectories."""
+    source_code_manager_mock = create_source_code_manager_mock()
+
+    package_json = {
+        "name": "test-package",
+        "version": "1.0.0",
+        "license": "MIT",
+    }
+
+    root_package_lock = {
+        "packages": {
+            "": {"dependencies": {"lodash": "^4.17.21"}},
+            "node_modules/lodash": {"version": "4.17.21"},
+        }
+    }
+
+    yarn_subdir_output = """
+{"type":"tree","data":{"trees":[{"name":"react@17.0.0"}]}}
+"""
+
+    npm_subdir_package_lock = {
+        "packages": {
+            "": {"dependencies": {"axios": "^1.0.0"}},
+            "node_modules/axios": {"version": "1.0.0"},
+        }
+    }
+
+    def fake_exists(path: str) -> bool:
+        # Return False for yarn.lock in root and npm-subdir to ensure npm path is taken
+        if "yarn.lock" in path:
+            if "yarn-subdir" in path:
+                return True  # yarn-subdir has yarn.lock
+            return False  # root and npm-subdir don't have yarn.lock
+        if "package.json" in path:
+            return True
+        if "package-lock.json" in path:
+            return True
+        if any(sub in path for sub in ["yarn-subdir", "npm-subdir"]):
+            return True
+        return False
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "package.json" in path:
+            return json.dumps(package_json)
+        if "package-lock.json" in path:
+            if "npm-subdir" in path:
+                return json.dumps(npm_subdir_package_lock)
+            return json.dumps(root_package_lock)
+        return ""
+
+    def fake_output(cmd: str) -> str:
+        if "yarn --version" in cmd:
+            return "1.22.0"
+        if "yarn list" in cmd and "yarn-subdir" in cmd:
+            return yarn_subdir_output
+        return ""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+
+    # Mock requests for npm registry
+    mock_get = mocker.patch("requests.get")
+    mock_response = mock.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"license": "MIT"}
+    mock_get.return_value = mock_response
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        lockfile_subdirs=["yarn-subdir", "npm-subdir"],
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Should have root package + lodash + react (from yarn-subdir) + axios (from npm-subdir)
+    assert len(result) == 4
+    names = {m.name for m in result}
+    assert "lodash" in names
+    assert "react" in names
+    assert "axios" in names
+
+
+def test_augment_metadata_with_npm_version_conflicts(
+    mocker: pytest_mock.MockFixture,
+    caplog: LogCaptureFixture,
+) -> None:
+    """Test augment_metadata handles multiple versions of same package from npm subdirs."""
+    source_code_manager_mock = create_source_code_manager_mock()
+
+    package_json = {
+        "name": "test-package",
+        "version": "1.0.0",
+        "license": "MIT",
+    }
+
+    # Root has react@17.0.0
+    root_package_lock = {
+        "packages": {
+            "": {"dependencies": {"react": "^17.0.0"}},
+            "node_modules/react": {"version": "17.0.0"},
+        }
+    }
+
+    # Subdir has react@18.0.0
+    subdir_package_lock = {
+        "packages": {
+            "": {"dependencies": {"react": "^18.0.0"}},
+            "node_modules/react": {"version": "18.0.0"},
+        }
+    }
+
+    def fake_exists(path: str) -> bool:
+        # Return False for yarn.lock to ensure npm path is taken
+        if "yarn.lock" in path:
+            return False
+        if "package.json" in path:
+            return True
+        if "package-lock.json" in path:
+            return True
+        if "subdir" in path:
+            return True
+        return False
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if "package.json" in path:
+            return json.dumps(package_json)
+        if "package-lock.json" in path:
+            if "subdir" in path:
+                return json.dumps(subdir_package_lock)
+            return json.dumps(root_package_lock)
+        return ""
+
+    def fake_output(cmd: str) -> str:
+        return ""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+
+    # Mock requests for npm registry
+    mock_get = mocker.patch("requests.get")
+    mock_response = mock.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"license": "MIT"}
+    mock_get.return_value = mock_response
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        lockfile_subdirs=["subdir"],
     )
 
     initial_metadata = [

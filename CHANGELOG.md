@@ -8,9 +8,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 
 ### Added
+- New `--lockfile-subdir` CLI option for specifying subdirectories with additional lock files (`yarn.lock` or `package-lock.json`) in monorepos. The tool auto-detects which package manager is used in each subdirectory.
 - Support for GitHub renamed/transferred repositories
 - Support for Yarn package manager in npm collection
-- New `--yarn-subdir` CLI option for specifying subdirectories with additional `yarn.lock` files in monorepos
 - New `clean-spdx-id` CLI command to convert long license descriptions to valid SPDX license expressions using LLMs (OpenAI, Anthropic), including support for composite licenses (e.g., "MIT OR Apache-2.0")
 
 ### Changed

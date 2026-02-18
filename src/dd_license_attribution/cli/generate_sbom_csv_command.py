@@ -339,7 +339,16 @@ def generate_sbom_csv(
         list[str] | None,
         typer.Option(
             "--yarn-subdir",
-            help="Subdirectory path(s) containing additional yarn.lock files to include in dependency analysis. Can be specified multiple times. Paths are relative to repository root.",
+            help="Subdirectory path(s) containing additional lock files (yarn.lock or package-lock.json) to include in dependency analysis. Alias for --lockfile-subdir. Can be specified multiple times. Paths are relative to repository root. The tool will auto-detect which package manager is used in each subdirectory.",
+            rich_help_panel="Scanning Options",
+            hidden=True,
+        ),
+    ] = None,
+    lockfile_subdirs: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--lockfile-subdir",
+            help="Subdirectory path(s) containing additional lock files (yarn.lock or package-lock.json) to include in dependency analysis. Can be specified multiple times. Paths are relative to repository root. The tool will auto-detect which package manager is used in each subdirectory.",
             rich_help_panel="Scanning Options",
         ),
     ] = None,
@@ -465,12 +474,14 @@ def generate_sbom_csv(
         )
 
     if enabled_strategies["NpmMetadataCollectionStrategy"]:
+        all_subdirs = (yarn_subdirs or []) + (lockfile_subdirs or [])
+        all_subdirs = list(dict.fromkeys(all_subdirs))
         strategies.append(
             NpmMetadataCollectionStrategy(
                 package,
                 source_code_manager,
                 project_scope,
-                yarn_subdirs=yarn_subdirs or [],
+                lockfile_subdirs=all_subdirs,
             )
         )
 
