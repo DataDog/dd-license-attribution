@@ -13,6 +13,7 @@ import re
 from typing import Any
 
 import requests
+import semver
 from giturlparse import validate as validate_git_url
 
 from dd_license_attribution.adaptors.os import (
@@ -37,6 +38,18 @@ from dd_license_attribution.metadata_collector.strategies.abstract_collection_st
 
 # Get application-specific logger
 logger = logging.getLogger("dd_license_attribution")
+
+
+def _semver_sort_key(version: str) -> semver.Version:
+    """Sort key for semantic version comparison.
+
+    Falls back to Version(0, 0, 0) for unparseable strings so they
+    sort first (deterministic, won't crash).
+    """
+    try:
+        return semver.Version.parse(version)
+    except ValueError:
+        return semver.Version(0, 0, 0)
 
 
 class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
@@ -841,7 +854,8 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 deps_by_package[pkg].append(ver)
 
         vendored_deps = {
-            pkg: sorted(versions)[0] for pkg, versions in deps_by_package.items()
+            pkg: sorted(versions, key=_semver_sort_key)[0]
+            for pkg, versions in deps_by_package.items()
         }
 
         if vendored_deps:
@@ -1054,13 +1068,14 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     logger.info(
                         "Package %s has multiple versions: %s",
                         pkg,
-                        ", ".join(sorted(versions)),
+                        ", ".join(sorted(versions, key=_semver_sort_key)),
                     )
 
             # Flatten to dict - use lowest version for each package (deterministic)
             # We'll handle multiple versions by processing all combinations
             all_deps = {
-                pkg: sorted(versions)[0] for pkg, versions in deps_by_package.items()
+                pkg: sorted(versions, key=_semver_sort_key)[0]
+                for pkg, versions in deps_by_package.items()
             }
 
             if not all_deps:
@@ -1111,7 +1126,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             # Process additional versions (versions beyond the lowest for each package)
             additional_deps: dict[str, str] = {}
             for pkg, versions in deps_by_package.items():
-                for ver in sorted(versions)[
+                for ver in sorted(versions, key=_semver_sort_key)[
                     1:
                 ]:  # Skip lowest version (already processed)
                     additional_deps[pkg] = ver

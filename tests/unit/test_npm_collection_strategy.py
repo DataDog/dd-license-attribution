@@ -3440,6 +3440,47 @@ def test_npm_list_handles_command_exception(
 
 
 # ============================================================================
+# Tests for semver-aware version sorting
+# ============================================================================
+
+
+def test_semver_sort_key_orders_versions_correctly() -> None:
+    """Test that _semver_sort_key produces correct semver ordering."""
+    from dd_license_attribution.metadata_collector.strategies.npm_collection_strategy import (
+        _semver_sort_key,
+    )
+
+    versions = ["10.0.0", "2.0.0", "1.0.0"]
+    result = sorted(versions, key=_semver_sort_key)
+    assert result == ["1.0.0", "2.0.0", "10.0.0"]
+
+
+def test_semver_sort_key_prerelease_before_release() -> None:
+    """Test that pre-release versions sort before their release."""
+    from dd_license_attribution.metadata_collector.strategies.npm_collection_strategy import (
+        _semver_sort_key,
+    )
+
+    versions = ["1.0.0", "1.0.0-beta.1", "1.0.0-alpha.1"]
+    result = sorted(versions, key=_semver_sort_key)
+    assert result == ["1.0.0-alpha.1", "1.0.0-beta.1", "1.0.0"]
+
+
+def test_semver_sort_key_unparseable_sorts_first() -> None:
+    """Test that non-semver strings don't crash and sort deterministically first."""
+    from dd_license_attribution.metadata_collector.strategies.npm_collection_strategy import (
+        _semver_sort_key,
+    )
+
+    versions = ["2.0.0", "latest", "1.0.0"]
+    result = sorted(versions, key=_semver_sort_key)
+    # "latest" maps to 0.0.0, so it sorts before 1.0.0
+    assert result[0] == "latest"
+    assert result[1] == "1.0.0"
+    assert result[2] == "2.0.0"
+
+
+# ============================================================================
 # Tests for vendored dependencies scanning (--yarn-subdir with --ecosystem npm)
 # ============================================================================
 
