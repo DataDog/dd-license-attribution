@@ -8,6 +8,7 @@
 """Here we collect a set of OS wrappers and adaptors to be easily replaced during testing and debugging."""
 
 import os
+import subprocess
 from typing import Iterator
 
 
@@ -63,6 +64,23 @@ def write_file(file_path: str, content: str) -> None:
 
 def is_dir(path: str) -> bool:
     return os.path.isdir(path)
+
+
+def run_command_with_check(command: str, cwd: str | None = None) -> tuple[int, str]:
+    """Run a shell command and return (exit_code, output).
+
+    Args:
+        command: Shell command to execute
+        cwd: Working directory (if None, uses current directory)
+
+    Returns:
+        Tuple of (exit_code, combined_stdout_stderr)
+    """
+    result = subprocess.run(
+        command, shell=True, capture_output=True, text=True, cwd=cwd
+    )
+    output = result.stdout + result.stderr
+    return result.returncode, output
 
 
 def path_join(path: str, *paths: str) -> str:

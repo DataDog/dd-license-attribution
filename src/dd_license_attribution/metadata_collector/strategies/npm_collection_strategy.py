@@ -22,6 +22,7 @@ from dd_license_attribution.adaptors.os import (
     output_from_command,
     path_exists,
     path_join,
+    run_command_with_check,
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
@@ -269,8 +270,9 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
     def _get_npm_list_dependencies(self, project_path: str) -> dict[str, str]:
         """Get dependencies from an npm project using npm list.
 
-        This discovers all packages npm sees, including vendored dependencies
-        that are require()'d but not in package-lock.json.
+        This discovers all packages npm has installed, including those that may
+        not be explicitly listed in package-lock.json (e.g., nested dependencies,
+        optional dependencies, or packages installed via other means).
 
         Args:
             project_path: Path to the project root
@@ -832,7 +834,9 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             if ver not in deps_by_package[pkg]:
                 deps_by_package[pkg].append(ver)
 
-        vendored_deps = {pkg: versions[0] for pkg, versions in deps_by_package.items()}
+        vendored_deps = {
+            pkg: sorted(versions)[0] for pkg, versions in deps_by_package.items()
+        }
 
         if vendored_deps:
             logger.info(
@@ -894,9 +898,14 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         try:
             # First ensure dependencies are installed
             logger.debug("Running npm install for %s", project_path)
-            output_from_command(
-                f"CWD=`pwd`; cd {project_path} && npm install --production; cd $CWD"
+            exit_code, install_output = run_command_with_check(
+                "npm install --production --ignore-scripts", cwd=project_path
             )
+            if exit_code != 0:
+                logger.warning(
+                    "npm install failed for %s: %s", self.top_package, install_output
+                )
+                return updated_metadata
 
             # Then use npm list to discover all packages
             all_deps = self._get_npm_list_dependencies(project_path)
@@ -906,6 +915,16 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 "Failed to run npm install/list for %s: %s", self.top_package, e
             )
             return updated_metadata
+
+        # Filter out root package if only_transitive mode
+        if self.only_transitive:
+            target_name_for_filter, _ = self._resolve_root_package_version(project_path)
+            if target_name_for_filter:
+                all_deps.pop(target_name_for_filter, None)
+                logger.debug(
+                    "Removed root package %s from transitive dependencies",
+                    target_name_for_filter,
+                )
 
         # Collect vendored dependencies from subdirectories if yarn_subdirs is set
         target_name, _ = self._resolve_root_package_version(project_path)
@@ -1032,9 +1051,11 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                         ", ".join(sorted(versions)),
                     )
 
-            # Flatten to dict - use first version for each package
+            # Flatten to dict - use lowest version for each package (deterministic)
             # We'll handle multiple versions by processing all combinations
-            all_deps = {pkg: versions[0] for pkg, versions in deps_by_package.items()}
+            all_deps = {
+                pkg: sorted(versions)[0] for pkg, versions in deps_by_package.items()
+            }
 
             if not all_deps:
                 logger.warning(
@@ -1047,9 +1068,16 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             try:
                 # First ensure dependencies are installed
                 logger.debug("Running npm install for %s", project_path)
-                output_from_command(
-                    f"CWD=`pwd`; cd {project_path} && npm install --production; cd $CWD"
+                exit_code, install_output = run_command_with_check(
+                    "npm install --production --ignore-scripts", cwd=project_path
                 )
+                if exit_code != 0:
+                    logger.warning(
+                        "npm install failed for %s: %s",
+                        self.top_package,
+                        install_output,
+                    )
+                    return updated_metadata
 
                 # Then use npm list to discover all packages
                 all_deps = self._get_npm_list_dependencies(project_path)
@@ -1074,10 +1102,12 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         # For yarn, process additional versions of packages (if any)
         if package_manager == "yarn":
-            # Process additional versions (versions beyond the first for each package)
+            # Process additional versions (versions beyond the lowest for each package)
             additional_deps: dict[str, str] = {}
             for pkg, versions in deps_by_package.items():
-                for ver in versions[1:]:  # Skip first version (already processed)
+                for ver in sorted(versions)[
+                    1:
+                ]:  # Skip lowest version (already processed)
                     additional_deps[pkg] = ver
 
             if additional_deps:

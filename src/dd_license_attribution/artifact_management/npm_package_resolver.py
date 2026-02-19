@@ -11,8 +11,9 @@ import re
 
 from dd_license_attribution.adaptors.os import (
     create_dirs,
-    output_from_command,
+    path_exists,
     path_join,
+    run_command_with_check,
     write_file,
 )
 
@@ -35,6 +36,8 @@ class NpmPackageResolver:
           - @scope/pkg -> ("@scope/pkg", "latest")
           - @scope/pkg@1.0.0 -> ("@scope/pkg", "1.0.0")
         """
+        spec = spec.rstrip("@")  # Handle trailing @ like @scope/pkg@
+
         if spec.startswith("@"):
             # Scoped package: @scope/pkg or @scope/pkg@version
             match = re.match(r"^(@[^/]+/[^@]+)(?:@(.+))?$", spec)
@@ -77,12 +80,23 @@ class NpmPackageResolver:
 
         # Run npm install --package-lock-only to resolve the dependency tree
         try:
-            output_from_command(
-                f"CWD=`pwd`; cd {resolve_dir} && "
-                "npm install --package-lock-only --force; cd $CWD"
+            exit_code, output = run_command_with_check(
+                "npm install --package-lock-only --force --ignore-scripts",
+                cwd=resolve_dir,
             )
+            if exit_code != 0:
+                logger.error("npm install failed for %s: %s", npm_package_spec, output)
+                return None
         except Exception as e:
             logger.error("Failed to resolve npm package %s: %s", npm_package_spec, e)
+            return None
+
+        # Verify that package-lock.json was created
+        package_lock_path = path_join(resolve_dir, "package-lock.json")
+        if not path_exists(package_lock_path):
+            logger.error(
+                "npm install did not create package-lock.json in %s", resolve_dir
+            )
             return None
 
         logger.info(

@@ -460,6 +460,8 @@ def generate_sbom_csv(
         logger.error(str(e))
         sys.exit(1)
 
+    npm_temp_dir: tempfile.TemporaryDirectory | None = None  # type: ignore[type-arg]
+
     if ecosystem == "npm":
         # npm-package mode: resolve the npm package and build npm-specific pipeline
         # Use a separate temp directory for npm resolution to avoid colliding with
@@ -469,6 +471,7 @@ def generate_sbom_csv(
         resolver = NpmPackageResolver(npm_temp_dir.name)
         local_project_path = resolver.resolve_package(package)
         if local_project_path is None:
+            npm_temp_dir.cleanup()
             logger.error("Failed to resolve npm package: %s", package)
             sys.exit(1)
 
@@ -594,6 +597,9 @@ def generate_sbom_csv(
             "When skipping this strategy, the tool will not try to extract dependencies or metadata from PyPI."
         )
         sys.exit(1)
+    finally:
+        if npm_temp_dir is not None:
+            npm_temp_dir.cleanup()
 
     csv_reporter = ReportGenerator(CSVReportingWritter())
 
