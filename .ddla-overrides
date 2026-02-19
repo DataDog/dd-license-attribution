@@ -253,5 +253,22 @@
         "Samuel Colvin"
       ]
     }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "component": "semver",
+      "origin": "pypi:semver"
+    },
+    "replacement": {
+      "name": "semver",
+      "origin": "https://github.com/python-semver/python-semver",
+      "license": [
+        "BSD-3-Clause"
+      ],
+      "copyright": [
+        "Konstantine Rybnikov"
+      ]
+    }
   }
 ]
