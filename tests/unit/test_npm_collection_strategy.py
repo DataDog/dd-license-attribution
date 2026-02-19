@@ -61,9 +61,7 @@ def setup_npm_strategy_mocks(
         result = "/".join(args)
         return result
 
-    def fake_run_command(
-        command: str, cwd: str | None = None
-    ) -> tuple[int, str]:
+    def fake_run_command(command: str, cwd: str | None = None) -> tuple[int, str]:
         if "npm list" in command:
             # Convert package_lock structure to npm list format
             npm_list_output: dict[str, Any] = {
@@ -2785,9 +2783,7 @@ def test_augment_metadata_with_npm_aliases_from_lock(
             return json.dumps(package_json)
         raise FileNotFoundError
 
-    def fake_run_command(
-        command: str, cwd: str | None = None
-    ) -> tuple[int, str]:
+    def fake_run_command(command: str, cwd: str | None = None) -> tuple[int, str]:
         if "npm list" in command:
             npm_list_output = {
                 "version": "1.0.0",
@@ -3055,9 +3051,7 @@ def test_npm_local_project_path_skips_get_code(
     def fake_path_join(*args: Any) -> str:
         return "/".join(args)
 
-    def fake_run_command(
-        command: str, cwd: str | None = None
-    ) -> tuple[int, str]:
+    def fake_run_command(command: str, cwd: str | None = None) -> tuple[int, str]:
         if "npm list" in command:
             npm_list_output = {
                 "version": "1.0.0",
@@ -3216,9 +3210,7 @@ def test_npm_local_project_path_all_mode_processes_lock_deps(
     def fake_path_join(*args: Any) -> str:
         return "/".join(args)
 
-    def fake_run_command(
-        command: str, cwd: str | None = None
-    ) -> tuple[int, str]:
+    def fake_run_command(command: str, cwd: str | None = None) -> tuple[int, str]:
         if "npm list" in command:
             npm_list_output = {
                 "version": "4.18.2",
@@ -4000,9 +3992,7 @@ def test_augment_metadata_from_local_path_with_yarn_subdirs(
     def fake_path_join(*args: Any) -> str:
         return "/".join(args)
 
-    def fake_run_command(
-        command: str, cwd: str | None = None
-    ) -> tuple[int, str]:
+    def fake_run_command(command: str, cwd: str | None = None) -> tuple[int, str]:
         if "npm list" in command:
             return (
                 0,
@@ -4115,9 +4105,7 @@ def test_augment_metadata_from_local_path_vendored_deps_dont_overwrite_npm_deps(
     def fake_path_join(*args: Any) -> str:
         return "/".join(args)
 
-    def fake_run_command(
-        command: str, cwd: str | None = None
-    ) -> tuple[int, str]:
+    def fake_run_command(command: str, cwd: str | None = None) -> tuple[int, str]:
         if "npm list" in command:
             return (
                 0,
