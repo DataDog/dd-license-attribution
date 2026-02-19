@@ -285,9 +285,15 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         try:
             # Use npm list to get all dependencies (excluding dev dependencies)
             logger.debug("Running npm list in %s", project_path)
-            output = output_from_command(
-                f"cd {project_path} && npm list --json --production --all 2>/dev/null"
+            exit_code, output = run_command_with_check(
+                "npm list --json --production --all 2>/dev/null",
+                cwd=project_path,
             )
+            if exit_code != 0:
+                logger.warning(
+                    "npm list failed (exit %d) for %s", exit_code, project_path
+                )
+                return all_deps
             logger.debug("npm list output length: %d characters", len(output))
 
             # Parse JSON output (single object, not JSON Lines like yarn)
