@@ -13,13 +13,17 @@ import re
 from typing import Any
 
 import requests
+import semver
 from giturlparse import validate as validate_git_url
 
 from dd_license_attribution.adaptors.os import (
+    is_dir,
+    list_dir,
     open_file,
     output_from_command,
     path_exists,
     path_join,
+    run_command_with_check,
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
@@ -36,6 +40,18 @@ from dd_license_attribution.metadata_collector.strategies.abstract_collection_st
 logger = logging.getLogger("dd_license_attribution")
 
 
+def _semver_sort_key(version: str) -> semver.Version:
+    """Sort key for semantic version comparison.
+
+    Falls back to Version(0, 0, 0) for unparseable strings so they
+    sort first (deterministic, won't crash).
+    """
+    try:
+        return semver.Version.parse(version)
+    except ValueError:
+        return semver.Version(0, 0, 0)
+
+
 class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
     def __init__(
         self,
@@ -43,13 +59,21 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         source_code_manager: SourceCodeManager,
         project_scope: ProjectScope,
         yarn_subdirs: list[str] | None = None,
+        local_project_path: str | None = None,
     ) -> None:
         # Store original top_package for matching
         self.original_top_package = top_package
-        # Resolve canonical URL if this is a GitHub repository
-        # This ensures we can match packages that were canonicalized by earlier strategies
-        canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
-        self.top_package = canonical_url if canonical_url else top_package
+        self.local_project_path = local_project_path
+
+        if local_project_path is not None:
+            # In npm-package mode, top_package is a package name, not a URL
+            self.top_package = top_package
+        else:
+            # Resolve canonical URL if this is a GitHub repository
+            # This ensures we can match packages that were canonicalized by earlier strategies
+            canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
+            self.top_package = canonical_url if canonical_url else top_package
+
         self.source_code_manager = source_code_manager
         self.only_root_project = project_scope == ProjectScope.ONLY_ROOT_PROJECT
         self.only_transitive = (
@@ -255,6 +279,76 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             logger.warning("Failed to run yarn list for %s: %s", project_path, e)
 
         return all_deps
+
+    def _get_npm_list_dependencies(self, project_path: str) -> dict[str, str]:
+        """Get dependencies from an npm project using npm list.
+
+        This discovers all packages npm has installed, including those that may
+        not be explicitly listed in package-lock.json (e.g., nested dependencies,
+        optional dependencies, or packages installed via other means).
+
+        Args:
+            project_path: Path to the project root
+
+        Returns:
+            Dictionary mapping package names to versions
+        """
+        all_deps: dict[str, str] = {}
+
+        try:
+            # Use npm list to get all dependencies (excluding dev dependencies)
+            logger.debug("Running npm list in %s", project_path)
+            exit_code, output = run_command_with_check(
+                "npm list --json --production --all 2>/dev/null",
+                cwd=project_path,
+            )
+            if exit_code != 0:
+                logger.warning(
+                    "npm list failed (exit %d) for %s", exit_code, project_path
+                )
+                return all_deps
+            logger.debug("npm list output length: %d characters", len(output))
+
+            # Parse JSON output (single object, not JSON Lines like yarn)
+            data = json.loads(output)
+
+            # Recursively extract all dependencies from the tree
+            if "dependencies" in data:
+                self._extract_npm_list_deps_recursive(data["dependencies"], all_deps)
+
+        except json.JSONDecodeError as e:
+            logger.error("npm list did not produce valid JSON: %s", e)
+            return all_deps
+        except Exception as e:
+            logger.warning("Failed to run npm list for %s: %s", project_path, e)
+
+        return all_deps
+
+    def _extract_npm_list_deps_recursive(
+        self, deps: dict[str, Any], all_deps: dict[str, str]
+    ) -> None:
+        """Recursively extract package names and versions from npm list tree.
+
+        Args:
+            deps: Dependencies dict from npm list output
+            all_deps: Accumulator dict to populate (modified in place)
+        """
+        for pkg_name, pkg_data in deps.items():
+            if not isinstance(pkg_data, dict):
+                continue
+
+            # Get version from this entry
+            version = pkg_data.get("version", "")
+
+            # Keep first version encountered per package name
+            if pkg_name not in all_deps and version:
+                all_deps[pkg_name] = version
+
+            # Recursively process nested dependencies
+            if "dependencies" in pkg_data:
+                self._extract_npm_list_deps_recursive(
+                    pkg_data["dependencies"], all_deps
+                )
 
     def _collect_yarn_deps_from_location(
         self, location_path: str, location_name: str = "root"
@@ -578,84 +672,337 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             return all_deps
 
         packages = lock_data["packages"]
-        # Find the root package key
-        root_key = "" if "" in packages else "./" if "./" in packages else None
-        if root_key is None:
-            logger.warning(
-                "A root package wasn't found. Collecting NodeJS dependencies from none NodeJS projects is not supported yet."
-            )
-            return all_deps
 
         # Extract aliases from package-lock.json
         aliases = self._extract_aliases_from_package_lock(project_path)
         logger.debug("Found %d npm aliases in package-lock.json", len(aliases))
 
-        root_pkg = packages[root_key]
-        if "dependencies" in root_pkg:
-            # Get dependency names from root, look up resolved versions
-            for dep_name in root_pkg["dependencies"].keys():
-                # Resolve alias to real package name
-                real_name = aliases.get(dep_name, dep_name)
-                node_modules_key = f"node_modules/{dep_name}"
-                if (
-                    node_modules_key in packages
-                    and "version" in packages[node_modules_key]
-                ):
-                    all_deps[real_name] = packages[node_modules_key]["version"]
-                else:
-                    logger.warning(
-                        "Dependency %s not found in package-lock.json packages",
-                        dep_name,
-                    )
+        # Iterate all entries in packages that start with "node_modules/"
+        # This discovers all dependencies (direct, transitive, nested, optional, peer)
+        # without requiring BFS tree-walking through the dependencies field.
+        for key, pkg_data in packages.items():
+            if not key.startswith("node_modules/"):
+                continue
+            if not isinstance(pkg_data, dict):
+                continue
 
-        self._extract_transitive_dependencies(packages, all_deps, aliases)
+            # Skip entries without a resolved version
+            if "version" not in pkg_data:
+                continue
+
+            # Skip dev-only dependencies
+            if pkg_data.get("dev", False):
+                continue
+
+            # Extract package name from the key (handles nested and scoped packages)
+            pkg_name = key.rsplit("node_modules/", 1)[-1]
+
+            # Resolve alias to real package name
+            real_name = aliases.get(pkg_name, pkg_name)
+
+            # Keep first version encountered per package name
+            if real_name not in all_deps:
+                all_deps[real_name] = pkg_data["version"]
+
         return all_deps
 
-    def _extract_transitive_dependencies(
-        self,
-        packages: dict[str, Any],
-        all_deps: dict[str, str],
-        aliases: dict[str, str],
-    ) -> None:
+    def _scan_vendored_package_dirs(self, subdir_path: str) -> list[str]:
+        """Scan a vendor directory for package directories.
 
-        processed_packages = set()
+        Handles both regular packages (e.g., "jest-docblock") and scoped packages
+        (e.g., "@datadog/sketches-js"). Looks for a "dist/" subdirectory first
+        (common in bundled vendor dirs), falling back to the directory itself.
 
-        new_deps_found = True
-        while new_deps_found:
-            new_deps_found = False
-            current_deps = list(all_deps.items())
+        Args:
+            subdir_path: Path to the vendor subdirectory
 
-            for pkg_name, _ in current_deps:
-                if pkg_name in processed_packages:
+        Returns:
+            List of package names found in the directory
+        """
+        packages: list[str] = []
+
+        # Check if there's a dist/ subdirectory (common for bundled vendor dirs)
+        dist_path = path_join(subdir_path, "dist")
+        scan_path = dist_path if path_exists(dist_path) else subdir_path
+
+        try:
+            entries = list_dir(scan_path)
+        except Exception as e:
+            logger.warning("Failed to list directory %s: %s", scan_path, e)
+            return packages
+
+        for entry in entries:
+            entry_path = path_join(scan_path, entry)
+            if not is_dir(entry_path):
+                continue
+
+            if entry.startswith("@"):
+                # Scoped package directory - scan subdirectories
+                try:
+                    scope_entries = list_dir(entry_path)
+                except Exception:
                     continue
+                for scope_entry in scope_entries:
+                    scope_entry_path = path_join(entry_path, scope_entry)
+                    if is_dir(scope_entry_path):
+                        packages.append(f"{entry}/{scope_entry}")
+            else:
+                packages.append(entry)
 
-                node_modules_key = f"node_modules/{pkg_name}"
-                if node_modules_key in packages:
-                    pkg_data = packages[node_modules_key]
-                    if "dependencies" in pkg_data:
-                        for dep_name in pkg_data["dependencies"].keys():
-                            # Resolve alias to real package name
-                            real_dep_name = aliases.get(dep_name, dep_name)
-                            if real_dep_name not in all_deps:
-                                dep_node_modules_key = f"node_modules/{dep_name}"
-                                if (
-                                    dep_node_modules_key in packages
-                                    and "version" in packages[dep_node_modules_key]
-                                ):
-                                    all_deps[real_dep_name] = packages[
-                                        dep_node_modules_key
-                                    ]["version"]
-                                    new_deps_found = True
-                                else:
-                                    logger.warning(
-                                        "Transitive dependency %s not found in package-lock.json packages",
-                                        dep_name,
-                                    )
+        return packages
 
-                processed_packages.add(pkg_name)
+    def _collect_vendored_deps(
+        self, project_path: str, target_package_name: str
+    ) -> dict[str, str]:
+        """Collect vendored dependencies from subdirectories inside an npm package.
+
+        After npm install, the target package is extracted to
+        node_modules/{target_package_name}/. This method looks for yarn_subdirs
+        inside that extracted package directory.
+
+        Collection strategy (in priority order):
+        1. If yarn.lock exists: use yarn to collect dependencies (GitHub repo approach)
+        2. If package.json exists: extract dependencies with their version specs
+        3. Otherwise: scan directories and use "latest" for all packages
+
+        Args:
+            project_path: Path to the synthetic project (contains node_modules/)
+            target_package_name: Name of the target npm package
+
+        Returns:
+            Dictionary mapping package names to version specs from all subdirectories
+        """
+        vendored_deps: dict[str, str] = {}
+
+        if not self.yarn_subdirs:
+            return vendored_deps
+
+        # The target package is installed at node_modules/{name}/
+        package_root = path_join(
+            path_join(project_path, "node_modules"), target_package_name
+        )
+        if not path_exists(package_root):
+            logger.warning("Target package directory not found at %s", package_root)
+            return vendored_deps
+
+        unique_deps: set[tuple[str, str]] = set()
+
+        for subdir in self.yarn_subdirs:
+            subdir_path = path_join(package_root, subdir)
+            if not path_exists(subdir_path):
+                logger.warning(
+                    "Subdirectory %s does not exist in %s", subdir, package_root
+                )
+                continue
+
+            # Try yarn.lock first (source repo approach)
+            yarn_lock_path = path_join(subdir_path, "yarn.lock")
+            if path_exists(yarn_lock_path):
+                subdir_deps = self._collect_yarn_deps_from_location(subdir_path, subdir)
+                for pkg, ver in subdir_deps.items():
+                    unique_deps.add((pkg, ver))
+            else:
+                # No yarn.lock: check for package.json with dependencies
+                package_json_path = path_join(subdir_path, "package.json")
+                if path_exists(package_json_path):
+                    logger.info(
+                        "Found package.json in %s, extracting dependencies", subdir
+                    )
+                    try:
+                        package_json_content = open_file(package_json_path)
+                        package_json_data = json.loads(package_json_content)
+                        deps = package_json_data.get("dependencies", {})
+                        for pkg_name, version_spec in deps.items():
+                            # Use version spec as-is from package.json
+                            # The npm registry will resolve specs like "^1.0.0" or ">=1.14.0 <1.31.0"
+                            unique_deps.add((pkg_name, version_spec))
+                        logger.info(
+                            "Found %d dependencies in package.json at %s",
+                            len(deps),
+                            subdir,
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            "Failed to parse package.json in %s: %s", subdir, e
+                        )
+                        # Fall back to directory scanning
+                        pkg_names = self._scan_vendored_package_dirs(subdir_path)
+                        for pkg_name in pkg_names:
+                            unique_deps.add((pkg_name, "latest"))
+                else:
+                    # No yarn.lock or package.json: scan for package directories (bundled vendor output)
+                    logger.info(
+                        "No yarn.lock or package.json in %s, scanning for vendored package directories",
+                        subdir,
+                    )
+                    pkg_names = self._scan_vendored_package_dirs(subdir_path)
+                    logger.info(
+                        "Found %d vendored package directories in %s",
+                        len(pkg_names),
+                        subdir,
+                    )
+                    for pkg_name in pkg_names:
+                        # Use "latest" as version since bundled dirs don't have version info
+                        unique_deps.add((pkg_name, "latest"))
+
+        # Group by package name and use first version per package
+        deps_by_package: dict[str, list[str]] = {}
+        for pkg, ver in unique_deps:
+            if pkg not in deps_by_package:
+                deps_by_package[pkg] = []
+            if ver not in deps_by_package[pkg]:
+                deps_by_package[pkg].append(ver)
+
+        vendored_deps = {
+            pkg: sorted(versions, key=_semver_sort_key)[0]
+            for pkg, versions in deps_by_package.items()
+        }
+
+        if vendored_deps:
+            logger.info(
+                "Found %d vendored dependencies from subdirectories",
+                len(vendored_deps),
+            )
+
+        return vendored_deps
+
+    def _augment_metadata_from_local_path(
+        self, metadata: list[Metadata]
+    ) -> list[Metadata]:
+        """Handle augment_metadata when local_project_path is set (npm-package mode).
+
+        In this mode, the local_project_path contains a synthetic project with
+        package-lock.json generated by NpmPackageResolver. We skip get_code() and
+        root package.json enrichment since the package.json is synthetic.
+        """
+        # Remove the seed entry created by MetadataCollector for the target package.
+        # The seed has version=None and origin set to the bare package name, which
+        # would cause a duplicate once _enrich_metadata_with_npm_registry adds a
+        # properly versioned entry from the npm registry.
+        updated_metadata = [
+            m
+            for m in metadata
+            if not (m.name == self.top_package and m.version is None)
+        ]
+        project_path = self.local_project_path
+        assert project_path is not None
+
+        if self.only_root_project:
+            # For ONLY_ROOT_PROJECT, fetch root package metadata from npm registry
+            name, version = self._resolve_root_package_version(project_path)
+            if name is None:
+                logger.warning(
+                    "Could not resolve root package from lock file at %s",
+                    project_path,
+                )
+                return updated_metadata
+
+            license, copyright, pkg_data = self._fetch_npm_registry_metadata(
+                name, version
+            )
+            origin = self._determine_origin(pkg_data, name)
+
+            updated_metadata.append(
+                Metadata(
+                    name=name,
+                    version=version,
+                    origin=origin,
+                    local_src_path=None,
+                    license=license,
+                    copyright=copyright,
+                )
+            )
+            return updated_metadata
+
+        # For ALL or ONLY_TRANSITIVE_DEPENDENCIES: use npm list to discover all dependencies
+        try:
+            # First ensure dependencies are installed
+            logger.debug("Running npm install for %s", project_path)
+            exit_code, install_output = run_command_with_check(
+                "npm install --production --ignore-scripts", cwd=project_path
+            )
+            if exit_code != 0:
+                logger.warning(
+                    "npm install failed for %s: %s", self.top_package, install_output
+                )
+                return updated_metadata
+
+            # Then use npm list to discover all packages
+            all_deps = self._get_npm_list_dependencies(project_path)
+
+        except Exception as e:
+            logger.warning(
+                "Failed to run npm install/list for %s: %s", self.top_package, e
+            )
+            return updated_metadata
+
+        # Filter out root package if only_transitive mode
+        if self.only_transitive:
+            target_name_for_filter, _ = self._resolve_root_package_version(project_path)
+            if target_name_for_filter:
+                all_deps.pop(target_name_for_filter, None)
+                logger.debug(
+                    "Removed root package %s from transitive dependencies",
+                    target_name_for_filter,
+                )
+
+        # Collect vendored dependencies from subdirectories if yarn_subdirs is set
+        target_name, _ = self._resolve_root_package_version(project_path)
+        if target_name and self.yarn_subdirs:
+            vendored_deps = self._collect_vendored_deps(project_path, target_name)
+            # Merge vendored deps into all_deps (vendored deps don't overwrite existing)
+            for pkg, ver in vendored_deps.items():
+                if pkg not in all_deps:
+                    all_deps[pkg] = ver
+
+        if not all_deps:
+            logger.warning("No dependencies extracted from %s", project_path)
+            return updated_metadata
+
+        logger.info("Found %d unique packages", len(all_deps))
+
+        updated_metadata = self._enrich_metadata_with_npm_registry(
+            updated_metadata, all_deps
+        )
+
+        return updated_metadata
+
+    def _resolve_root_package_version(
+        self, project_path: str
+    ) -> tuple[str | None, str]:
+        """Resolve the target package name and version from the lock file.
+
+        The synthetic package.json has the target package as the sole dependency.
+        We look it up in the lock file to get the resolved version.
+        """
+        lock_path = path_join(project_path, "package-lock.json")
+        if not path_exists(lock_path):
+            return None, ""
+
+        try:
+            lock_data = json.loads(open_file(lock_path))
+        except Exception:
+            return None, ""
+
+        packages = lock_data.get("packages", {})
+        root_pkg = packages.get("", {})
+        deps = root_pkg.get("dependencies", {})
+
+        if not deps:
+            return None, ""
+
+        # The first (and only) dependency is the target package
+        dep_name = next(iter(deps))
+        node_modules_key = f"node_modules/{dep_name}"
+        version = packages.get(node_modules_key, {}).get("version", "")
+        return dep_name, version
 
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = metadata.copy()
+
+        if self.local_project_path is not None:
+            return self._augment_metadata_from_local_path(updated_metadata)
+
         source_code_ref = self.source_code_manager.get_code(self.top_package)
         if not source_code_ref:
             return updated_metadata
@@ -721,12 +1068,15 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     logger.info(
                         "Package %s has multiple versions: %s",
                         pkg,
-                        ", ".join(sorted(versions)),
+                        ", ".join(sorted(versions, key=_semver_sort_key)),
                     )
 
-            # Flatten to dict - use first version for each package
+            # Flatten to dict - use lowest version for each package (deterministic)
             # We'll handle multiple versions by processing all combinations
-            all_deps = {pkg: versions[0] for pkg, versions in deps_by_package.items()}
+            all_deps = {
+                pkg: sorted(versions, key=_semver_sort_key)[0]
+                for pkg, versions in deps_by_package.items()
+            }
 
             if not all_deps:
                 logger.warning(
@@ -734,29 +1084,29 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     project_path,
                 )
         else:
-            # For npm projects, use the existing npm logic
-            # Run npm install --package-lock-only to generate package-lock.json
+            # For npm projects, use npm list to discover all dependencies
+            # This includes vendored packages that are require()'d but not in package-lock.json
             try:
-                output_from_command(
-                    f"CWD=`pwd`; cd {project_path} && "
-                    "npm install --package-lock-only --force; cd $CWD"
+                # First ensure dependencies are installed
+                logger.debug("Running npm install for %s", project_path)
+                exit_code, install_output = run_command_with_check(
+                    "npm install --production --ignore-scripts", cwd=project_path
                 )
+                if exit_code != 0:
+                    logger.warning(
+                        "npm install failed for %s: %s",
+                        self.top_package,
+                        install_output,
+                    )
+                    return updated_metadata
+
+                # Then use npm list to discover all packages
+                all_deps = self._get_npm_list_dependencies(project_path)
+
             except Exception as e:
                 logger.warning(
-                    "Failed to run npm install for %s: %s", self.top_package, e
+                    "Failed to run npm install/list for %s: %s", self.top_package, e
                 )
-                return updated_metadata
-
-            lock_path = path_join(project_path, "package-lock.json")
-            if not path_exists(lock_path):
-                logger.warning("No package-lock.json found in %s", project_path)
-                return updated_metadata
-
-            try:
-                lock_data = json.loads(open_file(lock_path))
-                all_deps = self._get_npm_dependencies(lock_data, project_path)
-            except Exception as e:
-                logger.warning("Failed to read package-lock.json: %s", e)
                 return updated_metadata
 
         if not all_deps:
@@ -773,10 +1123,12 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         # For yarn, process additional versions of packages (if any)
         if package_manager == "yarn":
-            # Process additional versions (versions beyond the first for each package)
+            # Process additional versions (versions beyond the lowest for each package)
             additional_deps: dict[str, str] = {}
             for pkg, versions in deps_by_package.items():
-                for ver in versions[1:]:  # Skip first version (already processed)
+                for ver in sorted(versions, key=_semver_sort_key)[
+                    1:
+                ]:  # Skip lowest version (already processed)
                     additional_deps[pkg] = ver
 
             if additional_deps:

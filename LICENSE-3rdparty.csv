@@ -84,6 +84,7 @@
 "saneyaml","https://github.com/aboutcode-org/saneyaml","['Apache-2.0']","['nexB. Inc. and others']"
 "scancode-toolkit","https://github.com/aboutcode-org/scancode-toolkit","['Apache-2.0 AND CC-BY-4.0 AND LicenseRef-scancode-other-permissive AND LicenseRef-scancode-other-copyleft']","['nexB. Inc. and others']"
 "semantic-version","https://github.com/rbarrois/python-semanticversion","['BSD']","['Raphaël Barrois']"
+"semver","https://github.com/python-semver/python-semver","['BSD-3-Clause']","['Konstantine Rybnikov']"
 "setuptools","https://github.com/pypa/setuptools","['MIT']","['Python Packaging Authority']"
 "shellingham","https://github.com/sarugaku/shellingham","['ISC License']","['Tzu-ping Chung']"
 "six","https://github.com/benjaminp/six","['MIT']","['Benjamin Peterson']"
