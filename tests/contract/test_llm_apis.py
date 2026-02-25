@@ -81,7 +81,7 @@ class TestOpenAIAPIContract:
 
         We depend on catching openai.AuthenticationError for invalid credentials.
         """
-        invalid_client = openai.OpenAI(api_key="invalid_key_12345")
+        invalid_client = openai.OpenAI(api_key="invalid_key_12345") # dd-oss: ignore
 
         with pytest.raises(openai.AuthenticationError) as exc_info:
             invalid_client.chat.completions.create(
@@ -220,7 +220,7 @@ class TestAnthropicAPIContract:
 
         We depend on catching anthropic.AuthenticationError for invalid credentials.
         """
-        invalid_client = anthropic.Anthropic(api_key="invalid_key_12345")
+        invalid_client = anthropic.Anthropic(api_key="invalid_key_12345") # dd-oss: ignore
 
         with pytest.raises(anthropic.AuthenticationError) as exc_info:
             invalid_client.messages.create(
