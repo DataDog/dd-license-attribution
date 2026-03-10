@@ -54,8 +54,9 @@ Run `dd-license-attribution --help` to see all available commands.
 - python3.11+ - [Python install instructions](https://www.python.org/downloads/)
 - libmagic (only on MacOS):
   - `brew install libmagic`
-- libuci (only on MacOS)
-  - `brew install icu4c && brew link icu4c --force`
+- libicu (only on macOS):
+  - `brew install icu4c pkg-config`
+  - Add the following line to your `~/.zshrc` or `~/.bashrc`: `export PKG_CONFIG_PATH="$(brew --prefix icu4c)/lib/pkgconfig"`
 
 #### Optional Requirements
 
