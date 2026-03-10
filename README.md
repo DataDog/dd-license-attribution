@@ -56,7 +56,7 @@ Run `dd-license-attribution --help` to see all available commands.
   - `brew install libmagic`
 - libicu (only on macOS):
   - `brew install icu4c pkg-config`
-  - Add the following line to your `~/.zshrc` or `~/.bashrc`: `export PKG_CONFIG_PATH="$(brew --prefix icu4c)/lib/pkgconfig"`
+  - Add the following line to your `~/.zshrc` or `~/.bashrc`: `export PKG_CONFIG_PATH="$(brew --prefix icu4c)/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"`
 
 #### Optional Requirements
 
