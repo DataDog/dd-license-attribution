@@ -19,6 +19,7 @@ jobs:
       - uses: psf/black@stable
         with:
           use_pyproject: true
+          version: "26.1.0"
   isort:
     runs-on: ubuntu-latest
     steps:

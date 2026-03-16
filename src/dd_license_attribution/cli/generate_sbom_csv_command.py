@@ -78,9 +78,9 @@ from dd_license_attribution.utils.logging import setup_logging
 logger = logging.getLogger("dd_license_attribution")
 
 
-def mutually_exclusive_group() -> Callable[
-    [typer.Context, typer.CallbackParam, bool], bool | None
-]:
+def mutually_exclusive_group() -> (
+    Callable[[typer.Context, typer.CallbackParam, bool], bool | None]
+):
     group = set()
 
     def callback(
@@ -110,9 +110,9 @@ def mutually_exclusive_group() -> Callable[
 only_root_project_or_transitive_callback = mutually_exclusive_group()
 
 
-def cache_validation() -> Callable[
-    [typer.Context, typer.CallbackParam, str | None], str | None
-]:
+def cache_validation() -> (
+    Callable[[typer.Context, typer.CallbackParam, str | None], str | None]
+):
     group = {}
     param_dir = set()
     param_ttl = set()
