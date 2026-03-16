@@ -37,6 +37,7 @@ src/dd_license_attribution/
 │   ├── artifact_manager.py       # Base class: cache directory + TTL management
 │   ├── source_code_manager.py    # Git clone caching, GitHub API, mirrors, canonical URLs
 │   ├── npm_package_resolver.py   # Resolves npm package specs to local dirs
+│   ├── pypi_package_resolver.py  # Resolves PyPI package specs to local dirs
 │   └── python_env_manager.py     # Creates/caches venvs for Python dependency extraction
 ├── report_generator/
 │   ├── report_generator.py       # Delegates to a reporting writer
@@ -114,6 +115,8 @@ By default, all strategies are included in the pipeline. Individual strategies c
 
 **NpmMetadataCollectionStrategy**: Parses `package-lock.json` or `yarn.lock`. Reads individual `package.json` files from `node_modules`. Extracts license, repository URL, author. Supports `--yarn-subdir` for monorepo layouts. When used in npm-ecosystem mode, receives a `local_project_path` from `NpmPackageResolver`.
 
+**PypiMetadataCollectionStrategy** also supports a `local_project_path` mode (used with `--ecosystem python`/`pypi`). When set, it skips canonical URL resolution and source code checkout, directly using `PythonEnvManager` on the synthetic project created by `PypiPackageResolver`.
+
 **ScanCodeToolkitMetadataCollectionStrategy**: Uses the ScanCode library to scan source code files. Configurable file location filters (defaults: LICENSE, NOTICE, AUTHORS, etc.). Prioritizes holder > author > copyright in text. Cleans up generic/unknown license identifiers.
 
 **GitHubRepositoryMetadataCollectionStrategy**: Fetches repository metadata from GitHub API. Extracts SPDX license ID and repository owner as copyright holder.
@@ -139,6 +142,10 @@ Central component for git operations and caching.
 ### NpmPackageResolver
 
 Resolves npm package specs (e.g., `express`, `@scope/pkg@1.0.0`) into local directories containing a `package-lock.json`. Creates a minimal `package.json`, runs `npm install --package-lock-only`, and returns the directory path. Uses a **separate temp directory** from SourceCodeManager's cache to avoid collisions.
+
+### PypiPackageResolver
+
+Resolves PyPI package specs (e.g., `requests`, `requests==2.31.0`, `Flask[async]>=2.0`) into local directories containing a minimal `setup.py` with the package as a dependency. `PythonEnvManager` then installs dependencies from this synthetic project. Uses a **separate temp directory** from SourceCodeManager's cache to avoid collisions.
 
 ### PythonEnvManager
 
@@ -237,6 +244,7 @@ Log unused override warnings, cleanup temp dirs
 | **Python** | PythonEnvManager | GitHubSbom, PyPI, ScanCode, GitHubRepository |
 | **npm** (project) | — (reads lockfiles) | GitHubSbom, Npm, ScanCode, GitHubRepository |
 | **npm** (package) | NpmPackageResolver | Npm, ScanCode, GitHubRepository |
+| **python** (package, alias: **pypi**) | PypiPackageResolver | PyPI, ScanCode, GitHubRepository |
 
 ## Testing Architecture
 
@@ -256,7 +264,7 @@ tests/
 2. **Strategy pipeline**: New metadata sources can be added as new strategies without modifying existing code.
 3. **Dependency injection**: All classes receive their dependencies (adaptors, managers) via constructor, making them testable.
 4. **Seed-based collection**: `MetadataCollector` creates a minimal seed entry; strategies enrich it progressively.
-5. **Separate cache directories**: NpmPackageResolver uses its own temp dir to avoid collisions with SourceCodeManager's cache.
+5. **Separate cache directories**: NpmPackageResolver and PypiPackageResolver use their own temp dirs to avoid collisions with SourceCodeManager's cache.
 6. **Override interleaving**: Override strategy can appear at multiple points in the pipeline (early ADD, late REMOVE/REPLACE).
 
 ## External Dependencies

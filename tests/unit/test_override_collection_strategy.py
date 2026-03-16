@@ -219,3 +219,80 @@ def test_override_collection_strategy_does_not_target_match_notifies_failure() -
     assert updated_metadata == metadata
     assert len(strategy.unused_targets()) == 1
     assert strategy.unused_targets()[0] == rules[0].target
+
+
+def test_override_collection_strategy_raises_when_add_rule_has_no_replacement() -> None:
+    import pytest
+
+    rules = [
+        OverrideRule(
+            override_type=OverrideType.ADD,
+            target={OverrideTargetField.ORIGIN: "example.com"},
+            replacement=None,
+        )
+    ]
+    strategy = OverrideCollectionStrategy(rules)
+    metadata = [
+        Metadata(
+            name="test-package",
+            origin="example.com",
+            version="1.0.0",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        )
+    ]
+    with pytest.raises(ValueError, match="Replacement for add"):
+        strategy.augment_metadata(metadata)
+
+
+def test_override_collection_strategy_raises_when_replace_rule_has_no_replacement() -> (
+    None
+):
+    import pytest
+
+    rules = [
+        OverrideRule(
+            override_type=OverrideType.REPLACE,
+            target={OverrideTargetField.ORIGIN: "example.com"},
+            replacement=None,
+        )
+    ]
+    strategy = OverrideCollectionStrategy(rules)
+    metadata = [
+        Metadata(
+            name="test-package",
+            origin="example.com",
+            version="1.0.0",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        )
+    ]
+    with pytest.raises(ValueError, match="Replacement for replace"):
+        strategy.augment_metadata(metadata)
+
+
+def test_json_to_override_rules_raises_on_invalid_target_field() -> None:
+    import json
+
+    import pytest
+
+    bad_json = json.loads(
+        '[{"override_type": "remove", "target": {"invalid_field": "value"}}]'
+    )
+    with pytest.raises(ValueError, match="Target field must be"):
+        OverrideCollectionStrategy.json_to_override_rules(bad_json)
+
+
+def test_json_to_override_rules_raises_when_non_remove_has_null_replacement() -> None:
+    import json
+
+    import pytest
+
+    # override_type "add" with explicit null replacement triggers the validation error
+    bad_json = json.loads(
+        '[{"override_type": "add", "target": {"origin": "x"}, "replacement": null}]'
+    )
+    with pytest.raises(ValueError):
+        OverrideCollectionStrategy.json_to_override_rules(bad_json)

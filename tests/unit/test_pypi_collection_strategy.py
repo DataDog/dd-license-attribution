@@ -1087,3 +1087,428 @@ def test_pypi_collection_strategy_splits_short_license_on_comma(
     assert " Apache-2.0" in result[1].license
     assert result[1].version == "1.0.0"
     assert result[1].copyright == ["Test Author"]
+
+
+def test_local_project_path_skips_canonical_url_resolution(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = None
+
+    strategy = PypiMetadataCollectionStrategy(
+        "requests",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+        local_project_path="/tmp/pypi_resolve/requests",
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="requests",
+            origin=None,
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    strategy.augment_metadata(initial_metadata)
+
+    source_code_manager_mock.get_canonical_urls.assert_not_called()
+    python_env_manager_mock.get_environment.assert_called_once_with(
+        "/tmp/pypi_resolve/requests"
+    )
+
+
+def test_local_project_path_calls_get_environment_with_local_path(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = (
+        "/tmp/pypi_resolve/requests_virtualenv"
+    )
+    mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[],
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "requests",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+        local_project_path="/tmp/pypi_resolve/requests",
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="requests",
+            origin=None,
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    strategy.augment_metadata(initial_metadata)
+
+    python_env_manager_mock.get_environment.assert_called_once_with(
+        "/tmp/pypi_resolve/requests"
+    )
+    source_code_manager_mock.get_code.assert_not_called()
+
+
+def test_local_project_path_removes_seed_entry(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = (
+        "/tmp/pypi_resolve/requests_virtualenv"
+    )
+    mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[("urllib3", "2.0.0")],
+    )
+    mock_request = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy.requests.get"
+    )
+    mock_request.return_value = MockedRequestsResponse(
+        200,
+        {
+            "info": {
+                "license": "MIT",
+                "author": "Author",
+                "name": "urllib3",
+                "version": "2.0.0",
+            }
+        },
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "requests",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+        local_project_path="/tmp/pypi_resolve/requests",
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="requests",
+            origin=None,
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Seed entry (requests with version=None) should be removed
+    assert len(result) == 1
+    assert result[0].name == "urllib3"
+    assert result[0].version == "2.0.0"
+    assert result[0].license == ["MIT"]
+
+
+def test_local_project_path_full_flow(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = (
+        "/tmp/pypi_resolve/requests_virtualenv"
+    )
+    get_dependencies_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[
+            ("urllib3", "2.0.0"),
+            ("certifi", "2023.7.22"),
+        ],
+    )
+    mock_request = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy.requests.get"
+    )
+    mock_request.side_effect = [
+        MockedRequestsResponse(
+            200,
+            {
+                "info": {
+                    "license": "MIT",
+                    "author": "Andrey Petrov",
+                    "name": "urllib3",
+                    "version": "2.0.0",
+                    "project_urls": {
+                        "Source": "https://github.com/urllib3/urllib3",
+                    },
+                }
+            },
+        ),
+        MockedRequestsResponse(
+            200,
+            {
+                "info": {
+                    "license": "MPL-2.0",
+                    "author": "Kenneth Reitz",
+                    "name": "certifi",
+                    "version": "2023.7.22",
+                }
+            },
+        ),
+    ]
+
+    strategy = PypiMetadataCollectionStrategy(
+        "requests",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+        local_project_path="/tmp/pypi_resolve/requests",
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="requests",
+            origin=None,
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Seed entry removed, two dependencies added
+    assert len(result) == 2
+
+    assert result[0].name == "urllib3"
+    assert result[0].origin == "https://github.com/urllib3/urllib3"
+    assert result[0].version == "2.0.0"
+    assert result[0].license == ["MIT"]
+    assert result[0].copyright == ["Andrey Petrov"]
+
+    assert result[1].name == "certifi"
+    assert result[1].origin == "pypi:certifi"
+    assert result[1].version == "2023.7.22"
+    assert result[1].license == ["MPL-2.0"]
+    assert result[1].copyright == ["Kenneth Reitz"]
+
+    # Verify mocks
+    source_code_manager_mock.get_canonical_urls.assert_not_called()
+    source_code_manager_mock.get_code.assert_not_called()
+    python_env_manager_mock.get_environment.assert_called_once_with(
+        "/tmp/pypi_resolve/requests"
+    )
+    get_dependencies_mock.assert_called_once_with(
+        "/tmp/pypi_resolve/requests_virtualenv"
+    )
+    assert mock_request.call_count == 2
+    mock_request.assert_has_calls(
+        [
+            mocker.call("https://pypi.org/pypi/urllib3/2.0.0/json"),
+            mocker.call("https://pypi.org/pypi/certifi/2023.7.22/json"),
+        ]
+    )
+
+
+def test_local_project_path_filters_synthetic_project_name(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The synthetic wrapper package (ddla-pypi-resolve) must not appear in the output."""
+    from dd_license_attribution.artifact_management.pypi_package_resolver import (
+        SYNTHETIC_PROJECT_NAME,
+    )
+
+    source_code_manager_mock = mocker.Mock()
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = (
+        "/tmp/pypi_resolve/requests_virtualenv"
+    )
+    get_dependencies_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[
+            (SYNTHETIC_PROJECT_NAME, "0.0.1"),
+            ("urllib3", "2.0.0"),
+        ],
+    )
+    mock_request = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy.requests.get"
+    )
+    mock_request.return_value = MockedRequestsResponse(
+        200,
+        {
+            "info": {
+                "license": "MIT",
+                "author": "Author",
+                "name": "urllib3",
+                "version": "2.0.0",
+            }
+        },
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "requests",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+        local_project_path="/tmp/pypi_resolve/requests",
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="requests",
+            origin=None,
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Synthetic project must be filtered out; only urllib3 should appear
+    result_names = [m.name for m in result]
+    assert SYNTHETIC_PROJECT_NAME not in result_names
+    assert "urllib3" in result_names
+    assert len(result) == 1
+
+    # Only urllib3 request was made — synthetic package was skipped
+    mock_request.assert_called_once_with("https://pypi.org/pypi/urllib3/2.0.0/json")
+    get_dependencies_mock.assert_called_once_with(
+        "/tmp/pypi_resolve/requests_virtualenv"
+    )
+
+
+def test_local_project_path_returns_early_when_dependencies_is_none(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = (
+        "/tmp/pypi_resolve/requests_virtualenv"
+    )
+    mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=None,
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "requests",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+        local_project_path="/tmp/pypi_resolve/requests",
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="urllib3",
+            origin="https://github.com/urllib3/urllib3",
+            local_src_path=None,
+            license=["MIT"],
+            version="2.0.0",
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Metadata unchanged when dependencies is None
+    assert result == initial_metadata
+    python_env_manager_mock.get_environment.assert_called_once_with(
+        "/tmp/pypi_resolve/requests"
+    )
+
+
+def test_process_dependency_skips_on_404(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = "/tmp/venv"
+    mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[("nonexistent-pkg", "1.0.0")],
+    )
+    mock_request = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy.requests.get"
+    )
+    mock_request.return_value = MockedRequestsResponse(404, {})
+
+    strategy = PypiMetadataCollectionStrategy(
+        "requests",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+        local_project_path="/tmp/requests",
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="requests",
+            origin=None,
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Seed entry removed, 404 package not added
+    assert len(result) == 0
+    mock_request.assert_called_once_with(
+        "https://pypi.org/pypi/nonexistent-pkg/1.0.0/json"
+    )
+
+
+def test_process_dependency_skips_on_503(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = "/tmp/venv"
+    mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[("unavailable-pkg", "1.0.0")],
+    )
+    mock_request = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy.requests.get"
+    )
+    mock_request.return_value = MockedRequestsResponse(503, {})
+
+    strategy = PypiMetadataCollectionStrategy(
+        "requests",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+        local_project_path="/tmp/requests",
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="requests",
+            origin=None,
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Seed entry removed, 503 package not added
+    assert len(result) == 0
+    mock_request.assert_called_once_with(
+        "https://pypi.org/pypi/unavailable-pkg/1.0.0/json"
+    )

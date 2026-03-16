@@ -12,7 +12,7 @@
 
 Datadog License Attribution Tracker is a tool that collects license and copyright information for third party dependencies of a project and returns a list of said dependencies and their licenses and copyright attributions, if found.
 
-As of today, Datadog License Attribution Tracker supports Go, Python, and NodeJS projects. It will be extended in the future to support more languages. You can also pass an npm package name directly using the `--ecosystem npm` option.
+As of today, Datadog License Attribution Tracker supports Go, Python, and NodeJS projects. It will be extended in the future to support more languages. You can also pass an npm package name directly using the `--ecosystem npm` option, or a PyPI package using `--ecosystem python` (or `--ecosystem pypi`).
 
 The tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, the go-pkg list command output, and metadata collected from PyPI and NPM.
 It supports gathering data from various repositories to generate a comprehensive list of third party dependencies.
@@ -35,6 +35,10 @@ dd-license-attribution generate-sbom-csv https://github.com/owner/repo > LICENSE
 5. Or run on an npm package directly:
 ```bash
 dd-license-attribution generate-sbom-csv --ecosystem npm --no-gh-auth express > LICENSE-3rdparty.csv
+```
+6. Or run on a PyPI package directly:
+```bash
+dd-license-attribution generate-sbom-csv --ecosystem python --no-gh-auth requests==2.31.0 > LICENSE-3rdparty.csv
 ```
 
 For more advanced usage, see the sections below.
@@ -86,7 +90,7 @@ The following optional parameters are available for `generate-sbom-csv`:
 - `--only-root-project`: Extracts information from the licenses and copyright of the passed package, not its dependencies.
 
 ##### Ecosystem Mode
-- `--ecosystem <name>`: Treat the package argument as a package name in the given ecosystem instead of a GitHub repository URL. Supported ecosystems: `npm`. Example: `--ecosystem npm express` or `--ecosystem npm @datadog/browser-sdk@4.0.0`.
+- `--ecosystem <name>`: Treat the package argument as a package name in the given ecosystem instead of a GitHub repository URL. Supported ecosystems: `npm`, `python` (alias: `pypi`). Both `python` and `pypi` are equivalent and produce identical output. Example: `--ecosystem npm express`, `--ecosystem python requests==2.31.0`, `--ecosystem pypi requests==2.31.0`.
 
 ##### Strategy Selection
 - `--deep-scanning`: Enables intensive source code analysis using [scancode-toolkit](https://scancode-toolkit.readthedocs.io/en/latest/getting-started/home.html). This will parse license and copyright information from full package source code. Note: This is a resource-intensive task that may take hours or days to process depending on package size.
@@ -313,6 +317,18 @@ dd-license-attribution generate-sbom-csv --ecosystem npm --no-gh-auth express > 
 
 # Analyze a specific version of a scoped npm package
 dd-license-attribution generate-sbom-csv --ecosystem npm --no-gh-auth @datadog/browser-sdk@4.0.0 > LICENSE-3rdparty.csv
+```
+
+#### Analyzing PyPI Packages by Name
+```bash
+# Analyze a PyPI package without needing a GitHub URL
+dd-license-attribution generate-sbom-csv --ecosystem python --no-gh-auth requests > LICENSE-3rdparty.csv
+
+# Analyze a specific version of a PyPI package
+dd-license-attribution generate-sbom-csv --ecosystem python --no-gh-auth "requests==2.31.0" > LICENSE-3rdparty.csv
+
+# The 'pypi' alias also works
+dd-license-attribution generate-sbom-csv --ecosystem pypi --no-gh-auth Flask > LICENSE-3rdparty.csv
 ```
 
 #### Deep Scanning with Caching

@@ -343,6 +343,163 @@ def test_ecosystem_npm_passes_local_project_path_to_strategy(
     assert npm_strategy.local_project_path == "/tmp/npm_resolve/express"
 
 
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.PypiPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+def test_ecosystem_python_builds_correct_strategy_pipeline(
+    mock_metadata_collector: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_python_env_manager: Mock,
+    mock_pypi_resolver: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_pypi_resolver.return_value.resolve_package.return_value = (
+        "/tmp/pypi_resolve/requests"
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "requests",
+            "--ecosystem",
+            "python",
+            "--no-gh-auth",
+        ],
+    )
+    assert result.exit_code == 0
+
+    strategies = mock_metadata_collector.call_args[0][0]
+    strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
+
+    # python ecosystem pipeline should include these strategies
+    assert "PypiMetadataCollectionStrategy" in strategy_classes
+    assert "ScanCodeToolkitMetadataCollectionStrategy" in strategy_classes
+    assert "GitHubRepositoryMetadataCollectionStrategy" in strategy_classes
+    assert "CleanupCopyrightMetadataStrategy" in strategy_classes
+
+    # python ecosystem pipeline should NOT include these strategies
+    assert "GitHubSbomMetadataCollectionStrategy" not in strategy_classes
+    assert "GoPkgMetadataCollectionStrategy" not in strategy_classes
+    assert "NpmMetadataCollectionStrategy" not in strategy_classes
+
+    # Verify PypiPackageResolver was called
+    mock_pypi_resolver.assert_called_once()
+    mock_pypi_resolver.return_value.resolve_package.assert_called_once_with("requests")
+
+
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.PypiPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+def test_ecosystem_pypi_alias_builds_same_pipeline(
+    mock_metadata_collector: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_python_env_manager: Mock,
+    mock_pypi_resolver: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_pypi_resolver.return_value.resolve_package.return_value = (
+        "/tmp/pypi_resolve/requests"
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "requests",
+            "--ecosystem",
+            "pypi",
+            "--no-gh-auth",
+        ],
+    )
+    assert result.exit_code == 0
+
+    strategies = mock_metadata_collector.call_args[0][0]
+    strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
+
+    assert "PypiMetadataCollectionStrategy" in strategy_classes
+    assert "ScanCodeToolkitMetadataCollectionStrategy" in strategy_classes
+    assert "GitHubRepositoryMetadataCollectionStrategy" in strategy_classes
+    assert "NpmMetadataCollectionStrategy" not in strategy_classes
+    assert "GitHubSbomMetadataCollectionStrategy" not in strategy_classes
+
+    mock_pypi_resolver.return_value.resolve_package.assert_called_once_with("requests")
+
+
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.PypiPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+def test_ecosystem_python_resolver_failure_exits(
+    mock_metadata_collector: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_python_env_manager: Mock,
+    mock_pypi_resolver: Mock,
+) -> None:
+    mock_pypi_resolver.return_value.resolve_package.return_value = None
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "nonexistent-package",
+            "--ecosystem",
+            "python",
+            "--no-gh-auth",
+        ],
+    )
+    assert result.exit_code == 1
+    mock_pypi_resolver.return_value.resolve_package.assert_called_once_with(
+        "nonexistent-package"
+    )
+
+
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.PypiPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+def test_ecosystem_python_passes_local_project_path_to_strategy(
+    mock_metadata_collector: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_python_env_manager: Mock,
+    mock_pypi_resolver: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_pypi_resolver.return_value.resolve_package.return_value = (
+        "/tmp/pypi_resolve/requests"
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "requests",
+            "--ecosystem",
+            "python",
+            "--no-gh-auth",
+        ],
+    )
+    assert result.exit_code == 0
+
+    strategies = mock_metadata_collector.call_args[0][0]
+    pypi_strategy = next(
+        s
+        for s in strategies
+        if s.__class__.__name__ == "PypiMetadataCollectionStrategy"
+    )
+    assert pypi_strategy.local_project_path == "/tmp/pypi_resolve/requests"
+
+
 # NOTE: test_cache_ttl_without_cache_dir and test_transitive_root_same_time must
 # come last because the cache_validation_callback closure retains mutable state
 # across test invocations, which can corrupt subsequent tests.
