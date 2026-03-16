@@ -208,7 +208,7 @@ Then use it with the `--override-spec` parameter:
 dd-license-attribution generate-sbom-csv --override-spec .ddla-overrides https://github.com/your-org/your-project
 ```
 
-📖 **For complete documentation, examples, and best practices, see [Override Configuration Guide](overrides.md)**
+📖 **For complete documentation, examples, and best practices, see [Override Configuration Guide](docs/overrides.md)**
 
 > **Recommendation**: When using overrides, consider creating a PR or feature request to improve `dd-license-attribution` or the target dependency to add missing information upstream. Overrides should ideally be a temporary measure.
 
