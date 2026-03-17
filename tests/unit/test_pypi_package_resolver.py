@@ -104,7 +104,7 @@ class TestResolvePackage:
 
         return mock_create_dirs, mock_write_file, mock_path_exists
 
-    def test_happy_path_creates_dir_and_setup_py(
+    def test_happy_path_creates_dir_and_pyproject_toml(
         self, mocker: pytest_mock.MockFixture
     ) -> None:
         mock_create_dirs, mock_write_file, mock_path_exists = self._setup_mocks(mocker)
@@ -115,12 +115,12 @@ class TestResolvePackage:
         mock_create_dirs.assert_called_once_with("/cache/requests")
 
         write_call_args = mock_write_file.call_args
-        assert write_call_args[0][0] == "/cache/requests/setup.py"
+        assert write_call_args[0][0] == "/cache/requests/pyproject.toml"
         written_content = write_call_args[0][1]
         assert "ddla-pypi-resolve" in written_content
         assert "requests==2.31.0" in written_content
 
-        mock_path_exists.assert_called_once_with("/cache/requests/setup.py")
+        mock_path_exists.assert_called_once_with("/cache/requests/pyproject.toml")
 
     def test_sanitizes_package_name_for_directory(
         self, mocker: pytest_mock.MockFixture
@@ -173,4 +173,4 @@ class TestResolvePackage:
         result = self.resolver.resolve_package("requests==2.31.0")
 
         assert result is None
-        mock_path_exists.assert_called_once_with("/cache/requests/setup.py")
+        mock_path_exists.assert_called_once_with("/cache/requests/pyproject.toml")

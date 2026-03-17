@@ -24,7 +24,7 @@ SYNTHETIC_PROJECT_NAME = "ddla-pypi-resolve"
 
 class PypiPackageResolver:
     """Resolves a PyPI package specifier into a local project directory
-    containing a minimal setup.py with the package as a dependency."""
+    containing a minimal pyproject.toml with the package as a dependency."""
 
     def __init__(self, working_dir: str) -> None:
         self.working_dir = working_dir
@@ -47,7 +47,7 @@ class PypiPackageResolver:
         return spec, ""
 
     def resolve_package(self, pypi_package_spec: str) -> str | None:
-        """Resolve a PyPI package spec into a local directory with a minimal setup.py.
+        """Resolve a PyPI package spec into a local directory with a minimal pyproject.toml.
 
         Creates a minimal installable project so PythonEnvManager can process it.
         Returns the project directory path, or None on failure.
@@ -60,24 +60,28 @@ class PypiPackageResolver:
         create_dirs(resolve_dir)
 
         install_requires_entry = f"{name}{version}"
-        setup_py_content = (
-            "from setuptools import setup\n"
-            "setup(\n"
-            f'    name="{SYNTHETIC_PROJECT_NAME}",\n'
-            '    version="0.0.1",\n'
-            f"    install_requires=[{install_requires_entry!r}],\n"
-            ")\n"
+        pyproject_toml_content = (
+            "[build-system]\n"
+            'requires = ["setuptools"]\n'
+            'build-backend = "setuptools.build_meta"\n'
+            "\n"
+            "[project]\n"
+            f'name = "{SYNTHETIC_PROJECT_NAME}"\n'
+            'version = "0.0.1"\n'
+            f"dependencies = [{install_requires_entry!r}]\n"
         )
 
-        setup_py_path = path_join(resolve_dir, "setup.py")
+        pyproject_toml_path = path_join(resolve_dir, "pyproject.toml")
         try:
-            write_file(setup_py_path, setup_py_content)
+            write_file(pyproject_toml_path, pyproject_toml_content)
         except Exception as e:
-            logger.error("Failed to write setup.py for %s: %s", pypi_package_spec, e)
+            logger.error(
+                "Failed to write pyproject.toml for %s: %s", pypi_package_spec, e
+            )
             return None
 
-        if not path_exists(setup_py_path):
-            logger.error("setup.py was not created in %s", resolve_dir)
+        if not path_exists(pyproject_toml_path):
+            logger.error("pyproject.toml was not created in %s", resolve_dir)
             return None
 
         logger.info(
