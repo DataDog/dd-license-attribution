@@ -19,8 +19,8 @@ jobs:
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.11"
-      - name: Install dependencies
-        run: pip install -e ".[dev]"
+      - name: Install black
+        run: pip install black
       - name: Run black
         run: black --check .
   isort:
