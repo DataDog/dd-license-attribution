@@ -175,14 +175,14 @@ class DataProcessor:
     def __init__(self, config: dict[str, Any]) -> None:
         self.config: dict[str, Any] = config
         self.cache: dict[str, Any] = {}
-    
+
     def process(self, data: str) -> str | None:
         return data.upper() if data else None
-    
+
     @classmethod
     def from_config(cls, config_path: str) -> "DataProcessor":
         return cls({})
-    
+
     @staticmethod
     def validate_input(data: str) -> bool:
         return len(data) > 0
@@ -272,7 +272,7 @@ from dd_license_attribution.adaptors.os import OSAdaptor
 class FileProcessor:
     def __init__(self, os_adaptor: OSAdaptor) -> None:
         self.os_adaptor = os_adaptor
-    
+
     def process_file(self, path: str) -> str:
         if self.os_adaptor.path_exists(path):
             return self.os_adaptor.read_file(path)
@@ -323,19 +323,19 @@ class TestExampleClass:
         """Setup test fixtures."""
         self.os_adaptor = Mock()
         self.example = ExampleClass(self.os_adaptor)
-    
+
     def test_success_case_returns_expected_result(self) -> None:
         """Test normal operation with valid input."""
         self.os_adaptor.read_file.return_value = "test content"
         result = self.example.process_file("test.txt")
         assert result == "processed: test content"
-    
+
     def test_error_handling_raises_appropriate_exception(self) -> None:
         """Test error scenarios are handled correctly."""
         self.os_adaptor.read_file.side_effect = FileNotFoundError()
         with pytest.raises(FileNotFoundError):
             self.example.process_file("nonexistent.txt")
-    
+
     def test_edge_cases_handle_boundary_conditions(self) -> None:
         """Test boundary conditions and edge cases."""
         self.os_adaptor.read_file.return_value = ""
@@ -371,26 +371,26 @@ class TestDataProcessor:
         # Mock adaptors (external dependencies)
         self.os_adaptor = Mock()
         self.network_adaptor = Mock()
-        
+
         # Inject mocks into class under test
         self.processor = DataProcessor(
             os_adaptor=self.os_adaptor,
             network_adaptor=self.network_adaptor
         )
-    
+
     def test_process_file_with_mocked_dependencies(self) -> None:
         """Test business logic with all external calls mocked."""
         # Arrange: Set up mock behavior
         self.os_adaptor.read_file.return_value = "test content"
         self.network_adaptor.fetch_metadata.return_value = {"version": "1.0"}
-        
+
         # Act: Call the method under test
         result = self.processor.process_file("test.txt")
-        
+
         # Assert: Verify behavior and mock calls
         assert result.content == "processed: test content"
         assert result.metadata["version"] == "1.0"
-        
+
         # CRITICAL: ALWAYS verify mocks were called correctly
         self.os_adaptor.read_file.assert_called_once_with("test.txt")
         self.network_adaptor.fetch_metadata.assert_called_once()
@@ -424,7 +424,7 @@ def test_with_mocked_builtin(self, mock_len):
 # ✅ REQUIRED: Design classes for easy mocking via dependency injection
 class DataProcessor:
     def __init__(
-        self, 
+        self,
         os_adaptor: OSAdaptor,
         network_adaptor: NetworkAdaptor,
         config: Dict[str, Any]
@@ -432,15 +432,15 @@ class DataProcessor:
         self.os_adaptor = os_adaptor
         self.network_adaptor = network_adaptor
         self.config = config
-    
+
     def process_file(self, path: str) -> ProcessedResult:
         # Business logic that can be tested in isolation
         if not self.os_adaptor.path_exists(path):
             raise FileNotFoundError(f"File not found: {path}")
-        
+
         content = self.os_adaptor.read_file(path)
         metadata = self.network_adaptor.fetch_metadata(path)
-        
+
         return ProcessedResult(
             content=f"processed: {content}",
             metadata=metadata
@@ -452,12 +452,12 @@ class TestDataProcessor:
         os_adaptor = Mock()
         network_adaptor = Mock()
         os_adaptor.path_exists.return_value = False
-        
+
         processor = DataProcessor(os_adaptor, network_adaptor, {})
-        
+
         with pytest.raises(FileNotFoundError, match="File not found: test.txt"):
             processor.process_file("test.txt")
-        
+
         # CRITICAL: ALWAYS verify mock interactions
         os_adaptor.path_exists.assert_called_once_with("test.txt")
         os_adaptor.read_file.assert_not_called()
@@ -470,7 +470,7 @@ class TestDataProcessor:
 # ✅ Mock side effects for error testing
 def test_handles_network_timeout(self) -> None:
     self.network_adaptor.fetch_metadata.side_effect = TimeoutError("Network timeout")
-    
+
     with pytest.raises(TimeoutError):
         self.processor.process_file("test.txt")
 
@@ -481,7 +481,7 @@ def test_handles_different_file_types(self) -> None:
         ("file.json", '{"key": "value"}', "application/json"),
         ("file.py", "print('hello')", "text/x-python"),
     ]
-    
+
     for filename, content, expected_type in test_cases:
         with self.subTest(filename=filename):
             self.os_adaptor.read_file.return_value = content
@@ -493,7 +493,7 @@ from unittest.mock import call
 
 def test_calls_adaptor_with_correct_arguments(self) -> None:
     self.processor.process_multiple_files(["file1.txt", "file2.txt"])
-    
+
     # Verify exact calls
     expected_calls = [call("file1.txt"), call("file2.txt")]
     self.os_adaptor.read_file.assert_has_calls(expected_calls)
@@ -507,14 +507,14 @@ def test_calls_adaptor_with_correct_arguments(self) -> None:
 def test_processes_license_file_correctly(self) -> None:
     license_content = "MIT License\nCopyright (c) 2024"
     expected_result = LicenseInfo(type="MIT", year="2024")
-    
+
     self.os_adaptor.read_file.return_value = license_content
-    
+
     result = self.processor.parse_license("LICENSE")
-    
+
     # Verify result
     assert result == expected_result
-    
+
     # CRITICAL: ALWAYS verify mock was called with correct parameters
     self.os_adaptor.read_file.assert_called_once_with("LICENSE")
 
@@ -535,13 +535,13 @@ def test_with_complete_verification(self) -> None:
     # Arrange
     self.os_adaptor.read_file.return_value = "content"
     self.os_adaptor.path_exists.return_value = True
-    
+
     # Act
     result = self.processor.process_file("test.txt")
-    
+
     # Assert - Verify result
     assert result == "processed: content"
-    
+
     # Assert - MANDATORY: Verify ALL mock interactions
     self.os_adaptor.path_exists.assert_called_once_with("test.txt")
     self.os_adaptor.read_file.assert_called_once_with("test.txt")
@@ -550,10 +550,10 @@ def test_with_complete_verification(self) -> None:
 def test_without_verification(self) -> None:
     # Arrange
     self.os_adaptor.read_file.return_value = "content"
-    
+
     # Act
     result = self.processor.process_file("test.txt")
-    
+
     # Assert - Only checks result, DOES NOT verify mock was called
     assert result == "processed: content"
     # MISSING: self.os_adaptor.read_file.assert_called_once_with("test.txt")
@@ -562,13 +562,13 @@ def test_without_verification(self) -> None:
 def test_multiple_calls_verification(self) -> None:
     # Arrange
     self.os_adaptor.read_file.return_value = "content"
-    
+
     # Act
     self.processor.process_multiple_files(["file1.txt", "file2.txt", "file3.txt"])
-    
+
     # Assert - Verify exact call count
     assert self.os_adaptor.read_file.call_count == 3
-    
+
     # Assert - Verify exact calls with parameters
     expected_calls = [
         call("file1.txt"),
@@ -581,13 +581,13 @@ def test_multiple_calls_verification(self) -> None:
 def test_early_return_no_calls(self) -> None:
     # Arrange
     self.os_adaptor.path_exists.return_value = False
-    
+
     # Act
     result = self.processor.process_file_if_exists("test.txt")
-    
+
     # Assert - Verify result
     assert result is None
-    
+
     # Assert - MANDATORY: Verify what WAS and WAS NOT called
     self.os_adaptor.path_exists.assert_called_once_with("test.txt")
     self.os_adaptor.read_file.assert_not_called()  # Should not be called
@@ -618,27 +618,27 @@ import pytest
 
 class TestGitHubAPIContract:
     """Validate GitHub API endpoint contracts."""
-    
+
     def test_repository_endpoint_structure(self) -> None:
         """Ensure GitHub API returns expected repository structure."""
         response = github_api.get_repository("owner/repo")
-        
+
         # Validate required fields exist
         assert "name" in response
         assert "full_name" in response
         assert "html_url" in response
         assert "default_branch" in response
-        
+
         # Validate field types
         assert isinstance(response["name"], str)
         assert isinstance(response["full_name"], str)
         assert isinstance(response["html_url"], str)
-    
+
     def test_api_error_responses(self) -> None:
         """Ensure API error responses have expected structure."""
         with pytest.raises(Exception) as exc_info:
             github_api.get_repository("nonexistent/repo")
-        
+
         # Validate error structure
         assert hasattr(exc_info.value, "status_code")
         assert exc_info.value.status_code == 404
@@ -648,14 +648,14 @@ class TestGitHubAPIContract:
 
 class TestGitURLParseContract:
     """Validate giturlparse library behavior."""
-    
+
     def test_parses_https_github_urls(self) -> None:
         """Ensure giturlparse handles HTTPS GitHub URLs correctly."""
         parsed = giturlparse.parse("https://github.com/owner/repo.git")
         assert parsed.owner == "owner"
         assert parsed.repo == "repo"
         assert parsed.platform == "github"
-    
+
     def test_parses_ssh_github_urls(self) -> None:
         """Ensure giturlparse handles SSH GitHub URLs correctly."""
         parsed = giturlparse.parse("git@github.com:owner/repo.git")
@@ -773,7 +773,7 @@ Configure your IDE to auto-format on save:
 
 **MUST Include in CHANGELOG:**
 - ✅ New features visible to users
-- ✅ Bug fixes that affect user experience  
+- ✅ Bug fixes that affect user experience
 - ✅ Breaking changes (API changes, CLI changes, behavior changes)
 - ✅ Deprecated functionality
 - ✅ New CLI commands or options
@@ -861,7 +861,7 @@ logger = logging.getLogger(__name__)
 
 def process_file(path: str) -> str | None:
     logger.debug("Processing file: %s", path)  # Detailed diagnostic info
-    
+
     try:
         content = read_file(path)
         logger.info("Successfully processed file: %s", path)  # Important events
@@ -941,7 +941,7 @@ class MetadataCollector:
     def __init__(self, repository: str) -> None:
         self.repository = repository
         self.logger = logging.LoggerAdapter(logger, {"repository": repository})
-    
+
     def collect(self) -> dict[str, Any]:
         self.logger.info("Starting metadata collection")  # Includes repository context
         # ... collection logic ...
@@ -1102,10 +1102,10 @@ def test_over_mocked(self, mock_process):
 def test_without_mock_verification(self):
     os_adaptor = Mock()
     os_adaptor.read_file.return_value = "test content"
-    
+
     processor = DataProcessor(os_adaptor=os_adaptor)
     result = processor.process_file("test.txt")
-    
+
     assert result == "processed: test content"
     # MISSING: Mock verification - this test is incomplete!
 
@@ -1113,13 +1113,13 @@ def test_without_mock_verification(self):
 def test_public_behavior_with_mocked_dependencies(self):
     os_adaptor = Mock()
     os_adaptor.read_file.return_value = "test content"
-    
+
     processor = DataProcessor(os_adaptor=os_adaptor)
     result = processor.process_file("test.txt")
-    
+
     # Verify result
     assert result == "processed: test content"
-    
+
     # CRITICAL: ALWAYS verify mock interactions
     os_adaptor.read_file.assert_called_once_with("test.txt")
 
@@ -1127,15 +1127,25 @@ def test_public_behavior_with_mocked_dependencies(self):
 def test_handles_file_not_found(self):
     os_adaptor = Mock()
     os_adaptor.read_file.side_effect = FileNotFoundError("File not found")
-    
+
     processor = DataProcessor(os_adaptor=os_adaptor)
-    
+
     with pytest.raises(FileNotFoundError):
         processor.process_file("nonexistent.txt")
-    
+
     # CRITICAL: ALWAYS verify mock was called
     os_adaptor.read_file.assert_called_once_with("nonexistent.txt")
 ```
+## GitHub Actions Conventions
+
+- **Always pin actions to a full commit SHA** — never use mutable tags like `@v4` or `@main`
+- Add a version comment after the SHA for readability: `uses: actions/checkout@34e11487... # v4.3.1`
+- To find the SHA for a tag: `gh api repos/OWNER/REPO/git/ref/tags/TAG --jq '.object.sha'`
+
+## Git Conventions
+
+- **Commit messages:** Do NOT include co-authoring information from coding agents (i.e. avoid "Co-Authored-By: Claude" attribution)
+- **Pull requests:** Do NOT add "Generated with Claude Code" or similar footers — keep PR descriptions focused on the technical changes
 
 ## 🎯 Quality Gates
 
