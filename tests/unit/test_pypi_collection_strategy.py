@@ -103,6 +103,8 @@ def test_pypi_collection_strategy_is_bypassed_if_only_root_project_is_required(
     result = strategy.augment_metadata(initial_metadata)
 
     assert result == initial_metadata
+    # No pip env setup or dependency scanning should occur for ONLY_ROOT_PROJECT
+    python_env_manager_mock.get_environment.assert_not_called()
 
 
 def test_pypi_collection_strategy_adds_pypi_metadata_to_list_of_dependencies(
@@ -392,7 +394,7 @@ def test_dependency_in_initial_metadata_is_augmented_and_not_duplicated_when_fou
         "top_package",
         source_code_manager_mock,
         python_env_manager_mock,
-        ProjectScope.ONLY_ROOT_PROJECT,
+        ProjectScope.ALL,
     )
 
     initial_metadata = [
@@ -1512,3 +1514,265 @@ def test_process_dependency_skips_on_503(
     mock_request.assert_called_once_with(
         "https://pypi.org/pypi/unavailable-pkg/1.0.0/json"
     )
+
+
+def test_local_project_path_only_root_project_fetches_root_from_pypi_without_pip_install(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """ONLY_ROOT_PROJECT with local_project_path should fetch root package from PyPI
+    directly without running pip install or calling get_environment."""
+    source_code_manager_mock = mocker.Mock()
+    python_env_manager_mock = mocker.Mock()
+    mock_request = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy.requests.get"
+    )
+    mock_request.return_value = MockedRequestsResponse(
+        200,
+        {
+            "info": {
+                "license": "Apache-2.0",
+                "author": "Kenneth Reitz",
+                "name": "requests",
+                "version": "2.31.0",
+                "project_urls": {
+                    "Source": "https://github.com/psf/requests",
+                },
+            }
+        },
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "requests==2.31.0",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ONLY_ROOT_PROJECT,
+        local_project_path="/tmp/pypi_resolve/requests",
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="requests==2.31.0",
+            origin=None,
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Should contain only the root package fetched from PyPI
+    assert len(result) == 1
+    assert result[0].name == "requests"
+    assert result[0].version == "2.31.0"
+    assert result[0].license == ["Apache-2.0"]
+    assert result[0].origin == "https://github.com/psf/requests"
+
+    # pip install must NOT be triggered for ONLY_ROOT_PROJECT
+    python_env_manager_mock.get_environment.assert_not_called()
+    mock_request.assert_called_once_with("https://pypi.org/pypi/requests/2.31.0/json")
+
+
+def test_local_project_path_only_root_project_without_version_uses_latest(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """ONLY_ROOT_PROJECT with unversioned spec should call the no-version PyPI endpoint."""
+    source_code_manager_mock = mocker.Mock()
+    python_env_manager_mock = mocker.Mock()
+    mock_request = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy.requests.get"
+    )
+    mock_request.return_value = MockedRequestsResponse(
+        200,
+        {
+            "info": {
+                "license": "Apache-2.0",
+                "author": "Kenneth Reitz",
+                "name": "requests",
+                "version": "2.31.0",
+            }
+        },
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "requests",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ONLY_ROOT_PROJECT,
+        local_project_path="/tmp/pypi_resolve/requests",
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="requests",
+            origin=None,
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert len(result) == 1
+    assert result[0].name == "requests"
+    python_env_manager_mock.get_environment.assert_not_called()
+    # No version in URL for unversioned spec
+    mock_request.assert_called_once_with("https://pypi.org/pypi/requests/json")
+
+
+def test_local_project_path_only_transitive_excludes_root_package(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """ONLY_TRANSITIVE_DEPENDENCIES should exclude the root package from results."""
+    source_code_manager_mock = mocker.Mock()
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = (
+        "/tmp/pypi_resolve/requests_virtualenv"
+    )
+    get_dependencies_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[
+            ("requests", "2.31.0"),
+            ("urllib3", "2.0.0"),
+        ],
+    )
+    mock_request = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy.requests.get"
+    )
+    mock_request.side_effect = [
+        MockedRequestsResponse(
+            200,
+            {
+                "info": {
+                    "license": "Apache-2.0",
+                    "author": "Kenneth Reitz",
+                    "name": "requests",
+                    "version": "2.31.0",
+                }
+            },
+        ),
+        MockedRequestsResponse(
+            200,
+            {
+                "info": {
+                    "license": "MIT",
+                    "author": "Andrey Petrov",
+                    "name": "urllib3",
+                    "version": "2.0.0",
+                }
+            },
+        ),
+    ]
+
+    strategy = PypiMetadataCollectionStrategy(
+        "requests",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+        local_project_path="/tmp/pypi_resolve/requests",
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="requests",
+            origin=None,
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Root package (requests) must be excluded; only transitive deps remain
+    result_names = [m.name for m in result]
+    assert "requests" not in result_names
+    assert "urllib3" in result_names
+    assert len(result) == 1
+
+    python_env_manager_mock.get_environment.assert_called_once_with(
+        "/tmp/pypi_resolve/requests"
+    )
+    get_dependencies_mock.assert_called_once_with(
+        "/tmp/pypi_resolve/requests_virtualenv"
+    )
+    assert mock_request.call_count == 2
+
+
+def test_git_repo_path_only_transitive_excludes_top_package(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """ONLY_TRANSITIVE_DEPENDENCIES in git-repo mode should exclude the top_package entry."""
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "github.com/org/package1",
+        None,
+    )
+    source_code_manager_mock.get_code.return_value = None
+
+    from dd_license_attribution.artifact_management.artifact_manager import (
+        SourceCodeReference,
+    )
+
+    source_code_manager_mock.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/package1",
+        branch="main",
+        local_root_path="cache_dir/org-package1/main",
+        local_full_path="cache_dir/org-package1/main",
+    )
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = "cache_dir/org_package1_venv"
+    get_dependencies_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[("package3", "1.0.0")],
+    )
+    mock_request = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy.requests.get"
+    )
+    mock_request.return_value = MockedRequestsResponse(
+        200,
+        {
+            "info": {
+                "license": "MIT",
+                "author": "Author",
+                "name": "package3",
+                "version": "1.0.0",
+            }
+        },
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "github.com/org/package1",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Top package entry should be filtered out; only transitive dep remains
+    result_names = [m.name for m in result]
+    assert "github.com/org/package1" not in result_names
+    assert "package3" in result_names
+    assert len(result) == 1
+
+    python_env_manager_mock.get_environment.assert_called_once_with(
+        "cache_dir/org-package1/main"
+    )
+    get_dependencies_mock.assert_called_once_with("cache_dir/org_package1_venv")
+    mock_request.assert_called_once_with("https://pypi.org/pypi/package3/1.0.0/json")
