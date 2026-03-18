@@ -569,3 +569,66 @@ def test_github_repository_collection_strategy_uses_source_code_manager_not_dire
     source_code_manager_mock.get_repository_info.assert_called_once_with(
         "DataDog", "dd-license-attribution"
     )
+
+
+def test_github_repository_collection_strategy_skips_package_without_origin(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    github_client_mock = mocker.Mock(spec_set=GitHub)
+    source_code_manager_mock = mocker.Mock()
+
+    strategy = GitHubRepositoryMetadataCollectionStrategy(
+        github_client=github_client_mock, source_code_manager=source_code_manager_mock
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="no-origin-package",
+            version="1.0.0",
+            origin=None,
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    assert updated_metadata == initial_metadata
+    source_code_manager_mock.get_canonical_urls.assert_not_called()
+
+
+def test_github_repository_collection_strategy_skips_invalid_parsed_url(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    github_client_mock = mocker.Mock(spec_set=GitHub)
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://bitbucket.org/org/repo",
+        "https://api.bitbucket.org/org/repo",
+    )
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_repository_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(True, "bitbucket", "org", "repo"),
+    )
+
+    strategy = GitHubRepositoryMetadataCollectionStrategy(
+        github_client=github_client_mock, source_code_manager=source_code_manager_mock
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="bitbucket-package",
+            version="1.0.0",
+            origin="https://bitbucket.org/org/repo",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    assert updated_metadata == initial_metadata
+    source_code_manager_mock.get_repository_info.assert_not_called()

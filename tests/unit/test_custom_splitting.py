@@ -73,3 +73,15 @@ def test_custom_split_no_protected_terms() -> None:
     splitter = CustomSplit(protected_terms=None)
     result = splitter.custom_split("MIT, Apache-2.0")
     assert result == ["MIT", "Apache-2.0"]
+
+
+def test_custom_split_falls_back_when_csv_error(mocker: "pytest_mock.MockFixture") -> None:  # type: ignore[name-defined]
+    """Test fallback path when csv.reader raises csv.Error."""
+    import csv
+
+    import pytest_mock
+
+    mocker.patch("csv.reader", side_effect=csv.Error("malformed"))
+    splitter = CustomSplit()
+    result = splitter.custom_split("a,b,c")
+    assert result == ["a", "b", "c"]

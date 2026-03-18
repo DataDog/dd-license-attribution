@@ -6,14 +6,15 @@
 # Copyright 2024-present Datadog, Inc.
 
 import logging
-
-# Get application-specific logger
-logger = logging.getLogger("dd_license_attribution")
-from typing import Any, Dict, Optional
+import re
+from typing import Any, Optional
 
 import requests
 from giturlparse import validate as validate_git_url
 
+from dd_license_attribution.artifact_management.pypi_package_resolver import (
+    SYNTHETIC_PROJECT_NAME,
+)
 from dd_license_attribution.artifact_management.python_env_manager import (
     PythonEnvManager,
 )
@@ -29,6 +30,9 @@ from dd_license_attribution.metadata_collector.strategies.abstract_collection_st
 from dd_license_attribution.utils.custom_splitting import CustomSplit
 from dd_license_attribution.utils.license_utils import is_long_license
 
+# Get application-specific logger
+logger = logging.getLogger("dd_license_attribution")
+
 
 class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
     def __init__(
@@ -37,14 +41,25 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         source_code_manager: SourceCodeManager,
         python_env_manager: PythonEnvManager,
         project_scope: ProjectScope,
+        local_project_path: str | None = None,
     ) -> None:
-        # Resolve canonical URL if this is a GitHub repository
-        # This ensures we can match packages that were canonicalized by earlier strategies
-        canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
-        self.top_package = canonical_url if canonical_url else top_package
+        self.local_project_path = local_project_path
+
+        if local_project_path is not None:
+            # In pypi-package mode, top_package is a package name, not a URL
+            self.top_package = top_package
+        else:
+            # Resolve canonical URL if this is a GitHub repository
+            # This ensures we can match packages that were canonicalized by earlier strategies
+            canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
+            self.top_package = canonical_url if canonical_url else top_package
+
         self.source_code_manager = source_code_manager
         self.python_env_manager = python_env_manager
         self.only_root_project = project_scope == ProjectScope.ONLY_ROOT_PROJECT
+        self.only_transitive = (
+            project_scope == ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
+        )
         self.company_suffixes_sometimes_used_after_commas = (
             string_formatting_config.default_config.preset_company_suffixes
         )
@@ -54,6 +69,13 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
 
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = metadata.copy()
+
+        if self.local_project_path is not None:
+            return self._augment_metadata_from_local_path(updated_metadata)
+
+        # Early return for ONLY_ROOT_PROJECT — no dependency scanning needed.
+        if self.only_root_project:
+            return updated_metadata
 
         # setup pyenv
         top_package_path = self._find_top_metadata_path(updated_metadata)
@@ -69,145 +91,222 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         if dependencies is None:
             return updated_metadata
         for dependency, version in dependencies:
-            logger.debug("dependency: %s, version: %s", dependency, version)
+            self._process_dependency(dependency, version, updated_metadata)
 
-            # get the metadata from pypi API
-            pypi_metadata = self._get_metadata_from_pypi(dependency, version)
-            if pypi_metadata is None:
-                continue
-            if "info" in pypi_metadata:
-                pypi_info = pypi_metadata["info"]
-            else:
-                pypi_info = {"name": dependency}
+        # Filter out root package if only_transitive mode
+        if self.only_transitive:
+            updated_metadata = [
+                m for m in updated_metadata if m.name != self.top_package
+            ]
 
-            logger.debug("pypi_info: %s", pypi_info)
-            logger.debug("pypi_metadata: %s", pypi_metadata)
-
-            origin = "pypi:" + dependency
-            project_urls = {}
-            project_urls_lower = {}
-            # Depending on the pypi package, the GitHub URL is in different keys
-            if "project_urls" in pypi_info and pypi_info["project_urls"] is not None:
-                project_urls = pypi_info["project_urls"]
-
-            for key in list(project_urls):
-                if project_urls[key] is None:
-                    logger.debug(
-                        "Project URL for key '%s' is None in package %s",
-                        key,
-                        dependency,
-                    )
-                    del project_urls[key]
-                    continue
-                project_urls[key] = project_urls[key].replace("http://", "https://")
-                project_urls_lower[key.lower()] = project_urls[key]
-
-            if "homepage" in project_urls_lower and validate_git_url(
-                project_urls_lower["homepage"]
-            ):
-                origin = project_urls_lower["homepage"]
-            if "github" in project_urls_lower and validate_git_url(
-                project_urls_lower["github"]
-            ):
-                origin = project_urls_lower["github"]
-            if "repository" in project_urls_lower and validate_git_url(
-                project_urls_lower["repository"]
-            ):
-                origin = project_urls_lower["repository"]
-            if "code" in project_urls_lower and validate_git_url(
-                project_urls_lower["code"]
-            ):
-                origin = project_urls_lower["code"]
-            if "source code" in project_urls_lower and validate_git_url(
-                project_urls_lower["source code"]
-            ):
-                origin = project_urls_lower["source code"]
-            if "source" in project_urls_lower and validate_git_url(
-                project_urls_lower["source"]
-            ):
-                origin = project_urls_lower["source"]
-
-            find_pkg = next(
-                (
-                    pkg
-                    for pkg in updated_metadata
-                    if pkg.name == pypi_info["name"]
-                    or pkg.name
-                    == self._translate_name_gh_to_pypi_sbom(pypi_info["name"])
-                ),
-                None,
-            )
-            if find_pkg is not None:
-                if find_pkg.origin is None:
-                    find_pkg.origin = origin
-                elif not validate_git_url(find_pkg.origin):
-                    find_pkg.origin = origin
-                if (
-                    len(find_pkg.license) == 0
-                    and "license" in pypi_info
-                    and pypi_info["license"] is not None
-                    and len(pypi_info["license"]) != 0
-                ):
-                    # Only split on commas if it's not a long license text
-                    # Long licenses (full text with newlines) should not be split
-                    if is_long_license(pypi_info["license"]):
-                        find_pkg.license = [pypi_info["license"]]
-                    else:
-                        find_pkg.license = pypi_info["license"].split(",")
-                if "version" in pypi_info and pypi_info["version"] is not None:
-                    find_pkg.version = pypi_info["version"]
-                if (
-                    len(find_pkg.copyright) == 0
-                    and "author" in pypi_info
-                    and pypi_info["author"] is not None
-                ):
-                    find_pkg.copyright = list(
-                        set(self.splitter.custom_split(pypi_info["author"], ","))
-                    )
-
-            else:
-                extracted_license = []
-                if (
-                    "license" in pypi_info
-                    and pypi_info["license"] is not None
-                    and len(pypi_info["license"]) != 0
-                ):
-                    # Only split on commas if it's not a long license text
-                    # Long licenses (full text with newlines) should not be split
-                    if is_long_license(pypi_info["license"]):
-                        extracted_license = [pypi_info["license"]]
-                    else:
-                        extracted_license = pypi_info["license"].split(",")
-                extracted_copyright = []
-                if (
-                    "author" in pypi_info
-                    and pypi_info["author"] is not None
-                    and len(pypi_info["author"]) != 0
-                ):
-                    extracted_copyright = self.splitter.custom_split(
-                        pypi_info["author"], ","
-                    )
-
-                dep_metadata = Metadata(
-                    name=pypi_info["name"],
-                    origin=origin,
-                    local_src_path=None,
-                    license=extracted_license,
-                    version=(
-                        pypi_info["version"]
-                        if "version" in pypi_info and pypi_info["version"] is not None
-                        else None
-                    ),
-                    copyright=extracted_copyright,
-                )
-                updated_metadata.append(dep_metadata)
         return updated_metadata
+
+    def _augment_metadata_from_local_path(
+        self, metadata: list[Metadata]
+    ) -> list[Metadata]:
+        """Handle augment_metadata when local_project_path is set (pypi-package mode).
+
+        In this mode, the local_project_path contains a synthetic project with
+        pyproject.toml generated by PypiPackageResolver. We skip _find_top_metadata_path
+        and source_code_manager.get_code() since the project is synthetic.
+        """
+        # Remove the seed entry created by MetadataCollector for the target package.
+        updated_metadata = [
+            m
+            for m in metadata
+            if not (m.name == self.top_package and m.version is None)
+        ]
+
+        if self.only_root_project:
+            # For ONLY_ROOT_PROJECT: fetch root package metadata from PyPI API directly,
+            # skip pip install entirely.
+            name, clean_version = self._parse_package_spec_for_api(self.top_package)
+            self._process_dependency(name, clean_version, updated_metadata)
+            return updated_metadata
+
+        assert self.local_project_path is not None
+        top_package_env = self.python_env_manager.get_environment(
+            self.local_project_path
+        )
+        if top_package_env is None:
+            return updated_metadata
+
+        dependencies = PythonEnvManager.get_dependencies(top_package_env)
+        if dependencies is None:
+            return updated_metadata
+
+        for dependency, version in dependencies:
+            # Skip the synthetic wrapper project created by PypiPackageResolver
+            if dependency.lower() == SYNTHETIC_PROJECT_NAME:
+                continue
+            self._process_dependency(dependency, version, updated_metadata)
+
+        # Filter out root package if only_transitive mode
+        if self.only_transitive:
+            root_name, _ = self._parse_package_spec_for_api(self.top_package)
+            updated_metadata = [
+                m
+                for m in updated_metadata
+                if m.name is None or m.name.lower() != root_name.lower()
+            ]
+
+        return updated_metadata
+
+    def _parse_package_spec_for_api(self, spec: str) -> tuple[str, str]:
+        """Parse a package spec into (name, version) for PyPI API calls.
+
+        Returns (name, version) where version is the bare version string (e.g. "2.31.0")
+        for exact-version specs (==), or "" to fetch the latest release.
+        Only == is treated as an exact version; other operators fall back to latest.
+        """
+        match = re.match(r"^([A-Za-z0-9._\-\[\]]+)==(.+)$", spec)
+        if match:
+            return match.group(1), match.group(2)
+        name_match = re.match(r"^([A-Za-z0-9._\-\[\]]+)", spec)
+        if name_match:
+            return name_match.group(1), ""
+        return spec, ""
+
+    def _process_dependency(
+        self,
+        dependency: str,
+        version: str,
+        updated_metadata: list[Metadata],
+    ) -> None:
+        """Process a single dependency: fetch PyPI metadata and update/append to metadata list."""
+        logger.debug("dependency: %s, version: %s", dependency, version)
+
+        pypi_metadata = self._get_metadata_from_pypi(dependency, version)
+        if pypi_metadata is None:
+            return
+        if "info" in pypi_metadata:
+            pypi_info = pypi_metadata["info"]
+        else:
+            pypi_info = {"name": dependency}
+
+        logger.debug("pypi_info: %s", pypi_info)
+        logger.debug("pypi_metadata: %s", pypi_metadata)
+
+        origin = "pypi:" + dependency
+        project_urls: dict[str, Any] = {}
+        project_urls_lower: dict[str, str] = {}
+        if "project_urls" in pypi_info and pypi_info["project_urls"] is not None:
+            project_urls = pypi_info["project_urls"]
+
+        for key in list(project_urls):
+            if project_urls[key] is None:
+                logger.debug(
+                    "Project URL for key '%s' is None in package %s",
+                    key,
+                    dependency,
+                )
+                del project_urls[key]
+                continue
+            project_urls[key] = project_urls[key].replace("http://", "https://")
+            project_urls_lower[key.lower()] = project_urls[key]
+
+        if "homepage" in project_urls_lower and validate_git_url(
+            project_urls_lower["homepage"]
+        ):
+            origin = project_urls_lower["homepage"]
+        if "github" in project_urls_lower and validate_git_url(
+            project_urls_lower["github"]
+        ):
+            origin = project_urls_lower["github"]
+        if "repository" in project_urls_lower and validate_git_url(
+            project_urls_lower["repository"]
+        ):
+            origin = project_urls_lower["repository"]
+        if "code" in project_urls_lower and validate_git_url(
+            project_urls_lower["code"]
+        ):
+            origin = project_urls_lower["code"]
+        if "source code" in project_urls_lower and validate_git_url(
+            project_urls_lower["source code"]
+        ):
+            origin = project_urls_lower["source code"]
+        if "source" in project_urls_lower and validate_git_url(
+            project_urls_lower["source"]
+        ):
+            origin = project_urls_lower["source"]
+
+        find_pkg = next(
+            (
+                pkg
+                for pkg in updated_metadata
+                if pkg.name == pypi_info["name"]
+                or pkg.name == self._translate_name_gh_to_pypi_sbom(pypi_info["name"])
+            ),
+            None,
+        )
+        if find_pkg is not None:
+            if find_pkg.origin is None:
+                find_pkg.origin = origin
+            elif not validate_git_url(find_pkg.origin):
+                find_pkg.origin = origin
+            if (
+                len(find_pkg.license) == 0
+                and "license" in pypi_info
+                and pypi_info["license"] is not None
+                and len(pypi_info["license"]) != 0
+            ):
+                if is_long_license(pypi_info["license"]):
+                    find_pkg.license = [pypi_info["license"]]
+                else:
+                    find_pkg.license = pypi_info["license"].split(",")
+            if "version" in pypi_info and pypi_info["version"] is not None:
+                find_pkg.version = pypi_info["version"]
+            if (
+                len(find_pkg.copyright) == 0
+                and "author" in pypi_info
+                and pypi_info["author"] is not None
+            ):
+                find_pkg.copyright = list(
+                    set(self.splitter.custom_split(pypi_info["author"], ","))
+                )
+        else:
+            extracted_license: list[str] = []
+            if (
+                "license" in pypi_info
+                and pypi_info["license"] is not None
+                and len(pypi_info["license"]) != 0
+            ):
+                if is_long_license(pypi_info["license"]):
+                    extracted_license = [pypi_info["license"]]
+                else:
+                    extracted_license = pypi_info["license"].split(",")
+            extracted_copyright: list[str] = []
+            if (
+                "author" in pypi_info
+                and pypi_info["author"] is not None
+                and len(pypi_info["author"]) != 0
+            ):
+                extracted_copyright = self.splitter.custom_split(
+                    pypi_info["author"], ","
+                )
+
+            dep_metadata = Metadata(
+                name=pypi_info["name"],
+                origin=origin,
+                local_src_path=None,
+                license=extracted_license,
+                version=(
+                    pypi_info["version"]
+                    if "version" in pypi_info and pypi_info["version"] is not None
+                    else None
+                ),
+                copyright=extracted_copyright,
+            )
+            updated_metadata.append(dep_metadata)
 
     def _get_metadata_from_pypi(
         self, package: str, version: str
-    ) -> Optional[Dict[str, Any]]:
-        # get metadata from pypi API
-        request_uri = f"https://pypi.org/pypi/{package}/{version}/json"
+    ) -> Optional[dict[str, Any]]:
+        # get metadata from pypi API; omit version to fetch the latest release
+        if version:
+            request_uri = f"https://pypi.org/pypi/{package}/{version}/json"
+        else:
+            request_uri = f"https://pypi.org/pypi/{package}/json"
         response = requests.get(request_uri)
         if response.status_code == 404:
             logger.warning("pypi.org is returning a 404 for %s. Skipping.", package)
