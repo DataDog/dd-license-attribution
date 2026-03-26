@@ -11,6 +11,8 @@ updates:
       - "python"
 
   # Enable version updates for GitHub Actions
+    cooldown:
+      default-days: 2
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -27,3 +29,5 @@ updates:
       include: "scope"
     # Rebase strategy for cleaner history
     rebase-strategy: "auto"
+    cooldown:
+      default-days: 2
