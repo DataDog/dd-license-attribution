@@ -81,6 +81,42 @@ class TestParseGoSpec:
         assert version == ""
 
 
+class TestDetectGoVersion:
+    def test_parses_go_env_output(self, mocker: pytest_mock.MockFixture) -> None:
+        mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.output_from_command",
+            return_value="go1.22.5\n",
+        )
+        resolver = GoPackageResolver("/cache")
+        assert resolver._detect_go_version() == "1.22"
+
+    def test_parses_major_minor_only(self, mocker: pytest_mock.MockFixture) -> None:
+        mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.output_from_command",
+            return_value="go1.23\n",
+        )
+        resolver = GoPackageResolver("/cache")
+        assert resolver._detect_go_version() == "1.23"
+
+    def test_falls_back_on_unexpected_output(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.output_from_command",
+            return_value="unexpected",
+        )
+        resolver = GoPackageResolver("/cache")
+        assert resolver._detect_go_version() == "1.22"
+
+    def test_falls_back_on_exception(self, mocker: pytest_mock.MockFixture) -> None:
+        mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.output_from_command",
+            side_effect=Exception("go not found"),
+        )
+        resolver = GoPackageResolver("/cache")
+        assert resolver._detect_go_version() == "1.22"
+
+
 class TestResolvePackage:
     def setup_method(self) -> None:
         self.resolver = GoPackageResolver("/cache")
@@ -112,6 +148,10 @@ class TestResolvePackage:
             "dd_license_attribution.artifact_management.go_package_resolver.path_join",
             side_effect=fake_path_join,
         )
+        mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.output_from_command",
+            return_value="go1.23.5\n",
+        )
 
         return (
             mock_create_dirs,
@@ -138,7 +178,7 @@ class TestResolvePackage:
         assert go_mod_call[0][0] == "/cache/github_com_stretchr_testify/go.mod"
         go_mod_content = go_mod_call[0][1]
         assert SYNTHETIC_MODULE_NAME in go_mod_content
-        assert "go 1.21" in go_mod_content
+        assert "go 1.23" in go_mod_content
         assert "require github.com/stretchr/testify v1.9.0" in go_mod_content
 
         # Verify main.go was written with correct import
@@ -183,7 +223,7 @@ class TestResolvePackage:
         go_mod_content = mock_write_file.call_args_list[0][0][1]
         assert "require" not in go_mod_content
         assert SYNTHETIC_MODULE_NAME in go_mod_content
-        assert "go 1.21" in go_mod_content
+        assert "go 1.23" in go_mod_content
 
     def test_version_included_in_require_when_specified(
         self, mocker: pytest_mock.MockFixture

@@ -584,38 +584,24 @@ def test_gopkg_local_project_path_skips_get_code_and_resolves_dependencies(
         local_project_path="/tmp/go-resolve/github_com_stretchr_testify",
     )
 
+    # go list -m -json all returns module-level data with Path/Version/Dir at top level
     deps_list_json = """
 {
+    "Path": "ddla-go-resolve",
+    "Main": true,
     "Dir": "/tmp/go-resolve/github_com_stretchr_testify",
-    "ImportPath": "ddla-go-resolve",
-    "Name": "main",
-    "Module": {
-        "Path": "ddla-go-resolve",
-        "Main": true,
-        "Dir": "/tmp/go-resolve/github_com_stretchr_testify",
-        "GoMod": "/tmp/go-resolve/github_com_stretchr_testify/go.mod",
-        "GoVersion": "1.21"
-    }
+    "GoMod": "/tmp/go-resolve/github_com_stretchr_testify/go.mod",
+    "GoVersion": "1.21"
 }
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0",
-    "ImportPath": "github.com/stretchr/testify",
-    "Name": "testify",
-    "Module": {
-        "Path": "github.com/stretchr/testify",
-        "Version": "v1.9.0",
-        "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
-    }
+    "Path": "github.com/stretchr/testify",
+    "Version": "v1.9.0",
+    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
 }
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/davecgh/go-spew@v1.1.1",
-    "ImportPath": "github.com/davecgh/go-spew/spew",
-    "Name": "spew",
-    "Module": {
-        "Path": "github.com/davecgh/go-spew",
-        "Version": "v1.1.1",
-        "Dir": "/tmp/go/pkg/mod/github.com/davecgh/go-spew@v1.1.1"
-    }
+    "Path": "github.com/davecgh/go-spew",
+    "Version": "v1.1.1",
+    "Dir": "/tmp/go/pkg/mod/github.com/davecgh/go-spew@v1.1.1"
 }"""
 
     mock_output_from_command = mocker.patch(
@@ -641,7 +627,8 @@ def test_gopkg_local_project_path_skips_get_code_and_resolves_dependencies(
     assert result[0].name == "github.com/stretchr/testify"
     assert result[0].version == "v1.9.0"
     assert (
-        result[0].local_src_path == "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+        result[0].local_src_path
+        == "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
     )
     assert result[0].origin == "https://github.com/stretchr/testify"
     assert result[1].name == "github.com/davecgh/go-spew"
@@ -654,7 +641,7 @@ def test_gopkg_local_project_path_skips_get_code_and_resolves_dependencies(
     mock_source_code_manager.get_canonical_urls.assert_not_called()
 
     mock_output_from_command.assert_called_once_with(
-        "CWD=`pwd`; cd /tmp/go-resolve/github_com_stretchr_testify && go list -json all; cd $CWD"
+        "CWD=`pwd`; cd /tmp/go-resolve/github_com_stretchr_testify && go list -m -json all; cd $CWD"
     )
 
 
@@ -672,24 +659,14 @@ def test_gopkg_local_project_path_filters_synthetic_module(
     # Output includes the synthetic module — it should be filtered out
     deps_list_json = """
 {{
-    "Dir": "/tmp/go-resolve/testify",
-    "ImportPath": "{synthetic}",
-    "Name": "main",
-    "Module": {{
-        "Path": "{synthetic}",
-        "Main": true,
-        "Dir": "/tmp/go-resolve/testify"
-    }}
+    "Path": "{synthetic}",
+    "Main": true,
+    "Dir": "/tmp/go-resolve/testify"
 }}
 {{
-    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0",
-    "ImportPath": "github.com/stretchr/testify",
-    "Name": "testify",
-    "Module": {{
-        "Path": "github.com/stretchr/testify",
-        "Version": "v1.9.0",
-        "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
-    }}
+    "Path": "github.com/stretchr/testify",
+    "Version": "v1.9.0",
+    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
 }}""".format(synthetic=SYNTHETIC_MODULE_NAME)
 
     mocker.patch(
@@ -731,14 +708,9 @@ def test_gopkg_local_project_path_removes_seed_entry(
 
     deps_list_json = """
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0",
-    "ImportPath": "github.com/stretchr/testify",
-    "Name": "testify",
-    "Module": {
-        "Path": "github.com/stretchr/testify",
-        "Version": "v1.9.0",
-        "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
-    }
+    "Path": "github.com/stretchr/testify",
+    "Version": "v1.9.0",
+    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
 }"""
 
     mocker.patch(
@@ -789,24 +761,14 @@ def test_gopkg_local_project_path_only_root_project(
 
     deps_list_json = """
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0",
-    "ImportPath": "github.com/stretchr/testify",
-    "Name": "testify",
-    "Module": {
-        "Path": "github.com/stretchr/testify",
-        "Version": "v1.9.0",
-        "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
-    }
+    "Path": "github.com/stretchr/testify",
+    "Version": "v1.9.0",
+    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
 }
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/davecgh/go-spew@v1.1.1",
-    "ImportPath": "github.com/davecgh/go-spew/spew",
-    "Name": "spew",
-    "Module": {
-        "Path": "github.com/davecgh/go-spew",
-        "Version": "v1.1.1",
-        "Dir": "/tmp/go/pkg/mod/github.com/davecgh/go-spew@v1.1.1"
-    }
+    "Path": "github.com/davecgh/go-spew",
+    "Version": "v1.1.1",
+    "Dir": "/tmp/go/pkg/mod/github.com/davecgh/go-spew@v1.1.1"
 }"""
 
     mocker.patch(
@@ -882,14 +844,9 @@ def test_gopkg_local_project_path_updates_existing_metadata(
 
     deps_list_json = """
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0",
-    "ImportPath": "github.com/stretchr/testify",
-    "Name": "testify",
-    "Module": {
-        "Path": "github.com/stretchr/testify",
-        "Version": "v1.9.0",
-        "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
-    }
+    "Path": "github.com/stretchr/testify",
+    "Version": "v1.9.0",
+    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
 }"""
 
     mocker.patch(
@@ -931,3 +888,76 @@ def test_gopkg_local_project_path_updates_existing_metadata(
     # License and copyright from earlier strategy should be preserved
     assert testify.license == ["BSD-3-Clause"]
     assert testify.copyright == ["stretchr"]
+
+
+def test_gopkg_local_project_path_indirect_dep_without_dir(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Indirect dependencies in go list -m -json all may lack a Dir field.
+
+    These should get local_src_path=None so downstream strategies (e.g. ScanCode)
+    skip local scanning instead of crashing on an empty path.
+    """
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/stretchr/testify",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/go-resolve/testify",
+    )
+
+    # objx is indirect — no Dir field in go list -m -json all output
+    deps_list_json = """
+{
+    "Path": "ddla-go-resolve",
+    "Main": true,
+    "Dir": "/tmp/go-resolve/testify"
+}
+{
+    "Path": "github.com/stretchr/testify",
+    "Version": "v1.9.0",
+    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+}
+{
+    "Path": "github.com/stretchr/objx",
+    "Version": "v0.5.2",
+    "Indirect": true
+}"""
+
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="github.com/stretchr/testify",
+            origin="github.com/stretchr/testify",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert len(result) == 2
+    testify = next(m for m in result if m.name == "github.com/stretchr/testify")
+    objx = next(m for m in result if m.name == "github.com/stretchr/objx")
+
+    assert testify.version == "v1.9.0"
+    assert (
+        testify.local_src_path
+        == "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    )
+
+    assert objx.version == "v0.5.2"
+    assert objx.local_src_path is None  # No Dir → None, not empty string
+    assert objx.origin == "https://github.com/stretchr/objx"
+
+    mock_source_code_manager.get_code.assert_not_called()
+    mock_source_code_manager.get_canonical_urls.assert_not_called()
+    mock_output_from_command.assert_called_once_with(
+        "CWD=`pwd`; cd /tmp/go-resolve/testify && go list -m -json all; cd $CWD"
+    )
