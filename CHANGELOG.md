@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Add `--ecosystem go` support for direct Go package/module dependency analysis (e.g., `ddla generate-sbom-csv --ecosystem go github.com/stretchr/testify@v1.9.0`)
 - New `--ecosystem` CLI option for `generate-sbom-csv` to accept package names by ecosystem. Supports `npm`, `python`, and `pypi` (e.g., `ddla generate-sbom-csv --ecosystem python --no-gh-auth requests==2.31.0`)
 - Support for GitHub renamed/transferred repositories
 - Support for Yarn package manager in npm collection
