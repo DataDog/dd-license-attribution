@@ -203,9 +203,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                             "refs/heads/"
                         )
                     else:
-                        logger.warning(
-                            "Could not detect HEAD branch for %s", repo_url
-                        )
+                        logger.warning("Could not detect HEAD branch for %s", repo_url)
                         self._head_branch_cache[repo_url] = ""
                 except Exception:
                     logger.warning(

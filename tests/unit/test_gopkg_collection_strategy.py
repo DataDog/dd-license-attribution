@@ -627,8 +627,7 @@ def test_gopkg_local_project_path_skips_get_code_and_resolves_dependencies(
     assert result[0].name == "github.com/stretchr/testify"
     assert result[0].version == "v1.9.0"
     assert (
-        result[0].local_src_path
-        == "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+        result[0].local_src_path == "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
     )
     assert result[0].origin == "https://github.com/stretchr/testify"
     assert result[1].name == "github.com/davecgh/go-spew"
@@ -948,8 +947,7 @@ def test_gopkg_local_project_path_indirect_dep_without_dir(
 
     assert testify.version == "v1.9.0"
     assert (
-        testify.local_src_path
-        == "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+        testify.local_src_path == "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
     )
 
     assert objx.version == "v0.5.2"
