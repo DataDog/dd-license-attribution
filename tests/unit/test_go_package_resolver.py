@@ -189,7 +189,7 @@ class TestResolvePackage:
 
         # Verify go mod tidy was called
         mock_run_command.assert_called_once_with(
-            "go mod tidy",
+            "GOTOOLCHAIN=auto go mod tidy",
             cwd="/cache/github_com_stretchr_testify",
         )
 

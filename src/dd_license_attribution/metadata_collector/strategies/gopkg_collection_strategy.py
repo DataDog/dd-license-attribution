@@ -135,7 +135,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         assert project_path is not None
 
         output = output_from_command(
-            f"CWD=`pwd`; cd {project_path} && go list -m -json all; cd $CWD"
+            f"CWD=`pwd`; cd {project_path} && GOTOOLCHAIN=auto go list -m -json all; cd $CWD"
         )
         if not output.strip():
             logger.warning("go list produced no output in %s", project_path)

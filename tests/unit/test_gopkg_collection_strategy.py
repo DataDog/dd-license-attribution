@@ -640,7 +640,7 @@ def test_gopkg_local_project_path_skips_get_code_and_resolves_dependencies(
     mock_source_code_manager.get_canonical_urls.assert_not_called()
 
     mock_output_from_command.assert_called_once_with(
-        "CWD=`pwd`; cd /tmp/go-resolve/github_com_stretchr_testify && go list -m -json all; cd $CWD"
+        "CWD=`pwd`; cd /tmp/go-resolve/github_com_stretchr_testify && GOTOOLCHAIN=auto go list -m -json all; cd $CWD"
     )
 
 
@@ -957,5 +957,5 @@ def test_gopkg_local_project_path_indirect_dep_without_dir(
     mock_source_code_manager.get_code.assert_not_called()
     mock_source_code_manager.get_canonical_urls.assert_not_called()
     mock_output_from_command.assert_called_once_with(
-        "CWD=`pwd`; cd /tmp/go-resolve/testify && go list -m -json all; cd $CWD"
+        "CWD=`pwd`; cd /tmp/go-resolve/testify && GOTOOLCHAIN=auto go list -m -json all; cd $CWD"
     )

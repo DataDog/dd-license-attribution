@@ -102,7 +102,7 @@ class GoPackageResolver:
         # Run go mod tidy to resolve dependencies and download modules
         try:
             exit_code, output = run_command_with_check(
-                "go mod tidy",
+                "GOTOOLCHAIN=auto go mod tidy",
                 cwd=resolve_dir,
             )
             if exit_code != 0:
