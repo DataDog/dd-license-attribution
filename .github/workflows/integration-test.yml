@@ -82,7 +82,7 @@ jobs:
 
       - name: Run dd-license-attribution with --ecosystem go against a known Go package
         run: |
-          dd-license-attribution generate-sbom-csv --ecosystem go --no-gh-auth github.com/DataDog/dd-trace-go/v2/ddtrace/tracer > go-ecosystem-output.txt
+          dd-license-attribution generate-sbom-csv --ecosystem go --no-gh-auth github.com/DataDog/datadog-go/v5/statsd > go-ecosystem-output.txt
           # Validate output is non-empty CSV with expected header
           head -1 go-ecosystem-output.txt | grep -q "Component,Origin,License,Copyright"
           # Validate at least some dependencies were found
