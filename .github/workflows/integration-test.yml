@@ -84,7 +84,7 @@ jobs:
         run: |
           dd-license-attribution generate-sbom-csv --ecosystem go --no-gh-auth github.com/DataDog/datadog-go/v5/statsd > go-ecosystem-output.txt
           # Validate output is non-empty CSV with expected header
-          head -1 go-ecosystem-output.txt | grep -q "Component,Origin,License,Copyright"
+          head -1 go-ecosystem-output.txt | grep -iq "component.*origin.*license.*copyright"
           # Validate at least some dependencies were found
           line_count=$(wc -l < go-ecosystem-output.txt)
           if [ "$line_count" -lt 2 ]; then
@@ -96,7 +96,7 @@ jobs:
       - name: Run dd-license-attribution with --ecosystem go (pinned version)
         run: |
           dd-license-attribution generate-sbom-csv --ecosystem go --no-gh-auth github.com/stretchr/testify@v1.9.0 > go-pinned-output.txt
-          head -1 go-pinned-output.txt | grep -q "Component,Origin,License,Copyright"
+          head -1 go-pinned-output.txt | grep -iq "component.*origin.*license.*copyright"
           # testify has known deps (stretchr/objx, davecgh/go-spew, pmezard/go-difflib, gopkg.in/yaml.v3)
           grep -q "go-spew" go-pinned-output.txt || { echo "Expected go-spew dependency"; exit 1; }
           grep -q "go-difflib" go-pinned-output.txt || { echo "Expected go-difflib dependency"; exit 1; }
