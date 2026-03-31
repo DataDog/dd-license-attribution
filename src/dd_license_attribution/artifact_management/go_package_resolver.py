@@ -10,6 +10,7 @@ import re
 
 from dd_license_attribution.adaptors.os import (
     create_dirs,
+    output_from_command,
     path_exists,
     path_join,
     run_command_with_check,
@@ -29,6 +30,21 @@ class GoPackageResolver:
 
     def __init__(self, working_dir: str) -> None:
         self.working_dir = working_dir
+
+    def _detect_go_version(self) -> str:
+        """Detect the installed Go version for use in the synthetic go.mod.
+
+        Falls back to "1.21" if detection fails.
+        """
+        try:
+            raw = output_from_command("go env GOVERSION").strip()
+            # raw is like "go1.22.5" — extract "1.22"
+            match = re.match(r"go(\d+\.\d+)", raw)
+            if match:
+                return match.group(1)
+        except Exception:
+            pass
+        return "1.22"
 
     def _parse_go_spec(self, spec: str) -> tuple[str, str]:
         """Parse a Go package specifier into (import_path, version).
@@ -66,8 +82,9 @@ class GoPackageResolver:
         resolve_dir = path_join(self.working_dir, sanitized_name)
         create_dirs(resolve_dir)
 
-        # Write a synthetic go.mod
-        go_mod_content = f"module {SYNTHETIC_MODULE_NAME}\n\ngo 1.21\n"
+        # Write a synthetic go.mod using the installed Go version
+        go_version = self._detect_go_version()
+        go_mod_content = f"module {SYNTHETIC_MODULE_NAME}\n\ngo {go_version}\n"
         if version:
             go_mod_content += f"\nrequire {import_path} {version}\n"
         go_mod_path = path_join(resolve_dir, "go.mod")
