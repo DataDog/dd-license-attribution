@@ -36,6 +36,7 @@ src/dd_license_attribution/
 ├── artifact_management/
 │   ├── artifact_manager.py       # Base class: cache directory + TTL management
 │   ├── source_code_manager.py    # Git clone caching, GitHub API, mirrors, canonical URLs
+│   ├── go_package_resolver.py    # Resolves Go module/package specs to local dirs
 │   ├── npm_package_resolver.py   # Resolves npm package specs to local dirs
 │   ├── pypi_package_resolver.py  # Resolves PyPI package specs to local dirs
 │   └── python_env_manager.py     # Creates/caches venvs for Python dependency extraction
@@ -109,7 +110,7 @@ By default, all strategies are included in the pipeline. Individual strategies c
 
 **GitHubSbomMetadataCollectionStrategy**: Calls GitHub's dependency graph SBOM API. Filters by `ProjectScope`. Extracts license, version, and copyright from the SBOM response. Handles PURL-to-URL translation.
 
-**GoPkgMetadataCollectionStrategy**: Walks directory for `go.mod` files, runs `go list -json all`, translates Go module paths to GitHub repository URLs, discovers HEAD branches via `git ls-remote`.
+**GoPkgMetadataCollectionStrategy**: Walks directory for `go.mod` files, runs `go list -json all`, translates Go module paths to GitHub repository URLs, discovers HEAD branches via `git ls-remote`. Also supports a `local_project_path` mode (used with `--ecosystem go`): when set, skips source code checkout and runs `go list -m -json all` in the synthetic project created by `GoPackageResolver` to enumerate all transitive module dependencies.
 
 **PypiMetadataCollectionStrategy**: Uses `PythonEnvManager` to create virtual environments and `pip install` dependencies. Queries the PyPI JSON API for metadata. Extracts homepage/repository URLs from multiple possible keys. Handles long license text vs. short SPDX identifiers.
 
@@ -138,6 +139,10 @@ Central component for git operations and caching.
 - **GitHub API**: Caches repository info API calls.
 - **Mirror support**: Maps original URLs to mirror repositories with optional ref mapping.
 - **Branch discovery**: Uses `git ls-remote` to find default (HEAD) branch.
+
+### GoPackageResolver
+
+Resolves Go module/package specs (e.g., `github.com/stretchr/testify@v1.9.0`, `github.com/DataDog/dd-trace-go/v2/ddtrace/tracer`) into local directories containing a synthetic Go project with `go.mod` and `main.go`. Creates a sanitized subdirectory, writes a `go.mod` with the parsed module requirement and a `main.go` with a blank import, then runs `go mod tidy` to resolve dependencies. Uses a **separate temp directory** from SourceCodeManager's cache to avoid collisions.
 
 ### NpmPackageResolver
 
@@ -240,7 +245,8 @@ Log unused override warnings, cleanup temp dirs
 
 | Ecosystem | Package Resolver | Strategies Used |
 |-----------|-----------------|-----------------|
-| **Go** | — (uses `go list`) | GitHubSbom, GoPkg, ScanCode, GitHubRepository |
+| **Go** (project) | — (uses `go list`) | GitHubSbom, GoPkg, ScanCode, GitHubRepository |
+| **Go** (package) | GoPackageResolver | GoPkg, ScanCode, GitHubRepository |
 | **Python** | PythonEnvManager | GitHubSbom, PyPI, ScanCode, GitHubRepository |
 | **npm** (project) | — (reads lockfiles) | GitHubSbom, Npm, ScanCode, GitHubRepository |
 | **npm** (package) | NpmPackageResolver | Npm, ScanCode, GitHubRepository |
