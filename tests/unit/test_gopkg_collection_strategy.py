@@ -95,80 +95,43 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
 
     deps_list_json_1 = """
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/org/package1@v1.0",
     "ImportPath": "github.com/org/package1",
-    "Name": "org/package1",
-    "Root": "/tmp/go/pkg/mod/github.com/org/package1@v1.0",
     "Module": {
-            "Path": "github.com/org/package1",
-            "Version": "v1.0",
-            "Time": "2022-09-15T18:34:49Z",
-            "Dir": "/tmp/go/pkg/mod/github.com/org/package1@v1.0"
-    },
-    "Deps": [
-            "bufio",
-            "bytes",
-            "github.com/org/package1/package3"
-    ]
+        "Path": "github.com/org/package1",
+        "Main": true,
+        "Version": "v1.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/org/package1@v1.0"
+    }
 }
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/org/package5",
-    "ImportPath": "github.com/org/package1/package5",
-    "Name": "package5",
-    "Root": "/tmp/go/pkg/mod/github.com/org/package5",
+    "ImportPath": "github.com/org/package1/package5/foo",
     "Module": {
-            "Path": "github.com/org/package1/package5",
-            "Time": "2022-09-15T18:34:49Z",
-            "Dir": "/tmp/go/pkg/mod/github.com/org/package5"
-    },
-    "Deps": [
-            "github.com/org/package6"
-    ]
+        "Path": "github.com/org/package1/package5",
+        "Dir": "/tmp/go/pkg/mod/github.com/org/package5"
+    }
+}
+{
+    "ImportPath": "bytes",
+    "Standard": true
 }"""
 
     deps_list_json_3 = """
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/org/package1/@v1.0/package3",
     "ImportPath": "github.com/org/package1/package3",
-    "Name": "package3",
-    "Root": "/tmp/go/pkg/mod/github.com/org/package1/@v1.0",
     "Module": {
-            "Path": "github.com/org/package1/package3",
-            "Version": "v1.0",
-            "Time": "2022-09-15T18:34:49Z",
-            "Dir": "/tmp/go/pkg/mod/github.com/org/package1@v1.0/package3"
-    },
-    "Deps": [
-            "github.com/org/package4"
-    ]
+        "Path": "github.com/org/package1/package3",
+        "Main": true,
+        "Version": "v1.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/org/package1@v1.0/package3"
+    }
 }
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/org/package4@v1.2.3",
     "ImportPath": "github.com/org/package4",
-    "Name": "package4",
-    "Root": "/tmp/go/pkg/mod/github.com/org/package4@v1.2.3",
     "Module": {
-            "Path": "github.com/org/package4",
-            "Version": "v1.2.3",
-            "Time": "2022-09-15T18:34:49Z",
-            "Dir": "/tmp/go/pkg/mod/github.com/org/package4@v1.2.3"
-    },
-    "Deps": []
-}
-{
-        "Dir": "/opt/homebrew/Cellar/go/1.23.5/libexec/src/bytes",
-        "ImportPath": "bytes",
-        "Name": "bytes",
-        "Doc": "Package bytes implements functions for the manipulation of byte slices.",
-        "Root": "/opt/homebrew/Cellar/go/1.23.5/libexec",
-        "Match": [
-                "all"
-        ],
-        "Goroot": true,
-        "Standard": true,
-        "Stale": true,
-        "StaleReason": "stale dependency: internal/goarch",
-        "Deps": []
+        "Path": "github.com/org/package4",
+        "Version": "v1.2.3",
+        "Dir": "/tmp/go/pkg/mod/github.com/org/package4@v1.2.3"
+    }
 }"""
 
     branch_detection_output = (
@@ -258,10 +221,12 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
     mock_walk_directory.assert_called_once_with("cache_dir/org_package1")
     mock_output_from_command.assert_has_calls(
         [
-            mocker.call("CWD=`pwd`; cd org_package1 && go list -json all; cd $CWD"),
+            mocker.call(
+                "CWD=`pwd`; cd org_package1 && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+            ),
             mocker.call(f"git ls-remote --symref https://github.com/org/package1 HEAD"),
             mocker.call(
-                "CWD=`pwd`; cd org_package1/package3 && go list -json all; cd $CWD"
+                "CWD=`pwd`; cd org_package1/package3 && GOTOOLCHAIN=auto go list -json all; cd $CWD"
             ),
         ]
     )
@@ -312,52 +277,31 @@ require github.com/org/package1 v1.0
 
     deps_list_json_top = """
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/org/package1@v1.0",
     "ImportPath": "github.com/org/package1",
-    "Name": "org/package1",
-    "Root": "/tmp/go/pkg/mod/github.com/org/package1@v1.0",
     "Module": {
-            "Path": "github.com/org/package1",
-            "Version": "v1.0",
-            "Time": "2022-09-15T18:34:49Z",
-            "Dir": "/tmp/go/pkg/mod/github.com/org/package1@v1.0"
-    },
-    "Deps": [
-            "bufio",
-            "bytes",
-            "github.com/org/package1/src"
-    ]
+        "Path": "github.com/org/package1",
+        "Main": true,
+        "Version": "v1.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/org/package1@v1.0"
+    }
 }
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/org/package1/src",
-    "ImportPath": "github.com/org/package1/src",
-    "Name": "src",
-    "Root": "/tmp/go/pkg/mod/github.com/org/package1/src",
+    "ImportPath": "github.com/org/package1/src/foo",
     "Module": {
-            "Path": "github.com/org/package1/src",
-            "Version": "v1.0",
-            "Time": "2022-09-15T18:34:49Z",
-            "Dir": "/tmp/go/pkg/mod/github.com/org/package1/src"
-    },
-    "Deps": [
-            "github.com/org/package2"
-    ]
+        "Path": "github.com/org/package1/src",
+        "Version": "v1.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/org/package1/src"
+    }
 }"""
     deps_list_json_src = """
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/org/package1/src",
     "ImportPath": "github.com/org/package1/src",
-    "Name": "src",
-    "Root": "/tmp/go/pkg/mod/github.com/org/package1/src",
     "Module": {
-            "Path": "github.com/org/package1/src",
-            "Version": "v1.0",
-            "Time": "2022-09-15T18:34:49Z",
-            "Dir": "/tmp/go/pkg/mod/github.com/org/package1/src"
-    },
-    "Deps": [
-            "github.com/org/package2"
-    ]
+        "Path": "github.com/org/package1/src",
+        "Main": true,
+        "Version": "v1.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/org/package1/src"
+    }
 }"""
 
     branch_detection_output = (
@@ -429,9 +373,13 @@ require github.com/org/package1 v1.0
     mock_walk_directory.assert_called_once_with("cache_dir/org_package1")
     mock_output_from_command.assert_has_calls(
         [
-            mocker.call("CWD=`pwd`; cd org_package1 && go list -json all; cd $CWD"),
+            mocker.call(
+                "CWD=`pwd`; cd org_package1 && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+            ),
             mocker.call(f"git ls-remote --symref https://github.com/org/package1 HEAD"),
-            mocker.call("CWD=`pwd`; cd org_package1/src && go list -json all; cd $CWD"),
+            mocker.call(
+                "CWD=`pwd`; cd org_package1/src && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+            ),
         ]
     )
 
@@ -481,49 +429,29 @@ def test_gopkg_collection_strategy_only_updates_local_source_path_when_only_root
 
     deps_list_json_top = """
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/org/package1@v1.0",
     "ImportPath": "github.com/org/package1",
-    "Name": "org/package1",
-    "Root": "/tmp/go/pkg/mod/github.com/org/package1@v1.0",
     "Module": {
-            "Path": "github.com/org/package1",
-            "Version": "v1.0",
-            "Time": "2022-09-15T18:34:49Z",
-            "Dir": "/tmp/go/pkg/mod/github.com/org/package1@v1.0"
-    },
-    "Deps": [
-            "bufio",
-            "bytes",
-            "github.com/org/package1/src"
-    ]
+        "Path": "github.com/org/package1",
+        "Main": true,
+        "Version": "v1.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/org/package1@v1.0"
+    }
 }
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/org/package1/src",
-    "ImportPath": "github.com/org/package1/src",
-    "Name": "src",
-    "Root": "/tmp/go/pkg/mod/github.com/org/package1/src",
+    "ImportPath": "github.com/org/package1/src/foo",
     "Module": {
-            "Path": "github.com/org/package1/src",
-            "Version": "v1.0",
-            "Time": "2022-09-15T18:34:49Z",
-            "Dir": "/tmp/go/pkg/mod/github.com/org/package1/src"
-    },
-    "Deps": [
-            "github.com/org/package2"
-    ]
+        "Path": "github.com/org/package1/src",
+        "Version": "v1.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/org/package1/src"
+    }
 }
 {
-    "Dir": "/tmp/go/pkg/mod/github.com/org/package2",
-    "ImportPath": "github.com/org/package2",
-    "Name": "src",
-    "Root": "/tmp/go/pkg/mod/github.com/org/package2",
+    "ImportPath": "github.com/org/package2/bar",
     "Module": {
-            "Path": "github.com/org/package2",
-            "Version": "v1.0",
-            "Time": "2022-09-15T18:34:49Z",
-            "Dir": "/tmp/go/pkg/mod/github.com/org/package2"
-    },
-    "Deps": []
+        "Path": "github.com/org/package2",
+        "Version": "v1.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/org/package2"
+    }
 }"""
 
     mock_output_from_command = mocker.patch(
@@ -564,8 +492,12 @@ def test_gopkg_collection_strategy_only_updates_local_source_path_when_only_root
     mock_walk_directory.assert_called_once_with("cache_dir/org_package1")
     mock_output_from_command.assert_has_calls(
         [
-            call("CWD=`pwd`; cd org_package1 && go list -json all; cd $CWD"),
-            call("CWD=`pwd`; cd org_package1/src && go list -json all; cd $CWD"),
+            call(
+                "CWD=`pwd`; cd org_package1 && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+            ),
+            call(
+                "CWD=`pwd`; cd org_package1/src && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+            ),
         ]
     )
     mock_open_file.assert_has_calls(
@@ -584,24 +516,31 @@ def test_gopkg_local_project_path_skips_get_code_and_resolves_dependencies(
         local_project_path="/tmp/go-resolve/github_com_stretchr_testify",
     )
 
-    # go list -m -json all returns module-level data with Path/Version/Dir at top level
+    # go list -json all returns package-level data with nested Module key
     deps_list_json = """
 {
-    "Path": "ddla-go-resolve",
-    "Main": true,
-    "Dir": "/tmp/go-resolve/github_com_stretchr_testify",
-    "GoMod": "/tmp/go-resolve/github_com_stretchr_testify/go.mod",
-    "GoVersion": "1.21"
+    "ImportPath": "main",
+    "Module": {
+        "Path": "ddla-go-resolve",
+        "Main": true,
+        "Dir": "/tmp/go-resolve/github_com_stretchr_testify"
+    }
 }
 {
-    "Path": "github.com/stretchr/testify",
-    "Version": "v1.9.0",
-    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    "ImportPath": "github.com/stretchr/testify/assert",
+    "Module": {
+        "Path": "github.com/stretchr/testify",
+        "Version": "v1.9.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    }
 }
 {
-    "Path": "github.com/davecgh/go-spew",
-    "Version": "v1.1.1",
-    "Dir": "/tmp/go/pkg/mod/github.com/davecgh/go-spew@v1.1.1"
+    "ImportPath": "github.com/davecgh/go-spew/spew",
+    "Module": {
+        "Path": "github.com/davecgh/go-spew",
+        "Version": "v1.1.1",
+        "Dir": "/tmp/go/pkg/mod/github.com/davecgh/go-spew@v1.1.1"
+    }
 }"""
 
     mock_output_from_command = mocker.patch(
@@ -640,7 +579,7 @@ def test_gopkg_local_project_path_skips_get_code_and_resolves_dependencies(
     mock_source_code_manager.get_canonical_urls.assert_not_called()
 
     mock_output_from_command.assert_called_once_with(
-        "CWD=`pwd`; cd /tmp/go-resolve/github_com_stretchr_testify && GOTOOLCHAIN=auto go list -m -json all; cd $CWD"
+        "CWD=`pwd`; cd /tmp/go-resolve/github_com_stretchr_testify && GOTOOLCHAIN=auto go list -json all; cd $CWD"
     )
 
 
@@ -658,14 +597,20 @@ def test_gopkg_local_project_path_filters_synthetic_module(
     # Output includes the synthetic module — it should be filtered out
     deps_list_json = """
 {{
-    "Path": "{synthetic}",
-    "Main": true,
-    "Dir": "/tmp/go-resolve/testify"
+    "ImportPath": "main",
+    "Module": {{
+        "Path": "{synthetic}",
+        "Main": true,
+        "Dir": "/tmp/go-resolve/testify"
+    }}
 }}
 {{
-    "Path": "github.com/stretchr/testify",
-    "Version": "v1.9.0",
-    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    "ImportPath": "github.com/stretchr/testify/assert",
+    "Module": {{
+        "Path": "github.com/stretchr/testify",
+        "Version": "v1.9.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    }}
 }}""".format(synthetic=SYNTHETIC_MODULE_NAME)
 
     mocker.patch(
@@ -707,9 +652,12 @@ def test_gopkg_local_project_path_removes_seed_entry(
 
     deps_list_json = """
 {
-    "Path": "github.com/stretchr/testify",
-    "Version": "v1.9.0",
-    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    "ImportPath": "github.com/stretchr/testify/assert",
+    "Module": {
+        "Path": "github.com/stretchr/testify",
+        "Version": "v1.9.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    }
 }"""
 
     mocker.patch(
@@ -760,14 +708,20 @@ def test_gopkg_local_project_path_only_root_project(
 
     deps_list_json = """
 {
-    "Path": "github.com/stretchr/testify",
-    "Version": "v1.9.0",
-    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    "ImportPath": "github.com/stretchr/testify/assert",
+    "Module": {
+        "Path": "github.com/stretchr/testify",
+        "Version": "v1.9.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    }
 }
 {
-    "Path": "github.com/davecgh/go-spew",
-    "Version": "v1.1.1",
-    "Dir": "/tmp/go/pkg/mod/github.com/davecgh/go-spew@v1.1.1"
+    "ImportPath": "github.com/davecgh/go-spew/spew",
+    "Module": {
+        "Path": "github.com/davecgh/go-spew",
+        "Version": "v1.1.1",
+        "Dir": "/tmp/go/pkg/mod/github.com/davecgh/go-spew@v1.1.1"
+    }
 }"""
 
     mocker.patch(
@@ -790,10 +744,14 @@ def test_gopkg_local_project_path_only_root_project(
 
     result = strategy.augment_metadata(initial_metadata)
 
-    # Seed removed, then only testify added back (go-spew filtered by only_root_project)
-    # Since seed was removed and testify is not in the remaining list,
-    # only_root_project will skip testify too. Result should be empty.
-    assert len(result) == 0
+    # Seed removed, testify re-added from go list (it was in the original metadata).
+    # go-spew filtered out by only_root_project since it wasn't in the seed.
+    assert len(result) == 1
+    assert result[0].name == "github.com/stretchr/testify"
+    assert result[0].version == "v1.9.0"
+    assert (
+        result[0].local_src_path == "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    )
 
 
 def test_gopkg_local_project_path_empty_output_returns_metadata(
@@ -843,9 +801,12 @@ def test_gopkg_local_project_path_updates_existing_metadata(
 
     deps_list_json = """
 {
-    "Path": "github.com/stretchr/testify",
-    "Version": "v1.9.0",
-    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    "ImportPath": "github.com/stretchr/testify/assert",
+    "Module": {
+        "Path": "github.com/stretchr/testify",
+        "Version": "v1.9.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    }
 }"""
 
     mocker.patch(
@@ -892,10 +853,9 @@ def test_gopkg_local_project_path_updates_existing_metadata(
 def test_gopkg_local_project_path_indirect_dep_without_dir(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """Indirect dependencies in go list -m -json all may lack a Dir field.
-
-    These should get local_src_path=None so downstream strategies (e.g. ScanCode)
-    skip local scanning instead of crashing on an empty path.
+    """Modules without a Dir field in go list output should get local_src_path=None
+    so downstream strategies (e.g. ScanCode) skip local scanning instead of
+    crashing on an empty path.
     """
     mock_source_code_manager = mocker.Mock()
     strategy = GoPkgMetadataCollectionStrategy(
@@ -905,22 +865,30 @@ def test_gopkg_local_project_path_indirect_dep_without_dir(
         local_project_path="/tmp/go-resolve/testify",
     )
 
-    # objx is indirect — no Dir field in go list -m -json all output
+    # objx module has no Dir field
     deps_list_json = """
 {
-    "Path": "ddla-go-resolve",
-    "Main": true,
-    "Dir": "/tmp/go-resolve/testify"
+    "ImportPath": "main",
+    "Module": {
+        "Path": "ddla-go-resolve",
+        "Main": true,
+        "Dir": "/tmp/go-resolve/testify"
+    }
 }
 {
-    "Path": "github.com/stretchr/testify",
-    "Version": "v1.9.0",
-    "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    "ImportPath": "github.com/stretchr/testify/assert",
+    "Module": {
+        "Path": "github.com/stretchr/testify",
+        "Version": "v1.9.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    }
 }
 {
-    "Path": "github.com/stretchr/objx",
-    "Version": "v0.5.2",
-    "Indirect": true
+    "ImportPath": "github.com/stretchr/objx",
+    "Module": {
+        "Path": "github.com/stretchr/objx",
+        "Version": "v0.5.2"
+    }
 }"""
 
     mock_output_from_command = mocker.patch(
@@ -957,5 +925,5 @@ def test_gopkg_local_project_path_indirect_dep_without_dir(
     mock_source_code_manager.get_code.assert_not_called()
     mock_source_code_manager.get_canonical_urls.assert_not_called()
     mock_output_from_command.assert_called_once_with(
-        "CWD=`pwd`; cd /tmp/go-resolve/testify && GOTOOLCHAIN=auto go list -m -json all; cd $CWD"
+        "CWD=`pwd`; cd /tmp/go-resolve/testify && GOTOOLCHAIN=auto go list -json all; cd $CWD"
     )
