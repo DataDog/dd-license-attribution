@@ -95,9 +95,9 @@ jobs:
 
       - name: Run dd-license-attribution with --ecosystem go (pinned version)
         run: |
-          dd-license-attribution generate-sbom-csv --ecosystem go --no-gh-auth github.com/stretchr/testify@v1.9.0 > go-pinned-output.txt
+          dd-license-attribution generate-sbom-csv --ecosystem go --no-gh-auth github.com/stretchr/testify/assert@v1.9.0 > go-pinned-output.txt
           head -1 go-pinned-output.txt | grep -iq "component.*origin.*license.*copyright"
-          # testify has known deps (stretchr/objx, davecgh/go-spew, pmezard/go-difflib, gopkg.in/yaml.v3)
+          # testify/assert has known transitive deps (davecgh/go-spew, pmezard/go-difflib, gopkg.in/yaml.v3)
           grep -q "go-spew" go-pinned-output.txt || { echo "Expected go-spew dependency"; exit 1; }
           grep -q "go-difflib" go-pinned-output.txt || { echo "Expected go-difflib dependency"; exit 1; }
           echo "Go ecosystem pinned version test passed"

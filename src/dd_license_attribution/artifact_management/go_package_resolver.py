@@ -85,8 +85,6 @@ class GoPackageResolver:
         # Write a synthetic go.mod using the installed Go version
         go_version = self._detect_go_version()
         go_mod_content = f"module {SYNTHETIC_MODULE_NAME}\n\ngo {go_version}\n"
-        if version:
-            go_mod_content += f"\nrequire {import_path} {version}\n"
         go_mod_path = path_join(resolve_dir, "go.mod")
         write_file(go_mod_path, go_mod_content)
 
@@ -99,7 +97,23 @@ class GoPackageResolver:
         main_go_path = path_join(resolve_dir, "main.go")
         write_file(main_go_path, main_go_content)
 
-        # Run go mod tidy to resolve dependencies and download modules
+        # Use go get to add the dependency. This correctly resolves the module
+        # from a package path (e.g. testify/assert -> testify module) and pins
+        # the version. Without a version, go get fetches the latest.
+        try:
+            get_arg = f"{import_path}@{version}" if version else import_path
+            exit_code, output = run_command_with_check(
+                f"GOTOOLCHAIN=auto go get {get_arg}",
+                cwd=resolve_dir,
+            )
+            if exit_code != 0:
+                logger.error("go get failed for %s: %s", go_package_spec, output)
+                return None
+        except Exception as e:
+            logger.error("Failed to resolve Go package %s: %s", go_package_spec, e)
+            return None
+
+        # Run go mod tidy to resolve transitive dependencies and download modules
         try:
             exit_code, output = run_command_with_check(
                 "GOTOOLCHAIN=auto go mod tidy",

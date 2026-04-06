@@ -161,7 +161,7 @@ class TestResolvePackage:
             fake_path_join,
         )
 
-    def test_happy_path_creates_dir_and_runs_go_mod_tidy(
+    def test_happy_path_creates_dir_and_runs_go_get_and_mod_tidy(
         self, mocker: pytest_mock.MockFixture
     ) -> None:
         mock_create_dirs, mock_write_file, mock_run_command, mock_path_exists, _ = (
@@ -173,13 +173,13 @@ class TestResolvePackage:
         assert result == "/cache/github_com_stretchr_testify"
         mock_create_dirs.assert_called_once_with("/cache/github_com_stretchr_testify")
 
-        # Verify go.mod was written with correct content
+        # Verify go.mod was written without require (go get handles that)
         go_mod_call = mock_write_file.call_args_list[0]
         assert go_mod_call[0][0] == "/cache/github_com_stretchr_testify/go.mod"
         go_mod_content = go_mod_call[0][1]
         assert SYNTHETIC_MODULE_NAME in go_mod_content
         assert "go 1.23" in go_mod_content
-        assert "require github.com/stretchr/testify v1.9.0" in go_mod_content
+        assert "require" not in go_mod_content
 
         # Verify main.go was written with correct import
         main_go_call = mock_write_file.call_args_list[1]
@@ -187,8 +187,13 @@ class TestResolvePackage:
         main_go_content = main_go_call[0][1]
         assert 'import _ "github.com/stretchr/testify"' in main_go_content
 
-        # Verify go mod tidy was called
-        mock_run_command.assert_called_once_with(
+        # Verify go get was called to add the dependency, then go mod tidy
+        assert mock_run_command.call_count == 2
+        mock_run_command.assert_any_call(
+            "GOTOOLCHAIN=auto go get github.com/stretchr/testify@v1.9.0",
+            cwd="/cache/github_com_stretchr_testify",
+        )
+        mock_run_command.assert_any_call(
             "GOTOOLCHAIN=auto go mod tidy",
             cwd="/cache/github_com_stretchr_testify",
         )
@@ -213,10 +218,10 @@ class TestResolvePackage:
             "/cache/github_com_DataDog_dd-trace-go_v2_ddtrace_tracer"
         )
 
-    def test_no_version_omits_require_line(
+    def test_no_version_uses_go_get_without_version(
         self, mocker: pytest_mock.MockFixture
     ) -> None:
-        _, mock_write_file, _, _, _ = self._setup_mocks(mocker)
+        _, mock_write_file, mock_run_command, _, _ = self._setup_mocks(mocker)
 
         self.resolver.resolve_package("github.com/stretchr/testify")
 
@@ -225,19 +230,23 @@ class TestResolvePackage:
         assert SYNTHETIC_MODULE_NAME in go_mod_content
         assert "go 1.23" in go_mod_content
 
-    def test_version_included_in_require_when_specified(
-        self, mocker: pytest_mock.MockFixture
-    ) -> None:
-        _, mock_write_file, _, _, _ = self._setup_mocks(mocker)
+        # go get without version fetches latest
+        mock_run_command.assert_any_call(
+            "GOTOOLCHAIN=auto go get github.com/stretchr/testify",
+            cwd="/cache/github_com_stretchr_testify",
+        )
+
+    def test_version_passed_to_go_get(self, mocker: pytest_mock.MockFixture) -> None:
+        _, _, mock_run_command, _, _ = self._setup_mocks(mocker)
 
         self.resolver.resolve_package("github.com/stretchr/testify@v1.9.0")
 
-        go_mod_content = mock_write_file.call_args_list[0][0][1]
-        assert "require github.com/stretchr/testify v1.9.0" in go_mod_content
+        mock_run_command.assert_any_call(
+            "GOTOOLCHAIN=auto go get github.com/stretchr/testify@v1.9.0",
+            cwd="/cache/github_com_stretchr_testify",
+        )
 
-    def test_go_mod_tidy_failure_returns_none(
-        self, mocker: pytest_mock.MockFixture
-    ) -> None:
+    def test_go_get_failure_returns_none(self, mocker: pytest_mock.MockFixture) -> None:
         _, _, mock_run_command, _, _ = self._setup_mocks(
             mocker,
             run_command_return=(1, "go: module not found"),
@@ -246,9 +255,10 @@ class TestResolvePackage:
         result = self.resolver.resolve_package("github.com/nonexistent/pkg")
 
         assert result is None
+        # Only go get is called; it fails so go mod tidy is never reached
         mock_run_command.assert_called_once()
 
-    def test_go_mod_tidy_exception_returns_none(
+    def test_go_get_exception_returns_none(
         self, mocker: pytest_mock.MockFixture
     ) -> None:
         _, _, mock_run_command, _, _ = self._setup_mocks(mocker)
@@ -259,6 +269,21 @@ class TestResolvePackage:
         assert result is None
         mock_run_command.assert_called_once()
 
+    def test_go_mod_tidy_failure_returns_none(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        _, _, mock_run_command, _, _ = self._setup_mocks(mocker)
+        # go get succeeds, go mod tidy fails
+        mock_run_command.side_effect = [
+            (0, "go get completed"),
+            (1, "go mod tidy failed"),
+        ]
+
+        result = self.resolver.resolve_package("github.com/stretchr/testify@v1.9.0")
+
+        assert result is None
+        assert mock_run_command.call_count == 2
+
     def test_missing_go_sum_returns_none(self, mocker: pytest_mock.MockFixture) -> None:
         _, _, mock_run_command, _, _ = self._setup_mocks(
             mocker, path_exists_return=False
@@ -267,8 +292,8 @@ class TestResolvePackage:
         result = self.resolver.resolve_package("github.com/stretchr/testify@v1.9.0")
 
         assert result is None
-        # go mod tidy was called successfully
-        mock_run_command.assert_called_once()
+        # Both go get and go mod tidy were called successfully
+        assert mock_run_command.call_count == 2
 
     def test_main_go_imports_full_package_path(
         self, mocker: pytest_mock.MockFixture
@@ -285,12 +310,15 @@ class TestResolvePackage:
             in main_go_content
         )
 
-    def test_version_without_v_prefix_gets_normalized_in_require(
+    def test_version_without_v_prefix_gets_normalized_in_go_get(
         self, mocker: pytest_mock.MockFixture
     ) -> None:
-        _, mock_write_file, _, _, _ = self._setup_mocks(mocker)
+        _, _, mock_run_command, _, _ = self._setup_mocks(mocker)
 
         self.resolver.resolve_package("github.com/stretchr/testify@1.9.0")
 
-        go_mod_content = mock_write_file.call_args_list[0][0][1]
-        assert "require github.com/stretchr/testify v1.9.0" in go_mod_content
+        # Version should be normalized to v1.9.0 in the go get command
+        mock_run_command.assert_any_call(
+            "GOTOOLCHAIN=auto go get github.com/stretchr/testify@v1.9.0",
+            cwd="/cache/github_com_stretchr_testify",
+        )
