@@ -110,7 +110,7 @@ By default, all strategies are included in the pipeline. Individual strategies c
 
 **GitHubSbomMetadataCollectionStrategy**: Calls GitHub's dependency graph SBOM API. Filters by `ProjectScope`. Extracts license, version, and copyright from the SBOM response. Handles PURL-to-URL translation.
 
-**GoPkgMetadataCollectionStrategy**: Walks directory for `go.mod` files, runs `go list -json all`, translates Go module paths to GitHub repository URLs, discovers HEAD branches via `git ls-remote`. Also supports a `local_project_path` mode (used with `--ecosystem go`): when set, skips source code checkout and runs `go list -m -json all` in the synthetic project created by `GoPackageResolver` to enumerate all transitive module dependencies.
+**GoPkgMetadataCollectionStrategy**: Walks directory for `go.mod` files, runs `go list -json all`, translates Go module paths to GitHub repository URLs, discovers HEAD branches via `git ls-remote`. Also supports a `local_project_path` mode (used with `--ecosystem go`): when set, skips source code checkout and runs `go list -json all` in the synthetic project created by `GoPackageResolver`, then enumerates all transitive module dependencies from the nested `Module` field in the package results.
 
 **PypiMetadataCollectionStrategy**: Uses `PythonEnvManager` to create virtual environments and `pip install` dependencies. Queries the PyPI JSON API for metadata. Extracts homepage/repository URLs from multiple possible keys. Handles long license text vs. short SPDX identifiers.
 

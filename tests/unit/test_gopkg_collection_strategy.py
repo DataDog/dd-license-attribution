@@ -754,6 +754,170 @@ def test_gopkg_local_project_path_only_root_project(
     )
 
 
+def test_gopkg_local_project_path_only_root_project_with_versioned_spec(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """ONLY_ROOT_PROJECT must include the root module even when the seed name has @version."""
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/stretchr/testify@v1.9.0",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+        local_project_path="/tmp/go-resolve/testify",
+    )
+
+    deps_list_json = """
+{
+    "ImportPath": "github.com/stretchr/testify/assert",
+    "Module": {
+        "Path": "github.com/stretchr/testify",
+        "Version": "v1.9.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    }
+}
+{
+    "ImportPath": "github.com/davecgh/go-spew/spew",
+    "Module": {
+        "Path": "github.com/davecgh/go-spew",
+        "Version": "v1.1.1",
+        "Dir": "/tmp/go/pkg/mod/github.com/davecgh/go-spew@v1.1.1"
+    }
+}"""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json,
+    )
+
+    # Seed entry has @version in the name — previously this caused root module to be filtered out
+    initial_metadata = [
+        Metadata(
+            name="github.com/stretchr/testify@v1.9.0",
+            origin="github.com/stretchr/testify@v1.9.0",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # testify should be included; go-spew should be filtered by only_root_project
+    assert len(result) == 1
+    assert result[0].name == "github.com/stretchr/testify"
+    assert result[0].version == "v1.9.0"
+
+
+def test_gopkg_local_project_path_only_root_project_does_not_match_v1_for_v2_spec(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """ONLY_ROOT_PROJECT must not include the v1 module when a v2+ subpackage is requested."""
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/org/lib/v2/foo",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+        local_project_path="/tmp/go-resolve/lib_v2_foo",
+    )
+
+    deps_list_json = """
+{
+    "ImportPath": "github.com/org/lib/v2/foo",
+    "Module": {
+        "Path": "github.com/org/lib/v2",
+        "Version": "v2.1.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/org/lib/v2@v2.1.0"
+    }
+}
+{
+    "ImportPath": "github.com/org/lib/something",
+    "Module": {
+        "Path": "github.com/org/lib",
+        "Version": "v1.5.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/org/lib@v1.5.0"
+    }
+}"""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json,
+    )
+
+    # Seed is a v2 subpackage; v1 module github.com/org/lib must NOT be included
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/lib/v2/foo",
+            origin="github.com/org/lib/v2/foo",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert len(result) == 1
+    assert result[0].name == "github.com/org/lib/v2"
+    assert result[0].version == "v2.1.0"
+
+
+def test_gopkg_local_project_path_only_root_project_with_subpackage_spec(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """ONLY_ROOT_PROJECT must include the root module when the seed is a subpackage path."""
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/stretchr/testify/assert",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+        local_project_path="/tmp/go-resolve/testify_assert",
+    )
+
+    deps_list_json = """
+{
+    "ImportPath": "github.com/stretchr/testify/assert",
+    "Module": {
+        "Path": "github.com/stretchr/testify",
+        "Version": "v1.9.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/stretchr/testify@v1.9.0"
+    }
+}
+{
+    "ImportPath": "github.com/davecgh/go-spew/spew",
+    "Module": {
+        "Path": "github.com/davecgh/go-spew",
+        "Version": "v1.1.1",
+        "Dir": "/tmp/go/pkg/mod/github.com/davecgh/go-spew@v1.1.1"
+    }
+}"""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json,
+    )
+
+    # Seed name is a subpackage path; the go list module path is the parent module
+    initial_metadata = [
+        Metadata(
+            name="github.com/stretchr/testify/assert",
+            origin="github.com/stretchr/testify/assert",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # The parent module should be included; go-spew filtered by only_root_project
+    assert len(result) == 1
+    assert result[0].name == "github.com/stretchr/testify"
+    assert result[0].version == "v1.9.0"
+
+
 def test_gopkg_local_project_path_empty_output_returns_metadata(
     mocker: pytest_mock.MockFixture,
 ) -> None:

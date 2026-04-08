@@ -52,10 +52,8 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             self.top_package = canonical_url if canonical_url else top_package
 
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
-        updated_metadata = metadata.copy()
-
         if self.local_project_path is not None:
-            return self._augment_metadata_from_local_path(updated_metadata)
+            return self._augment_metadata_from_local_path(metadata)
 
         # Get the source code directory
         source_code_ref = self.source_code_manager.get_code(self.top_package)
@@ -91,7 +89,11 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         """
         # Capture root package names before removing the seed entry, so that
         # only_root_project filtering still includes the root package.
-        root_package_names = {m.name for m in metadata}
+        # Strip @version suffixes (e.g. "github.com/foo/bar@v1.0" -> "github.com/foo/bar")
+        # so that module paths from go list (which never include @version) can be matched.
+        root_package_names = {
+            m.name.split("@")[0] for m in metadata if m.name is not None
+        }
 
         # Remove the seed entry created by MetadataCollector
         metadata = [
@@ -114,7 +116,20 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                 continue
 
             if self.only_root_project:
-                if module_path not in root_package_names:
+                # Include the module if it is an exact match OR if the requested
+                # spec is a subpackage path within the module (e.g. the seed name
+                # "github.com/foo/bar/assert" maps to module "github.com/foo/bar").
+                # The prefix check must not cross major-version boundaries: for a
+                # seed like "github.com/org/lib/v2/foo", "github.com/org/lib" is
+                # a different module and must NOT match even though it is a prefix.
+                if not any(
+                    name == module_path
+                    or (
+                        name.startswith(module_path + "/")
+                        and not re.match(r"v\d+(/|$)", name[len(module_path) + 1 :])
+                    )
+                    for name in root_package_names
+                ):
                     continue
 
             self._upsert_metadata(metadata, module_data)

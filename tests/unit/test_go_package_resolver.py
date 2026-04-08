@@ -322,3 +322,36 @@ class TestResolvePackage:
             "GOTOOLCHAIN=auto go get github.com/stretchr/testify@v1.9.0",
             cwd="/cache/github_com_stretchr_testify",
         )
+
+    def test_import_path_with_shell_metacharacters_returns_none(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        mock_create_dirs, _, mock_run_command, _, _ = self._setup_mocks(mocker)
+
+        result = self.resolver.resolve_package("github.com/foo; rm -rf /")
+
+        assert result is None
+        mock_run_command.assert_not_called()
+        mock_create_dirs.assert_not_called()
+
+    def test_import_path_with_tilde_returns_none(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        mock_create_dirs, _, mock_run_command, _, _ = self._setup_mocks(mocker)
+
+        result = self.resolver.resolve_package("~/malicious/path")
+
+        assert result is None
+        mock_run_command.assert_not_called()
+        mock_create_dirs.assert_not_called()
+
+    def test_version_with_shell_metacharacters_returns_none(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        mock_create_dirs, _, mock_run_command, _, _ = self._setup_mocks(mocker)
+
+        result = self.resolver.resolve_package("github.com/stretchr/testify@v1.0; evil")
+
+        assert result is None
+        mock_run_command.assert_not_called()
+        mock_create_dirs.assert_not_called()

@@ -34,7 +34,7 @@ class GoPackageResolver:
     def _detect_go_version(self) -> str:
         """Detect the installed Go version for use in the synthetic go.mod.
 
-        Falls back to "1.21" if detection fails.
+        Falls back to "1.22" if detection fails.
         """
         try:
             raw = output_from_command("go env GOVERSION").strip()
@@ -73,6 +73,15 @@ class GoPackageResolver:
         project directory path. Returns None on failure.
         """
         import_path, version = self._parse_go_spec(go_package_spec)
+
+        # Validate to prevent command injection before interpolating into shell commands
+        if not re.fullmatch(r"[a-zA-Z0-9.\-_/]+", import_path):
+            logger.error("Invalid Go import path rejected: %s", import_path)
+            return None
+        if version and not re.fullmatch(r"v[0-9a-zA-Z.\-+]+", version):
+            logger.error("Invalid Go version string rejected: %s", version)
+            return None
+
         logger.info(
             "Resolving Go package: %s (version: %s)", import_path, version or "latest"
         )
