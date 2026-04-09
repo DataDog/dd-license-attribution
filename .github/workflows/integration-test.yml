@@ -80,6 +80,46 @@ jobs:
           path: ddla-output.txt
           if-no-files-found: error
 
+      - name: Run dd-license-attribution with --ecosystem go against a known Go package
+        run: |
+          dd-license-attribution generate-sbom-csv --ecosystem go --no-gh-auth github.com/DataDog/datadog-go/v5/statsd > go-ecosystem-output.txt
+          # Validate output is non-empty CSV with expected header
+          head -1 go-ecosystem-output.txt | grep -iq "component.*origin.*license.*copyright"
+          # Validate at least some dependencies were found
+          line_count=$(wc -l < go-ecosystem-output.txt)
+          if [ "$line_count" -lt 2 ]; then
+            echo "Error: Expected at least 1 dependency in output, got $((line_count - 1))"
+            exit 1
+          fi
+          echo "Go ecosystem test passed: $((line_count - 1)) dependencies found"
+
+      - name: Run dd-license-attribution with --ecosystem go (single-package module)
+        run: |
+          dd-license-attribution generate-sbom-csv --ecosystem go --no-gh-auth github.com/stretchr/objx@v0.5.2 > go-module-output.txt
+          head -1 go-module-output.txt | grep -iq "component.*origin.*license.*copyright"
+          grep -q "stretchr/objx" go-module-output.txt || { echo "Expected objx in output"; exit 1; }
+          echo "Go ecosystem single-package module test passed"
+
+      - name: Run dd-license-attribution with --ecosystem go (sub-package with pinned version)
+        run: |
+          dd-license-attribution generate-sbom-csv --ecosystem go --no-gh-auth github.com/stretchr/testify/assert@v1.9.0 > go-pinned-output.txt
+          head -1 go-pinned-output.txt | grep -iq "component.*origin.*license.*copyright"
+          # testify/assert has known transitive deps (davecgh/go-spew, pmezard/go-difflib, gopkg.in/yaml.v3)
+          grep -q "go-spew" go-pinned-output.txt || { echo "Expected go-spew dependency"; exit 1; }
+          grep -q "go-difflib" go-pinned-output.txt || { echo "Expected go-difflib dependency"; exit 1; }
+          echo "Go ecosystem pinned sub-package test passed"
+
+      - name: Upload go ecosystem output on failure
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: go-ecosystem-output
+          path: |
+            go-ecosystem-output.txt
+            go-module-output.txt
+            go-pinned-output.txt
+          if-no-files-found: ignore
+
       - name: Test generate-overrides command with clean CSV
         run: |
           dd-license-attribution generate-overrides LICENSE-3rdparty.csv -o test-overrides.json

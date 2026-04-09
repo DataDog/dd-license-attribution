@@ -22,6 +22,9 @@ from dd_license_attribution.adaptors.os import create_dirs, path_exists
 from dd_license_attribution.artifact_management.artifact_manager import (
     validate_cache_dir,
 )
+from dd_license_attribution.artifact_management.go_package_resolver import (
+    GoPackageResolver,
+)
 from dd_license_attribution.artifact_management.npm_package_resolver import (
     NpmPackageResolver,
 )
@@ -204,7 +207,7 @@ def generate_sbom_csv(
         str | None,
         typer.Option(
             "--ecosystem",
-            help="Treat the package argument as a package name in the given ecosystem instead of a GitHub repository URL. Supported: 'npm', 'python' (or 'pypi').",
+            help="Treat the package argument as a package name in the given ecosystem instead of a GitHub repository URL. Supported: 'npm', 'python' (or 'pypi'), 'go'.",
             rich_help_panel="Scanning Options",
         ),
     ] = None,
@@ -375,7 +378,7 @@ def generate_sbom_csv(
             f"Invalid log level. Must be one of: DEBUG, ERROR, WARNING, INFO. Provided: {log_level}"
         )
 
-    supported_ecosystems = ["npm", "python", "pypi"]
+    supported_ecosystems = ["npm", "python", "pypi", "go"]
     if ecosystem is not None and ecosystem not in supported_ecosystems:
         raise typer.BadParameter(
             f"Unsupported ecosystem: '{ecosystem}'. Supported ecosystems: {', '.join(supported_ecosystems)}."
@@ -465,8 +468,52 @@ def generate_sbom_csv(
 
     npm_temp_dir: tempfile.TemporaryDirectory | None = None  # type: ignore[type-arg]
     pypi_temp_dir: tempfile.TemporaryDirectory | None = None  # type: ignore[type-arg]
+    go_temp_dir: tempfile.TemporaryDirectory | None = None  # type: ignore[type-arg]
 
-    if ecosystem == "npm":
+    if ecosystem == "go":
+        # Go package mode: resolve the Go package and build go-specific pipeline
+        # Use a separate temp directory for Go resolution to avoid colliding with
+        # SourceCodeManager's cache directory structure (which expects only
+        # timestamp-formatted subdirectories).
+        go_temp_dir = tempfile.TemporaryDirectory()
+        go_resolver = GoPackageResolver(go_temp_dir.name)
+        local_project_path = go_resolver.resolve_package(package)
+        if local_project_path is None:
+            go_temp_dir.cleanup()
+            logger.error("Failed to resolve Go package: %s", package)
+            sys.exit(1)
+
+        if enabled_strategies["GoPkgsMetadataCollectionStrategy"]:
+            strategies.append(
+                GoPkgMetadataCollectionStrategy(
+                    package,
+                    source_code_manager,
+                    project_scope,
+                    local_project_path=local_project_path,
+                )
+            )
+
+        if enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"]:
+            if deep_scanning:
+                strategies.append(
+                    ScanCodeToolkitMetadataCollectionStrategy(source_code_manager)
+                )
+            else:
+                strategies.append(
+                    ScanCodeToolkitMetadataCollectionStrategy(
+                        source_code_manager,
+                        cli_config.default_config.preset_license_file_locations,
+                        cli_config.default_config.preset_copyright_file_locations,
+                    )
+                )
+
+        if enabled_strategies["GitHubRepositoryMetadataCollectionStrategy"]:
+            strategies.append(
+                GitHubRepositoryMetadataCollectionStrategy(
+                    github_client, source_code_manager
+                )
+            )
+    elif ecosystem == "npm":
         # npm-package mode: resolve the npm package and build npm-specific pipeline
         # Use a separate temp directory for npm resolution to avoid colliding with
         # SourceCodeManager's cache directory structure (which expects only
@@ -649,6 +696,8 @@ def generate_sbom_csv(
             npm_temp_dir.cleanup()
         if pypi_temp_dir is not None:
             pypi_temp_dir.cleanup()
+        if go_temp_dir is not None:
+            go_temp_dir.cleanup()
 
     csv_reporter = ReportGenerator(CSVReportingWritter())
 

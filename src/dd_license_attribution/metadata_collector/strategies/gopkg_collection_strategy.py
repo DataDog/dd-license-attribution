@@ -6,12 +6,17 @@
 # Copyright 2024-present Datadog, Inc.
 
 import json
+import logging
 import re
+from typing import Any
 
 from dd_license_attribution.adaptors.os import (
     open_file,
     output_from_command,
     walk_directory,
+)
+from dd_license_attribution.artifact_management.go_package_resolver import (
+    SYNTHETIC_MODULE_NAME,
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
@@ -22,6 +27,8 @@ from dd_license_attribution.metadata_collector.strategies.abstract_collection_st
     MetadataCollectionStrategy,
 )
 
+logger = logging.getLogger("dd_license_attribution")
+
 
 class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
     def __init__(
@@ -29,16 +36,25 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         top_package: str,
         source_code_manager: SourceCodeManager,
         project_scope: ProjectScope,
+        local_project_path: str | None = None,
     ) -> None:
-        # Resolve canonical URL if this is a GitHub repository
-        # This ensures we can match packages that were canonicalized by earlier strategies
-        canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
-        self.top_package = canonical_url if canonical_url else top_package
+        self.local_project_path = local_project_path
         self.source_code_manager = source_code_manager
         self.only_root_project = project_scope == ProjectScope.ONLY_ROOT_PROJECT
         self._head_branch_cache: dict[str, str] = {}
 
+        if local_project_path is not None:
+            # In go-package mode, top_package is a Go import path, not a URL
+            self.top_package = top_package
+        else:
+            # Resolve canonical URL if this is a GitHub repository
+            canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
+            self.top_package = canonical_url if canonical_url else top_package
+
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
+        if self.local_project_path is not None:
+            return self._augment_metadata_from_local_path(metadata)
+
         # Get the source code directory
         source_code_ref = self.source_code_manager.get_code(self.top_package)
 
@@ -49,54 +65,131 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             if "go.mod" in files:
                 if self._is_example_package(root):
                     continue
-                # Run the go list command to get the package details
-                output = output_from_command(
-                    f"CWD=`pwd`; cd {root} && go list -json all; cd $CWD"
-                )
-                corrected_output = "[{}]".format(output.replace("}\n{", "},\n{"))
-                package_data_list = json.loads(corrected_output)
+                module_data_list = self._run_go_list_modules(root)
+                for module_data in module_data_list:
+                    module_path = module_data["Path"]
 
-                for package_data in package_data_list:
-                    if "Module" not in package_data:
-                        continue
                     if self.only_root_project:
-                        if not any(
-                            meta.name == package_data["Module"]["Path"]
-                            for meta in metadata
-                        ):
+                        if not any(meta.name == module_path for meta in metadata):
                             continue
-                    version = None
-                    if "Version" in package_data["Module"]:
-                        version = package_data["Module"]["Version"]
-                    # Extract metadata from the package data
-                    package_metadata = Metadata(
-                        name=package_data["Module"]["Path"],
-                        origin=self._translate_github_path(
-                            package_data["Module"]["Path"]
-                        ),
-                        local_src_path=package_data["Module"]["Dir"],
-                        license=[],
-                        version=version,
-                        copyright=[],
-                    )
 
-                    # Add or update the metadata list
-                    saved = False
-                    for i, meta in enumerate(metadata):
-                        if meta.name == package_metadata.name:
-                            metadata[i].origin = package_metadata.origin
-                            metadata[i].local_src_path = package_metadata.local_src_path
-                            metadata[i].version = (
-                                package_metadata.version
-                                if package_metadata.version is not None
-                                else metadata[i].version
-                            )
-                            saved = True
-                            break
-                    if not saved:
-                        metadata.append(package_metadata)
+                    self._upsert_metadata(metadata, module_data)
 
         return metadata
+
+    def _augment_metadata_from_local_path(
+        self, metadata: list[Metadata]
+    ) -> list[Metadata]:
+        """Handle augment_metadata when local_project_path is set (go-package mode).
+
+        In this mode, the local_project_path contains a synthetic Go project with
+        go.mod generated by GoPackageResolver. We skip get_code() and run
+        go list -json all directly in the local project directory to enumerate
+        all modules in the dependency graph (including transitive dependencies).
+        """
+        # Capture root package names before removing the seed entry, so that
+        # only_root_project filtering still includes the root package.
+        # Strip @version suffixes (e.g. "github.com/foo/bar@v1.0" -> "github.com/foo/bar")
+        # so that module paths from go list (which never include @version) can be matched.
+        root_package_names = {
+            m.name.split("@")[0] for m in metadata if m.name is not None
+        }
+
+        # Remove the seed entry created by MetadataCollector
+        metadata = [
+            m
+            for m in metadata
+            if not (m.name == self.top_package and m.version is None)
+        ]
+        project_path = self.local_project_path
+        assert project_path is not None
+
+        module_data_list = self._run_go_list_modules(project_path)
+        if not module_data_list:
+            return metadata
+
+        for module_data in module_data_list:
+            module_path = module_data["Path"]
+
+            # Filter out the synthetic module (Main module)
+            if module_path == SYNTHETIC_MODULE_NAME:
+                continue
+
+            if self.only_root_project:
+                # Include the module if it is an exact match OR if the requested
+                # spec is a subpackage path within the module (e.g. the seed name
+                # "github.com/foo/bar/assert" maps to module "github.com/foo/bar").
+                # The prefix check must not cross major-version boundaries: for a
+                # seed like "github.com/org/lib/v2/foo", "github.com/org/lib" is
+                # a different module and must NOT match even though it is a prefix.
+                if not any(
+                    name == module_path
+                    or (
+                        name.startswith(module_path + "/")
+                        and not re.match(r"v\d+(/|$)", name[len(module_path) + 1 :])
+                    )
+                    for name in root_package_names
+                ):
+                    continue
+
+            self._upsert_metadata(metadata, module_data)
+
+        return metadata
+
+    def _run_go_list_modules(self, project_path: str) -> list[dict[str, Any]]:
+        """Run go list -json all and return deduplicated module dicts.
+
+        Parses package-level output and extracts unique modules from the
+        nested Module key, skipping stdlib packages (no Module key).
+        """
+        output = output_from_command(
+            f"CWD=`pwd`; cd {project_path} && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+        )
+        if not output.strip():
+            logger.warning("go list produced no output in %s", project_path)
+            return []
+
+        corrected_output = "[{}]".format(output.replace("}\n{", "},\n{"))
+        package_data_list: list[dict[str, Any]] = json.loads(corrected_output)
+
+        seen_modules: dict[str, dict[str, Any]] = {}
+        for package_data in package_data_list:
+            if "Module" not in package_data:
+                continue
+            module = package_data["Module"]
+            module_path = module["Path"]
+            if module_path not in seen_modules:
+                seen_modules[module_path] = module
+
+        return list(seen_modules.values())
+
+    def _upsert_metadata(
+        self, metadata: list[Metadata], module_data: dict[str, Any]
+    ) -> None:
+        """Add or update a metadata entry from a go list module dict."""
+        module_path = module_data["Path"]
+        version = module_data.get("Version")
+
+        module_metadata = Metadata(
+            name=module_path,
+            origin=self._translate_github_path(module_path),
+            local_src_path=module_data.get("Dir") or None,
+            license=[],
+            version=version,
+            copyright=[],
+        )
+
+        for i, meta in enumerate(metadata):
+            if meta.name == module_metadata.name:
+                metadata[i].origin = module_metadata.origin
+                metadata[i].local_src_path = module_metadata.local_src_path
+                metadata[i].version = (
+                    module_metadata.version
+                    if module_metadata.version is not None
+                    else metadata[i].version
+                )
+                return
+        metadata.append(module_metadata)
 
     def _translate_github_path(self, path: str) -> str:
         if not path.startswith("github.com"):
@@ -107,13 +200,28 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             # Use branch cache initialized in constructor
             repo_url = f"https://{parts[0]}/{parts[1]}/{parts[2]}"
             if repo_url not in self._head_branch_cache:
-                self._head_branch_cache[repo_url] = (
-                    output_from_command(f"git ls-remote --symref {repo_url} HEAD")
-                    .split()[1]
-                    .removeprefix("refs/heads/")
-                )
+                try:
+                    ls_remote_output = output_from_command(
+                        f"git ls-remote --symref {repo_url} HEAD"
+                    )
+                    tokens = ls_remote_output.split()
+                    if len(tokens) >= 2:
+                        self._head_branch_cache[repo_url] = tokens[1].removeprefix(
+                            "refs/heads/"
+                        )
+                    else:
+                        logger.warning("Could not detect HEAD branch for %s", repo_url)
+                        self._head_branch_cache[repo_url] = ""
+                except Exception:
+                    logger.warning(
+                        "git ls-remote failed for %s, skipping branch detection",
+                        repo_url,
+                    )
+                    self._head_branch_cache[repo_url] = ""
             branch = self._head_branch_cache[repo_url]
-            return f"{repo_url}/tree/{branch}/{parts[3]}"
+            if branch:
+                return f"{repo_url}/tree/{branch}/{parts[3]}"
+            return repo_url
         return f"https://{path}"
 
     def _is_example_package(self, go_mod_path: str) -> bool:
