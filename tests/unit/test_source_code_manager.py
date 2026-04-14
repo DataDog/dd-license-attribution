@@ -1412,7 +1412,7 @@ def test_discover_default_branch_with_exception(
         SourceCodeManager,
     )
 
-    output_from_command_mock.side_effect = Exception("git command failed")
+    output_from_command_mock.side_effect = OSError("git command failed")
 
     github_client_mock = Mock()
     source_code_manager = SourceCodeManager("cache_dir", github_client_mock, 86400)

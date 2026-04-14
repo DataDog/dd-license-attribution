@@ -117,7 +117,7 @@ class JsonConfigParser:
                 "Invalid JSON in mirror configuration file: %s", mirror_file_path
             )
             raise
-        except Exception as e:
+        except (OSError, KeyError, ValueError) as e:
             logger.error("Failed to load mirror configurations: %s", str(e))
             raise
 
@@ -148,6 +148,6 @@ class JsonConfigParser:
         except json.JSONDecodeError:
             logger.error("Invalid JSON in override spec file: %s", override_file_path)
             raise
-        except Exception as e:
+        except (OSError, ValueError) as e:
             logger.error("Error reading override spec file: %s", e)
             raise

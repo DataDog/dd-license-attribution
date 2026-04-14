@@ -111,7 +111,7 @@ class TestDetectGoVersion:
     def test_falls_back_on_exception(self, mocker: pytest_mock.MockFixture) -> None:
         mocker.patch(
             "dd_license_attribution.artifact_management.go_package_resolver.output_from_command",
-            side_effect=Exception("go not found"),
+            side_effect=OSError("go not found"),
         )
         resolver = GoPackageResolver("/cache")
         assert resolver._detect_go_version() == "1.22"
@@ -262,7 +262,7 @@ class TestResolvePackage:
         self, mocker: pytest_mock.MockFixture
     ) -> None:
         _, _, mock_run_command, _, _ = self._setup_mocks(mocker)
-        mock_run_command.side_effect = Exception("go not found")
+        mock_run_command.side_effect = OSError("go not found")
 
         result = self.resolver.resolve_package("github.com/stretchr/testify")
 

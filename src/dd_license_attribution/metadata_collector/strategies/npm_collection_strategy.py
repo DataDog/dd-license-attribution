@@ -275,7 +275,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     resolved_name = aliases.get(name, name)
                     all_deps[resolved_name] = ""
 
-        except Exception as e:
+        except (OSError, KeyError, ValueError) as e:
             logger.warning("Failed to run yarn list for %s: %s", project_path, e)
 
         return all_deps
@@ -319,7 +319,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         except json.JSONDecodeError as e:
             logger.error("npm list did not produce valid JSON: %s", e)
             return all_deps
-        except Exception as e:
+        except OSError as e:
             logger.warning("Failed to run npm list for %s: %s", project_path, e)
 
         return all_deps
@@ -373,7 +373,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         try:
             yarn_version = output_from_command("yarn --version 2>/dev/null")
             logger.debug("Yarn version: %s", yarn_version.strip())
-        except Exception as e:
+        except OSError as e:
             logger.error(
                 "Yarn is not installed or not in PATH. Please install yarn to analyze this project. Error: %s",
                 e,
@@ -423,7 +423,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     f"{dep_name}@{version}: {resp.status_code}, "
                     f"{resp.text}"
                 )
-        except Exception as e:
+        except requests.RequestException as e:
             logger.warning(
                 "Failed to fetch npm registry metadata for "
                 f"{dep_name}@{version}: {e}"
@@ -727,7 +727,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         try:
             entries = list_dir(scan_path)
-        except Exception as e:
+        except OSError as e:
             logger.warning("Failed to list directory %s: %s", scan_path, e)
             return packages
 
@@ -740,7 +740,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 # Scoped package directory - scan subdirectories
                 try:
                     scope_entries = list_dir(entry_path)
-                except Exception:
+                except OSError:
                     continue
                 for scope_entry in scope_entries:
                     scope_entry_path = path_join(entry_path, scope_entry)
@@ -821,7 +821,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                             len(deps),
                             subdir,
                         )
-                    except Exception as e:
+                    except (OSError, json.JSONDecodeError, KeyError) as e:
                         logger.warning(
                             "Failed to parse package.json in %s: %s", subdir, e
                         )
@@ -933,7 +933,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             # Then use npm list to discover all packages
             all_deps = self._get_npm_list_dependencies(project_path)
 
-        except Exception as e:
+        except OSError as e:
             logger.warning(
                 "Failed to run npm install/list for %s: %s", self.top_package, e
             )
@@ -984,7 +984,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         try:
             lock_data = json.loads(open_file(lock_path))
-        except Exception:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError):
             return None, ""
 
         packages = lock_data.get("packages", {})
@@ -1106,7 +1106,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 # Then use npm list to discover all packages
                 all_deps = self._get_npm_list_dependencies(project_path)
 
-            except Exception as e:
+            except OSError as e:
                 logger.warning(
                     "Failed to run npm install/list for %s: %s", self.top_package, e
                 )

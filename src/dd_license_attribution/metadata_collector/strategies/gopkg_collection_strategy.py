@@ -215,7 +215,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                     else:
                         logger.warning("Could not detect HEAD branch for %s", repo_url)
                         self._head_branch_cache[repo_url] = ""
-                except Exception:
+                except OSError:
                     logger.warning(
                         "git ls-remote failed for %s, skipping branch detection",
                         repo_url,

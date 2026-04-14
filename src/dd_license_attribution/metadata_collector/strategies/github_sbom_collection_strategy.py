@@ -132,7 +132,14 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     owner,
                     repo,
                 )
-            except Exception as e:
+            except (
+                NonAccessibleRepository,
+                UnauthorizedRepository,
+                ValueError,
+                KeyError,
+                TypeError,
+                OSError,
+            ) as e:
                 logger.error(
                     "Failed to retrieve or parse GitHub SBOM for '%s/%s': %s",
                     owner,

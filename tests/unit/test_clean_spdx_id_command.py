@@ -641,7 +641,7 @@ class TestCleanSPDXIdCommand:
 
         # Mock cleaner to raise exception
         mock_cleaner = Mock()
-        mock_cleaner.clean_metadata.side_effect = Exception("Unexpected error")
+        mock_cleaner.clean_metadata.side_effect = RuntimeError("Unexpected error")
         mock_spdx_cleaner_class.return_value = mock_cleaner
 
         result = runner.invoke(

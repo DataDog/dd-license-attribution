@@ -42,7 +42,7 @@ class GoPackageResolver:
             match = re.match(r"go(\d+\.\d+)", raw)
             if match:
                 return match.group(1)
-        except Exception:
+        except OSError:
             pass
         return "1.22"
 
@@ -118,7 +118,7 @@ class GoPackageResolver:
             if exit_code != 0:
                 logger.error("go get failed for %s: %s", go_package_spec, output)
                 return None
-        except Exception as e:
+        except OSError as e:
             logger.error("Failed to resolve Go package %s: %s", go_package_spec, e)
             return None
 
@@ -131,7 +131,7 @@ class GoPackageResolver:
             if exit_code != 0:
                 logger.error("go mod tidy failed for %s: %s", go_package_spec, output)
                 return None
-        except Exception as e:
+        except OSError as e:
             logger.error("Failed to resolve Go package %s: %s", go_package_spec, e)
             return None
 

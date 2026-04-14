@@ -122,7 +122,7 @@ class OpenAIClient:
             # Catch-all for other OpenAI API errors
             logger.error("OpenAI API error: %s", e, exc_info=True)
             raise
-        except Exception as e:
+        except (ConnectionError, TimeoutError) as e:
             logger.error("Unexpected error calling OpenAI API: %s", e, exc_info=True)
             raise
 
@@ -235,7 +235,7 @@ class AnthropicClient:
             # Catch-all for other Anthropic API errors
             logger.error("Anthropic API error: %s", e, exc_info=True)
             raise
-        except Exception as e:
+        except (ConnectionError, TimeoutError) as e:
             logger.error("Unexpected error calling Anthropic API: %s", e, exc_info=True)
             raise
 

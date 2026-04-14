@@ -1474,7 +1474,7 @@ def test_get_yarn_dependencies_command_failure(
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.output_from_command",
-        side_effect=Exception("Yarn command failed"),
+        side_effect=OSError("Yarn command failed"),
     )
 
     with caplog.at_level(logging.WARNING):
@@ -1606,7 +1606,7 @@ def test_npm_collection_strategy_yarn_not_installed(
 
     def fake_output_from_command(command: str) -> str:
         if "yarn --version" in command:
-            raise Exception("yarn: command not found")
+            raise OSError("yarn: command not found")
         return ""
 
     mocker.patch(
@@ -3421,7 +3421,7 @@ def test_npm_list_handles_command_exception(
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.run_command_with_check",
-        side_effect=Exception("npm not found"),
+        side_effect=OSError("npm not found"),
     )
 
     with caplog.at_level(logging.WARNING):

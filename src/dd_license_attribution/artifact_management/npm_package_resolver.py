@@ -87,7 +87,7 @@ class NpmPackageResolver:
             if exit_code != 0:
                 logger.error("npm install failed for %s: %s", npm_package_spec, output)
                 return None
-        except Exception as e:
+        except OSError as e:
             logger.error("Failed to resolve npm package %s: %s", npm_package_spec, e)
             return None
 

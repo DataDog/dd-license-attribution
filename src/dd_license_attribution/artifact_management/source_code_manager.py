@@ -264,7 +264,7 @@ class SourceCodeManager(ArtifactManager):
                 "Discovered default branch in repository: %s", discovered_branch
             )
             return discovered_branch
-        except Exception as e:
+        except (OSError, IndexError) as e:
             raise NonAccessibleRepository(
                 f"Could not discover default branch for {url}"
             ) from e

@@ -213,6 +213,6 @@ def clean_spdx_id(
     except ValueError as e:
         logger.error("Configuration error: %s", e)
         sys.exit(1)
-    except Exception as e:
+    except (OSError, RuntimeError, ConnectionError, TimeoutError) as e:
         logger.error("Error during cleaning process: %s", e, exc_info=True)
         sys.exit(1)

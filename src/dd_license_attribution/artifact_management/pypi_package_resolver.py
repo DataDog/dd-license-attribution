@@ -74,7 +74,7 @@ class PypiPackageResolver:
         pyproject_toml_path = path_join(resolve_dir, "pyproject.toml")
         try:
             write_file(pyproject_toml_path, pyproject_toml_content)
-        except Exception as e:
+        except OSError as e:
             logger.error(
                 "Failed to write pyproject.toml for %s: %s", pypi_package_spec, e
             )
