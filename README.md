@@ -8,7 +8,9 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 [![Imports: isort](https://img.shields.io/badge/%20imports-isort-%231674b1?style=flat&labelColor=ef8336)](https://pycqa.github.io/isort/)
+[![Linting: ruff](https://img.shields.io/badge/linting-ruff-261230.svg)](https://github.com/astral-sh/ruff)
 [![Type checker: mypy](https://img.shields.io/badge/type%20checker-mypy-blue.svg)](https://mypy-lang.org/)
+[![Mutation testing: mutmut](https://img.shields.io/badge/mutation%20testing-mutmut-green.svg)](https://github.com/boxed/mutmut)
 
 Datadog License Attribution Tracker is a tool that collects license and copyright information for third party dependencies of a project and returns a list of said dependencies and their licenses and copyright attributions, if found.
 
@@ -60,7 +62,7 @@ Run `dd-license-attribution --help` to see all available commands.
 ### Requirements
 
 - python3.11+ - [Python install instructions](https://www.python.org/downloads/)
-- libmagic (only on MacOS):
+- libmagic (only on macOS):
   - `brew install libmagic`
 - libicu (only on macOS):
   - `brew install icu4c pkg-config`

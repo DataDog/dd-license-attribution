@@ -102,6 +102,16 @@ jobs:
               new_caught = pr_caught - base_caught
               if new_caught > 0:
                   print(f"Improvement: {new_caught} additional mutant(s) caught.")
+
+          # Enforce minimum mutation score on PR branch
+          MINIMUM_MUTATION_SCORE = 80
+          pr_total_testable = pr_caught + pr_survived
+          if pr_total_testable > 0:
+              pr_score = pr_caught / pr_total_testable * 100
+              print(f"\nPR mutation score: {pr_score:.1f}% (minimum: {MINIMUM_MUTATION_SCORE}%)")
+              if pr_score < MINIMUM_MUTATION_SCORE:
+                  print(f"::error::Mutation score {pr_score:.1f}% is below the minimum threshold of {MINIMUM_MUTATION_SCORE}%")
+                  sys.exit(1)
           SCRIPT
 
       - name: Upload mutation results on failure
