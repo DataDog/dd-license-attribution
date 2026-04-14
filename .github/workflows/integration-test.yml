@@ -14,6 +14,11 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.14"]
+
+    name: integration (${{ matrix.python-version }})
 
     steps:
       - name: Check out the repository
@@ -22,7 +27,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: "pip" # caching pip dependencies
 
       - name: Set up Golang
@@ -63,20 +68,29 @@ jobs:
             dd-license-attribution generate-sbom-csv --override-spec=.ddla-overrides https://github.com/DataDog/dd-license-attribution > ddla-output.txt
           fi
 
-          if ! cmp -s LICENSE-3rdparty.csv ddla-output.txt; then
-            echo "Error: LICENSE-3rdparty.csv differs from ddla-output.txt"
-            echo "Diff between files:"
-            diff -u --color LICENSE-3rdparty.csv ddla-output.txt || true
-            # Upload the output file as an artifact
-            echo "Uploading ddla-output.txt as an artifact..."
-            exit 1
+          # Only compare CSV output on the primary development version (3.14).
+          # Dependency closures differ across Python versions (e.g., setuptools
+          # appears on 3.11 but not 3.14), so exact comparison only works on one.
+          if [ "${{ matrix.python-version }}" = "3.14" ]; then
+            if ! cmp -s LICENSE-3rdparty.csv ddla-output.txt; then
+              echo "Error: LICENSE-3rdparty.csv differs from ddla-output.txt"
+              echo "Diff between files:"
+              diff -u --color LICENSE-3rdparty.csv ddla-output.txt || true
+              echo "Uploading ddla-output.txt as an artifact..."
+              exit 1
+            fi
+          else
+            # On other versions, just validate the output is non-empty CSV with expected header
+            head -1 ddla-output.txt | grep -iq "component.*origin.*license.*copyright"
+            line_count=$(wc -l < ddla-output.txt)
+            echo "CSV comparison skipped on Python ${{ matrix.python-version }} (closure may differ). Output has $((line_count - 1)) dependencies."
           fi
 
       - name: Upload ddla-output.txt on failure
         if: failure()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: ddla-output
+          name: ddla-output-${{ matrix.python-version }}
           path: ddla-output.txt
           if-no-files-found: error
 
@@ -113,7 +127,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
-          name: go-ecosystem-output
+          name: go-ecosystem-output-${{ matrix.python-version }}
           path: |
             go-ecosystem-output.txt
             go-module-output.txt
