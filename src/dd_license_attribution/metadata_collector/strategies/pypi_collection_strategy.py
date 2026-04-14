@@ -124,7 +124,10 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
             self._process_dependency(name, clean_version, updated_metadata)
             return updated_metadata
 
-        assert self.local_project_path is not None
+        if self.local_project_path is None:
+            raise ValueError(
+                "local_project_path must be set before calling this method"
+            )
         top_package_env = self.python_env_manager.get_environment(
             self.local_project_path
         )

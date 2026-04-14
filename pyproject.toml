@@ -33,6 +33,7 @@ dependencies = [
 lint = [
     "black==26.3.1",
     "isort==8.0.1",
+    "ruff",
 ]
 dev = [
     "pytest",
@@ -96,6 +97,15 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = "anthropic"
 ignore_missing_imports = true
+
+[tool.ruff]
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["S101"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
 
 [tool.isort]
 profile = "black"

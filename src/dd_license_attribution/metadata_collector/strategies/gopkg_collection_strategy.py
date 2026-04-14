@@ -102,7 +102,10 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             if not (m.name == self.top_package and m.version is None)
         ]
         project_path = self.local_project_path
-        assert project_path is not None
+        if project_path is None:
+            raise ValueError(
+                "local_project_path must be set before calling this method"
+            )
 
         module_data_list = self._run_go_list_modules(project_path)
         if not module_data_list:

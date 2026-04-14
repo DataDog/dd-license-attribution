@@ -885,7 +885,10 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             if not (m.name == self.top_package and m.version is None)
         ]
         project_path = self.local_project_path
-        assert project_path is not None
+        if project_path is None:
+            raise ValueError(
+                "local_project_path must be set before calling this method"
+            )
 
         if self.only_root_project:
             # For ONLY_ROOT_PROJECT, fetch root package metadata from npm registry
