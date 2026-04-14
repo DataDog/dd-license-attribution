@@ -204,7 +204,8 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             # Use yarn list to get all dependencies (excluding dev dependencies)
             logger.debug("Running yarn list in %s", project_path)
             output = output_from_command(
-                f"cd {project_path} && yarn list --production --json --non-interactive 2>&1"
+                ["yarn", "list", "--production", "--json", "--non-interactive"],
+                cwd=project_path,
             )
             logger.debug("Yarn list output length: %d characters", len(output))
 
@@ -299,7 +300,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             # Use npm list to get all dependencies (excluding dev dependencies)
             logger.debug("Running npm list in %s", project_path)
             exit_code, output = run_command_with_check(
-                "npm list --json --production --all 2>/dev/null",
+                ["npm", "list", "--json", "--production", "--all"],
                 cwd=project_path,
             )
             if exit_code != 0:
@@ -371,7 +372,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         # Check if yarn is installed
         try:
-            yarn_version = output_from_command("yarn --version 2>/dev/null")
+            yarn_version = output_from_command(["yarn", "--version"])
             logger.debug("Yarn version: %s", yarn_version.strip())
         except OSError as e:
             logger.error(
@@ -922,7 +923,8 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             # First ensure dependencies are installed
             logger.debug("Running npm install for %s", project_path)
             exit_code, install_output = run_command_with_check(
-                "npm install --production --ignore-scripts", cwd=project_path
+                ["npm", "install", "--production", "--ignore-scripts"],
+                cwd=project_path,
             )
             if exit_code != 0:
                 logger.warning(
@@ -1093,7 +1095,8 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 # First ensure dependencies are installed
                 logger.debug("Running npm install for %s", project_path)
                 exit_code, install_output = run_command_with_check(
-                    "npm install --production --ignore-scripts", cwd=project_path
+                    ["npm", "install", "--production", "--ignore-scripts"],
+                    cwd=project_path,
                 )
                 if exit_code != 0:
                     logger.warning(

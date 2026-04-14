@@ -61,8 +61,10 @@ def setup_npm_strategy_mocks(
         result = "/".join(args)
         return result
 
-    def fake_run_command(command: str, cwd: str | None = None) -> tuple[int, str]:
-        if "npm list" in command:
+    def fake_run_command(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> tuple[int, str]:
+        if "list" in args and "npm" in args:
             # Convert package_lock structure to npm list format
             npm_list_output: dict[str, Any] = {
                 "version": "1.0.0",
@@ -263,10 +265,11 @@ def test_npm_collection_strategy_adds_npm_metadata(
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
-        "npm install --production --ignore-scripts", cwd="cache_dir/org_package1"
+        ["npm", "install", "--production", "--ignore-scripts"],
+        cwd="cache_dir/org_package1",
     )
     mock_run_command.assert_any_call(
-        "npm list --json --production --all 2>/dev/null",
+        ["npm", "list", "--json", "--production", "--all"],
         cwd="cache_dir/org_package1",
     )
     mock_output_from_command.assert_not_called()
@@ -381,10 +384,11 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
-        "npm install --production --ignore-scripts", cwd="cache_dir/org_package1"
+        ["npm", "install", "--production", "--ignore-scripts"],
+        cwd="cache_dir/org_package1",
     )
     mock_run_command.assert_any_call(
-        "npm list --json --production --all 2>/dev/null",
+        ["npm", "list", "--json", "--production", "--all"],
         cwd="cache_dir/org_package1",
     )
     mock_output_from_command.assert_not_called()
@@ -455,10 +459,11 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
-        "npm install --production --ignore-scripts", cwd="cache_dir/org_package1"
+        ["npm", "install", "--production", "--ignore-scripts"],
+        cwd="cache_dir/org_package1",
     )
     mock_run_command.assert_any_call(
-        "npm list --json --production --all 2>/dev/null",
+        ["npm", "list", "--json", "--production", "--all"],
         cwd="cache_dir/org_package1",
     )
     mock_output_from_command.assert_not_called()
@@ -508,10 +513,11 @@ def test_npm_collection_strategy_handles_missing_packages_key(
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
-        "npm install --production --ignore-scripts", cwd="cache_dir/org_package1"
+        ["npm", "install", "--production", "--ignore-scripts"],
+        cwd="cache_dir/org_package1",
     )
     mock_run_command.assert_any_call(
-        "npm list --json --production --all 2>/dev/null",
+        ["npm", "list", "--json", "--production", "--all"],
         cwd="cache_dir/org_package1",
     )
     mock_output_from_command.assert_not_called()
@@ -581,10 +587,11 @@ def test_npm_collection_strategy_handles_missing_root_package(
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
-        "npm install --production --ignore-scripts", cwd="cache_dir/org_package1"
+        ["npm", "install", "--production", "--ignore-scripts"],
+        cwd="cache_dir/org_package1",
     )
     mock_run_command.assert_any_call(
-        "npm list --json --production --all 2>/dev/null",
+        ["npm", "list", "--json", "--production", "--all"],
         cwd="cache_dir/org_package1",
     )
     mock_output_from_command.assert_not_called()
@@ -650,10 +657,11 @@ def test_npm_collection_strategy_handles_registry_api_failures(
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
-        "npm install --production --ignore-scripts", cwd="cache_dir/org_package1"
+        ["npm", "install", "--production", "--ignore-scripts"],
+        cwd="cache_dir/org_package1",
     )
     mock_run_command.assert_any_call(
-        "npm list --json --production --all 2>/dev/null",
+        ["npm", "list", "--json", "--production", "--all"],
         cwd="cache_dir/org_package1",
     )
     mock_output_from_command.assert_not_called()
@@ -717,10 +725,11 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
-        "npm install --production --ignore-scripts", cwd="cache_dir/org_package1"
+        ["npm", "install", "--production", "--ignore-scripts"],
+        cwd="cache_dir/org_package1",
     )
     mock_run_command.assert_any_call(
-        "npm list --json --production --all 2>/dev/null",
+        ["npm", "list", "--json", "--production", "--all"],
         cwd="cache_dir/org_package1",
     )
     mock_output_from_command.assert_not_called()
@@ -775,7 +784,8 @@ def test_npm_collection_strategy_handles_npm_install_failure(
     assert result == initial_metadata
     # Verify npm install was attempted via run_command_with_check
     mock_run_command.assert_called_once_with(
-        "npm install --production --ignore-scripts", cwd="cache_dir/org_package1"
+        ["npm", "install", "--production", "--ignore-scripts"],
+        cwd="cache_dir/org_package1",
     )
     # npm list should NOT have been called (install failed)
     mock_output_from_command.assert_not_called()
@@ -1307,9 +1317,10 @@ def test_get_yarn_dependencies_success(
 
     # Verify that the command includes --production flag to exclude dev dependencies
     mock_output_from_command.assert_called_once()
-    called_command = mock_output_from_command.call_args[0][0]
-    assert "--production" in called_command
-    assert "yarn list" in called_command
+    called_args = mock_output_from_command.call_args[0][0]
+    assert "--production" in called_args
+    assert "yarn" in called_args
+    assert "list" in called_args
 
 
 def test_get_yarn_dependencies_with_scoped_packages(
@@ -1511,10 +1522,12 @@ def test_npm_collection_strategy_with_yarn_project(
     def fake_path_join(*args: Any) -> str:
         return "/".join(args)
 
-    def fake_output_from_command(command: str) -> str:
-        if "yarn --version" in command:
+    def fake_output_from_command(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> str:
+        if args == ["yarn", "--version"]:
             return "1.22.19"
-        elif "yarn list" in command:
+        elif "yarn" in args and "list" in args:
             return yarn_output
         return ""
 
@@ -1572,7 +1585,7 @@ def test_npm_collection_strategy_with_yarn_project(
     yarn_list_calls = [
         call
         for call in mock_output_from_command.call_args_list
-        if "yarn list" in str(call)
+        if "list" in str(call) and "yarn" in str(call)
     ]
     assert len(yarn_list_calls) > 0
     yarn_command = str(yarn_list_calls[0])
@@ -1580,7 +1593,8 @@ def test_npm_collection_strategy_with_yarn_project(
 
     # Verify yarn list was called, not npm install
     yarn_list_called = any(
-        "yarn list" in str(call) for call in mock_output_from_command.call_args_list
+        "list" in str(call) and "yarn" in str(call)
+        for call in mock_output_from_command.call_args_list
     )
     assert yarn_list_called
 
@@ -1604,8 +1618,10 @@ def test_npm_collection_strategy_yarn_not_installed(
     def fake_path_join(*args: Any) -> str:
         return "/".join(args)
 
-    def fake_output_from_command(command: str) -> str:
-        if "yarn --version" in command:
+    def fake_output_from_command(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> str:
+        if args == ["yarn", "--version"]:
             raise OSError("yarn: command not found")
         return ""
 
@@ -1678,8 +1694,10 @@ def test_collect_yarn_deps_from_location_with_existing_lock(
     def fake_path_join(*args: Any) -> str:
         return "/".join(args)
 
-    def fake_output(cmd: str) -> str:
-        if "yarn list" in cmd:
+    def fake_output(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> str:
+        if "yarn" in args and "list" in args:
             return yarn_output
         return "1.22.0"
 
@@ -1786,11 +1804,13 @@ def test_augment_metadata_with_single_subdirectory(
             return json.dumps(package_json)
         return ""
 
-    def fake_output(cmd: str) -> str:
-        if "yarn --version" in cmd:
+    def fake_output(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> str:
+        if args == ["yarn", "--version"]:
             return "1.22.0"
-        if "yarn list" in cmd:
-            if "/subdir" in cmd:
+        if "yarn" in args and "list" in args:
+            if cwd and "/subdir" in cwd:
                 return subdir_yarn_output
             return root_yarn_output
         return ""
@@ -1894,13 +1914,15 @@ def test_augment_metadata_with_multiple_subdirectories(
             return json.dumps(package_json)
         return ""
 
-    def fake_output(cmd: str) -> str:
-        if "yarn --version" in cmd:
+    def fake_output(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> str:
+        if args == ["yarn", "--version"]:
             return "1.22.0"
-        if "yarn list" in cmd:
-            if "/subdir1" in cmd:
+        if "yarn" in args and "list" in args:
+            if cwd and "/subdir1" in cwd:
                 return subdir1_yarn_output
-            elif "/subdir2" in cmd:
+            elif cwd and "/subdir2" in cwd:
                 return subdir2_yarn_output
             return root_yarn_output
         return ""
@@ -2000,10 +2022,12 @@ def test_augment_metadata_with_missing_subdirectory(
             return json.dumps(package_json)
         return ""
 
-    def fake_output(cmd: str) -> str:
-        if "yarn --version" in cmd:
+    def fake_output(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> str:
+        if args == ["yarn", "--version"]:
             return "1.22.0"
-        if "yarn list" in cmd:
+        if "yarn" in args and "list" in args:
             return root_yarn_output
         return ""
 
@@ -2107,11 +2131,13 @@ def test_augment_metadata_with_version_conflicts(
             return json.dumps(package_json)
         return ""
 
-    def fake_output(cmd: str) -> str:
-        if "yarn --version" in cmd:
+    def fake_output(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> str:
+        if args == ["yarn", "--version"]:
             return "1.22.0"
-        if "yarn list" in cmd:
-            if "/subdir" in cmd:
+        if "yarn" in args and "list" in args:
+            if cwd and "/subdir" in cwd:
                 return subdir_yarn_output
             return root_yarn_output
         return ""
@@ -2337,8 +2363,10 @@ def test_get_yarn_dependencies_resolves_aliases_from_lock(
             return yarn_lock_content
         raise FileNotFoundError
 
-    def fake_output(cmd: str) -> str:
-        if "yarn list" in cmd:
+    def fake_output(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> str:
+        if "yarn" in args and "list" in args:
             return yarn_output
         return "1.22.0"
 
@@ -2406,10 +2434,12 @@ def test_augment_metadata_with_yarn_aliases_from_lock(
             return json.dumps(package_json)
         raise FileNotFoundError
 
-    def fake_output(cmd: str) -> str:
-        if "yarn --version" in cmd:
+    def fake_output(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> str:
+        if args == ["yarn", "--version"]:
             return "1.22.0"
-        elif "yarn list" in cmd:
+        elif "yarn" in args and "list" in args:
             return yarn_output
         return ""
 
@@ -2507,8 +2537,10 @@ def test_yarn_lock_aliases_precedence_over_tree_aliases(
             return yarn_lock_content
         raise FileNotFoundError
 
-    def fake_output(cmd: str) -> str:
-        if "yarn list" in cmd:
+    def fake_output(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> str:
+        if "yarn" in args and "list" in args:
             return yarn_output
         return "1.22.0"
 
@@ -2783,8 +2815,10 @@ def test_augment_metadata_with_npm_aliases_from_lock(
             return json.dumps(package_json)
         raise FileNotFoundError
 
-    def fake_run_command(command: str, cwd: str | None = None) -> tuple[int, str]:
-        if "npm list" in command:
+    def fake_run_command(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> tuple[int, str]:
+        if "list" in args and "npm" in args:
             npm_list_output = {
                 "version": "1.0.0",
                 "name": "test-package",
@@ -3051,8 +3085,10 @@ def test_npm_local_project_path_skips_get_code(
     def fake_path_join(*args: Any) -> str:
         return "/".join(args)
 
-    def fake_run_command(command: str, cwd: str | None = None) -> tuple[int, str]:
-        if "npm list" in command:
+    def fake_run_command(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> tuple[int, str]:
+        if "list" in args and "npm" in args:
             npm_list_output = {
                 "version": "1.0.0",
                 "name": "test-project",
@@ -3210,8 +3246,10 @@ def test_npm_local_project_path_all_mode_processes_lock_deps(
     def fake_path_join(*args: Any) -> str:
         return "/".join(args)
 
-    def fake_run_command(command: str, cwd: str | None = None) -> tuple[int, str]:
-        if "npm list" in command:
+    def fake_run_command(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> tuple[int, str]:
+        if "list" in args and "npm" in args:
             npm_list_output = {
                 "version": "4.18.2",
                 "name": "express",
@@ -3776,10 +3814,12 @@ def test_collect_vendored_deps_with_yarn_lock(
             return yarn_lock_content
         raise FileNotFoundError
 
-    def fake_output(cmd: str) -> str:
-        if "yarn --version" in cmd:
+    def fake_output(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> str:
+        if args == ["yarn", "--version"]:
             return "1.22.19"
-        if "yarn list" in cmd:
+        if "yarn" in args and "list" in args:
             return yarn_list_output
         return ""
 
@@ -3992,8 +4032,10 @@ def test_augment_metadata_from_local_path_with_yarn_subdirs(
     def fake_path_join(*args: Any) -> str:
         return "/".join(args)
 
-    def fake_run_command(command: str, cwd: str | None = None) -> tuple[int, str]:
-        if "npm list" in command:
+    def fake_run_command(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> tuple[int, str]:
+        if "list" in args and "npm" in args:
             return (
                 0,
                 json.dumps(
@@ -4105,8 +4147,10 @@ def test_augment_metadata_from_local_path_vendored_deps_dont_overwrite_npm_deps(
     def fake_path_join(*args: Any) -> str:
         return "/".join(args)
 
-    def fake_run_command(command: str, cwd: str | None = None) -> tuple[int, str]:
-        if "npm list" in command:
+    def fake_run_command(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> tuple[int, str]:
+        if "list" in args and "npm" in args:
             return (
                 0,
                 json.dumps(

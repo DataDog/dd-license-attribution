@@ -52,13 +52,13 @@ class PythonEnvManager(ArtifactManager):
     def _create_python_env(self, resource_path: str, normalized_rsc_path: str) -> str:
         venv_path = f"{self.local_cache_dir}/{self.timestamped_dir}/{normalized_rsc_path}_virtualenv"
         change_directory(resource_path)
-        if run_command(f"python -m venv {venv_path}") != 0:
+        if run_command(["python", "-m", "venv", venv_path]) != 0:
             raise PyEnvRuntimeError("Failed to create Python virtualenv")
         return venv_path
 
     def _install_pip_dependencies(self, resource_path: str, venv_path: str) -> None:
         change_directory(resource_path)
-        if run_command(f"{venv_path}/bin/python -m pip install .") != 0:
+        if run_command([f"{venv_path}/bin/python", "-m", "pip", "install", "."]) != 0:
             raise PyEnvRuntimeError(
                 "Failed to install dependencies when creating Python virtualenv cache"
             )
@@ -81,6 +81,6 @@ class PythonEnvManager(ArtifactManager):
 
     @staticmethod
     def get_dependencies(venv_path: str) -> list[tuple[str, str]] | None:
-        out = output_from_command(f"{venv_path}/bin/pip list --format=json")
+        out = output_from_command([f"{venv_path}/bin/pip", "list", "--format=json"])
         json_out = json.loads(out)
         return [(x["name"], x["version"]) for x in json_out]

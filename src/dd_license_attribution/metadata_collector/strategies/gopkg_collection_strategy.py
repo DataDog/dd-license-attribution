@@ -146,7 +146,9 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         nested Module key, skipping stdlib packages (no Module key).
         """
         output = output_from_command(
-            f"CWD=`pwd`; cd {project_path} && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+            ["go", "list", "-json", "all"],
+            cwd=project_path,
+            env={"GOTOOLCHAIN": "auto"},
         )
         if not output.strip():
             logger.warning("go list produced no output in %s", project_path)
@@ -205,7 +207,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             if repo_url not in self._head_branch_cache:
                 try:
                     ls_remote_output = output_from_command(
-                        f"git ls-remote --symref {repo_url} HEAD"
+                        ["git", "ls-remote", "--symref", repo_url, "HEAD"]
                     )
                     tokens = ls_remote_output.split()
                     if len(tokens) >= 2:

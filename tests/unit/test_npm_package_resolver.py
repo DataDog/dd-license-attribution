@@ -121,7 +121,7 @@ class TestResolvePackage:
 
         # Verify run_command_with_check was called with --ignore-scripts and cwd
         mock_run_command.assert_called_once_with(
-            "npm install --package-lock-only --force --ignore-scripts",
+            ["npm", "install", "--package-lock-only", "--force", "--ignore-scripts"],
             cwd="/cache/express",
         )
 

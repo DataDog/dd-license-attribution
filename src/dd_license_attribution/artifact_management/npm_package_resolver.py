@@ -81,7 +81,13 @@ class NpmPackageResolver:
         # Run npm install --package-lock-only to resolve the dependency tree
         try:
             exit_code, output = run_command_with_check(
-                "npm install --package-lock-only --force --ignore-scripts",
+                [
+                    "npm",
+                    "install",
+                    "--package-lock-only",
+                    "--force",
+                    "--ignore-scripts",
+                ],
                 cwd=resolve_dir,
             )
             if exit_code != 0:
