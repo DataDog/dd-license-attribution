@@ -1,0 +1,142 @@
+name: Coverage Regression Check
+
+on:
+  pull_request:
+    branches:
+      - "*"
+
+permissions:
+  contents: read
+
+jobs:
+  coverage-regression:
+    runs-on: ubuntu-latest
+
+    env:
+      TERM: dumb
+
+    steps:
+      - name: Check out the repository (full history for branch comparison)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.14"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run coverage on target branch
+        run: |
+          git checkout ${{ github.event.pull_request.base.sha }}
+          pip install -e "." --quiet
+          pytest tests/unit/ --cov=src/dd_license_attribution --cov-report=xml:coverage-base.xml -q || true
+          if [ ! -f coverage-base.xml ]; then
+            echo "::warning::Failed to collect coverage on target branch. Skipping regression check."
+            echo "SKIP_REGRESSION=true" >> "$GITHUB_ENV"
+          fi
+          git checkout ${{ github.event.pull_request.head.sha }}
+          pip install -e "." --quiet
+
+      - name: Run coverage on PR branch
+        run: |
+          pytest tests/unit/ --cov=src/dd_license_attribution --cov-report=xml:coverage-pr.xml -q
+
+      - name: Compare coverage and detect regressions
+        if: env.SKIP_REGRESSION != 'true'
+        run: |
+          python3 << 'SCRIPT'
+          import xml.etree.ElementTree as ET
+          import subprocess
+          import sys
+
+          def parse_coverage(xml_path):
+              """Parse coverage.xml and return {filename: (covered_lines, total_lines)}."""
+              tree = ET.parse(xml_path)
+              root = tree.getroot()
+              result = {}
+              for package in root.findall('.//package'):
+                  for cls in package.findall('.//class'):
+                      filename = cls.get('filename', '')
+                      covered = set()
+                      total = set()
+                      for line in cls.findall('lines/line'):
+                          num = int(line.get('number'))
+                          total.add(num)
+                          if int(line.get('hits', '0')) > 0:
+                              covered.add(num)
+                      if filename:
+                          result[filename] = (covered, total)
+              return result
+
+          def get_modified_files():
+              """Get set of files modified in the PR."""
+              base_sha = "${{ github.event.pull_request.base.sha }}"
+              head_sha = "${{ github.event.pull_request.head.sha }}"
+              result = subprocess.run(
+                  ["git", "diff", "--name-only", f"{base_sha}...{head_sha}"],
+                  capture_output=True, text=True
+              )
+              return set(result.stdout.strip().split('\n'))
+
+          base_cov = parse_coverage('coverage-base.xml')
+          pr_cov = parse_coverage('coverage-pr.xml')
+          modified_files = get_modified_files()
+
+          # Line-level regression check only on files NOT modified in the PR.
+          # Modified files have shifted line numbers so line-level comparison
+          # produces false positives. Overall coverage threshold catches gross
+          # regressions in modified files.
+          regressions = []
+          for filename in base_cov:
+              if filename not in pr_cov:
+                  continue  # File removed entirely — OK
+              # Skip files that were modified in the PR
+              if any(filename.endswith(m) or m.endswith(filename) for m in modified_files):
+                  continue
+              base_covered, _ = base_cov[filename]
+              pr_covered, _ = pr_cov[filename]
+              lost = base_covered - pr_covered
+              if lost:
+                  for line_num in sorted(lost):
+                      regressions.append(f"  {filename}:{line_num}")
+
+          # Also check that overall coverage percentage didn't drop
+          base_total_covered = sum(len(c) for c, _ in base_cov.values())
+          base_total_lines = sum(len(t) for _, t in base_cov.values())
+          pr_total_covered = sum(len(c) for c, _ in pr_cov.values())
+          pr_total_lines = sum(len(t) for _, t in pr_cov.values())
+
+          base_pct = base_total_covered / base_total_lines * 100 if base_total_lines else 0
+          pr_pct = pr_total_covered / pr_total_lines * 100 if pr_total_lines else 0
+
+          print(f"Target branch coverage: {base_pct:.1f}% ({base_total_covered}/{base_total_lines})")
+          print(f"PR branch coverage:     {pr_pct:.1f}% ({pr_total_covered}/{pr_total_lines})")
+
+          failed = False
+          if regressions:
+              print(f"\n::error::Coverage regression in unmodified files: {len(regressions)} previously-covered line(s) lost coverage")
+              print("Lines that were covered on the target branch but are no longer covered:")
+              for r in regressions[:50]:
+                  print(r)
+              if len(regressions) > 50:
+                  print(f"  ... and {len(regressions) - 50} more")
+              failed = True
+
+          if pr_pct < base_pct - 1:
+              print(f"\n::error::Overall coverage dropped by {base_pct - pr_pct:.1f}% (from {base_pct:.1f}% to {pr_pct:.1f}%)")
+              failed = True
+
+          if failed:
+              sys.exit(1)
+          else:
+              print("\nNo coverage regressions detected.")
+              if pr_pct > base_pct:
+                  print(f"Improvement: coverage increased by {pr_pct - base_pct:.1f}%")
+          SCRIPT

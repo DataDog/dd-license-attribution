@@ -1,0 +1,114 @@
+name: Mutation Testing Regression Check
+
+on:
+  pull_request:
+    branches:
+      - "*"
+
+permissions:
+  contents: read
+
+jobs:
+  mutation-regression:
+    runs-on: ubuntu-latest
+
+    env:
+      TERM: dumb
+
+    steps:
+      - name: Check out the repository (full history for branch comparison)
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.14"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+          pip install pytest-timeout
+
+      - name: Run mutation testing on target branch
+        run: |
+          git checkout ${{ github.event.pull_request.base.sha }}
+          pip install -e "." --quiet
+          mutmut run --max-children 4 || true
+          mutmut results --all true > mutmut-base-results.txt
+          rm -rf mutants/ .mutmut-cache
+          git checkout ${{ github.event.pull_request.head.sha }}
+          pip install -e "." --quiet
+
+      - name: Run mutation testing on PR branch
+        run: |
+          mutmut run --max-children 4 || true
+          mutmut results --all true > mutmut-pr-results.txt
+
+      - name: Compare mutation results and detect regressions
+        run: |
+          python3 << 'SCRIPT'
+          import sys
+
+          def parse_results(path):
+              """Parse mutmut results into dict of {mutant_name: status}."""
+              results = {}
+              with open(path) as f:
+                  for line in f:
+                      line = line.strip()
+                      if ': ' in line:
+                          name, status = line.rsplit(': ', 1)
+                          name = name.strip()
+                          results[name] = status
+              return results
+
+          base = parse_results('mutmut-base-results.txt')
+          pr = parse_results('mutmut-pr-results.txt')
+
+          caught_statuses = {'killed', 'timeout'}
+          regressions = []
+
+          for mutant, base_status in base.items():
+              if base_status not in caught_statuses:
+                  continue  # Was not caught before — not a regression
+              if mutant not in pr:
+                  continue  # Mutant no longer exists (code removed) — OK
+              pr_status = pr[mutant]
+              if pr_status not in caught_statuses:
+                  regressions.append(f"  {mutant}: {base_status} -> {pr_status}")
+
+          # Summary stats
+          base_caught = sum(1 for s in base.values() if s in caught_statuses)
+          pr_caught = sum(1 for s in pr.values() if s in caught_statuses)
+          base_survived = sum(1 for s in base.values() if s == 'survived')
+          pr_survived = sum(1 for s in pr.values() if s == 'survived')
+
+          print(f"Target branch: {len(base)} mutants ({base_caught} caught, {base_survived} survived)")
+          print(f"PR branch:     {len(pr)} mutants ({pr_caught} caught, {pr_survived} survived)")
+
+          if regressions:
+              print(f"\n::error::Mutation regression detected: {len(regressions)} mutant(s) were previously caught but now survive")
+              print("Regressions:")
+              for r in regressions[:50]:
+                  print(r)
+              if len(regressions) > 50:
+                  print(f"  ... and {len(regressions) - 50} more")
+              sys.exit(1)
+          else:
+              print("\nNo mutation regressions detected.")
+              new_caught = pr_caught - base_caught
+              if new_caught > 0:
+                  print(f"Improvement: {new_caught} additional mutant(s) caught.")
+          SCRIPT
+
+      - name: Upload mutation results on failure
+        if: failure()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: mutation-regression-results
+          path: |
+            mutmut-base-results.txt
+            mutmut-pr-results.txt
