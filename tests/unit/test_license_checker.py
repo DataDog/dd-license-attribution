@@ -132,7 +132,10 @@ def test_check_cautionary_licenses_with_cautionary_license() -> None:
         ) as mock_logging:
             checker.check_cautionary_licenses([metadata])
             mock_is_cautionary.assert_called_once_with("GPL-3.0")
-            mock_logging.assert_called_once()
+            mock_logging.assert_called_once_with(
+                "Package test-package has a license (GPL-3.0) that is in the list of cautionary licenses. "
+                "Double check that the license is compatible with your project."
+            )
 
 
 def test_check_cautionary_licenses_with_multiple_licenses() -> None:
@@ -186,6 +189,34 @@ def test_check_cautionary_licenses_with_all_cautionary_keywords() -> None:
             assert mock_logging.call_count == len(
                 default_config.preset_cautionary_licenses
             )
+
+
+def test_check_cautionary_licenses_continue_skips_empty_item() -> None:
+    """An empty-license item uses continue (not break), so later items are still checked."""
+    empty_metadata = Metadata(
+        name="pkg-empty",
+        version="1.0.0",
+        origin="test",
+        local_src_path=None,
+        license=[],
+        copyright=[],
+    )
+    cautionary_metadata = Metadata(
+        name="pkg-gpl",
+        version="1.0.0",
+        origin="test",
+        local_src_path=None,
+        license=["GPL-3.0"],
+        copyright=[],
+    )
+    checker = LicenseChecker(
+        default_config.preset_cautionary_licenses, default_config.recognized_licenses
+    )
+    with patch(
+        "dd_license_attribution.metadata_collector.license_checker.logger.warning"
+    ) as mock_warn:
+        checker.check_cautionary_licenses([empty_metadata, cautionary_metadata])
+        mock_warn.assert_called_once()
 
 
 # ── SPDX ID validation ────────────────────────────────────────────────────────
@@ -328,18 +359,21 @@ def test_check_spdx_ids_valid_compound_no_warning() -> None:
 
 
 def test_check_spdx_ids_non_osi_emits_warning() -> None:
-    """Non-OSI SPDX identifier emits exactly one warning."""
+    """Non-OSI SPDX identifier emits exactly one warning with the package name and license."""
     checker = _make_checker()
     metadata = _make_metadata(["CC-BY-4.0"])
     with patch(
         "dd_license_attribution.metadata_collector.license_checker.logger.warning"
     ) as mock_warn:
         checker.check_spdx_ids([metadata])
-        mock_warn.assert_called_once()
-        # Warning message mentions both remediation commands
-        warning_msg = mock_warn.call_args[0][0]
-        assert "generate-overrides" in warning_msg
-        assert "clean-spdx-id" in warning_msg
+        mock_warn.assert_called_once_with(
+            "Package %s has a license (%s) that is not a recognized SPDX "
+            "identifier or is not properly written. To address this, use "
+            "'generate-overrides' for interactive correction or 'clean-spdx-id' "
+            "for AI-assisted cleanup.",
+            "test-package",
+            "CC-BY-4.0",
+        )
 
 
 def test_check_spdx_ids_malformed_string_emits_warning() -> None:
@@ -388,6 +422,25 @@ def test_check_spdx_ids_license_ref_emits_warning() -> None:
         "dd_license_attribution.metadata_collector.license_checker.logger.warning"
     ) as mock_warn:
         checker.check_spdx_ids([metadata])
+        mock_warn.assert_called_once()
+
+
+def test_check_spdx_ids_continue_skips_empty_item() -> None:
+    """An empty-license item uses continue (not break), so later items are still checked."""
+    empty_metadata = _make_metadata([])
+    bad_metadata = Metadata(
+        name="pkg-bad",
+        version="1.0.0",
+        origin="test",
+        local_src_path=None,
+        license=["CC-BY-4.0"],
+        copyright=[],
+    )
+    checker = _make_checker()
+    with patch(
+        "dd_license_attribution.metadata_collector.license_checker.logger.warning"
+    ) as mock_warn:
+        checker.check_spdx_ids([empty_metadata, bad_metadata])
         mock_warn.assert_called_once()
 
 

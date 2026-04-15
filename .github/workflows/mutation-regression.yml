@@ -21,34 +21,97 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Detect changed mutatable source files
+        id: changed-files
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          HEAD=${{ github.event.pull_request.head.sha }}
+
+          # Source files changed directly
+          SRC_FILES=$(git diff --name-only "$BASE" "$HEAD" \
+            | grep '^src/dd_license_attribution/.*\.py$' \
+            | grep -v '/cli/' \
+            | grep -v '/adaptors/' \
+            | grep -v '/config/')
+
+          # Source files corresponding to changed test files (test_X.py -> X.py)
+          TEST_DERIVED=$(git diff --name-only "$BASE" "$HEAD" \
+            | grep '^tests/unit/test_.*\.py$' \
+            | sed 's|tests/unit/test_||' \
+            | while IFS= read -r basename; do
+                find src/dd_license_attribution -name "$basename" \
+                  ! -path '*/cli/*' ! -path '*/adaptors/*' ! -path '*/config/*' \
+                  2>/dev/null
+              done)
+
+          # Union, deduplicated, comma-joined
+          CHANGED=$(printf '%s\n%s\n' "$SRC_FILES" "$TEST_DERIVED" \
+            | sort -u | grep -v '^$' | paste -sd ',')
+
+          echo "paths=$CHANGED" >> "$GITHUB_OUTPUT"
+          if [ -z "$CHANGED" ]; then
+            echo "No mutatable source files affected — skipping mutation testing."
+          else
+            echo "Mutatable files affected: $CHANGED"
+          fi
+
       - name: Set up Python
+        if: steps.changed-files.outputs.paths != ''
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.14"
           cache: "pip"
 
       - name: Install dependencies
+        if: steps.changed-files.outputs.paths != ''
         run: |
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
           pip install pytest-timeout
 
       - name: Run mutation testing on target branch
+        if: steps.changed-files.outputs.paths != ''
         run: |
           git checkout ${{ github.event.pull_request.base.sha }}
           pip install -e "." --quiet
+          python3 << 'PYEOF'
+          import re
+          content = open('pyproject.toml').read()
+          paths = "${{ steps.changed-files.outputs.paths }}".split(',')
+          paths_str = '[' + ', '.join('"' + p.strip() + '"' for p in paths) + ']'
+          content = re.sub(r'paths_to_mutate = \[.*\]', 'paths_to_mutate = ' + paths_str, content)
+          # also_copy ensures the full src/ tree is in mutants/ so imports work when
+          # paths_to_mutate is scoped to individual files (mutmut removes src/ from
+          # sys.path and replaces it with mutants/src/, which would otherwise be partial)
+          if 'also_copy' not in content:
+              content = content.replace('[tool.mutmut]\n', '[tool.mutmut]\nalso_copy = ["src/"]\n')
+          open('pyproject.toml', 'w').write(content)
+          PYEOF
           mutmut run --max-children 4 || true
           mutmut results --all true > mutmut-base-results.txt
           rm -rf mutants/ .mutmut-cache
+          git checkout -- pyproject.toml
           git checkout ${{ github.event.pull_request.head.sha }}
           pip install -e "." --quiet
 
       - name: Run mutation testing on PR branch
+        if: steps.changed-files.outputs.paths != ''
         run: |
+          python3 << 'PYEOF'
+          import re
+          content = open('pyproject.toml').read()
+          paths = "${{ steps.changed-files.outputs.paths }}".split(',')
+          paths_str = '[' + ', '.join('"' + p.strip() + '"' for p in paths) + ']'
+          content = re.sub(r'paths_to_mutate = \[.*\]', 'paths_to_mutate = ' + paths_str, content)
+          if 'also_copy' not in content:
+              content = content.replace('[tool.mutmut]\n', '[tool.mutmut]\nalso_copy = ["src/"]\n')
+          open('pyproject.toml', 'w').write(content)
+          PYEOF
           mutmut run --max-children 4 || true
           mutmut results --all true > mutmut-pr-results.txt
 
       - name: Compare mutation results and detect regressions
+        if: steps.changed-files.outputs.paths != ''
         run: |
           python3 << 'SCRIPT'
           import sys
@@ -115,7 +178,7 @@ jobs:
           SCRIPT
 
       - name: Upload mutation results on failure
-        if: failure()
+        if: failure() && steps.changed-files.outputs.paths != ''
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: mutation-regression-results
