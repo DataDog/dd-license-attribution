@@ -27,7 +27,7 @@ Install the following requirements:
 
 - [pipenv](https://pipenv.pypa.io/en/latest/installation.html)
 
-To install both requirements in MacOS:
+To install both requirements in macOS:
 
 ```bash
 brew install pipenv
@@ -53,7 +53,7 @@ pipenv run pytest --cov-report=xml --cov-fail-under=90 tests/unit
 pipenv run pytest tests/integration
 ```
 
-Github PRs and Push will trigger a run of unit tests for validation and fail if coverage is below 90%.
+GitHub PRs and pushes will trigger a run of unit tests for validation and fail if coverage is below 90%.
 
 #### Linting
 
@@ -76,7 +76,13 @@ We use isort to organize imports.
 pipenv run isort src tests
 ```
 
-Black, mypy, and isort requirements are enforced by CI workflow in PRs.
+We use ruff for additional code quality checks (e.g., no bare exception catches, no assert in production code, no shell injection patterns).
+
+```bash
+pipenv run ruff check src
+```
+
+Black, mypy, isort, and ruff requirements are enforced by CI workflow in PRs.
 
 ### Testing your changes
 
@@ -86,11 +92,17 @@ Unit tests are located in `tests/unit`.
 Running `pytest` without parameters in the root of the project runs all unit tests.
 By default, a coverage report is created from the run. A less than 90% coverage fails the pytest run.
 
-To generate and run mutation tests, run `mutmut run`.
-To read the results of mutation tests in more detail than the initial output, run `mutmut results`.
+To run mutation tests locally (uses 4 parallel workers, takes ~10 minutes):
 
-The CI step in PRs and merge to main runs all tests and a few end to end tests defined as github workflows in the .github directory.
-Mutation tests are not evaluated for CI.
+```bash
+pipenv run mutmut run --max-children 4
+```
+
+To review mutation test results: `pipenv run mutmut results` or `pipenv run mutmut results --all true` for the full list.
+
+Note: CLI command test files are excluded from mutation testing due to environment incompatibilities with mutmut's test runner. See `[tool.mutmut]` in `pyproject.toml` for the full configuration.
+
+The CI step in PRs runs all tests and a few end-to-end tests defined as GitHub workflows in the `.github` directory. CI also runs mutation testing regression detection — any mutant that was previously caught but survives after your changes will be flagged.
 
 Contract tests are available to validate assumptions of external tools/libraries usages that are mocked in unit tests.
 These tests do not run by default. To execute them, run `pytest tests/contract`.
@@ -108,6 +120,15 @@ pipenv run pytest tests/contract/test_llm_apis.py -v
 ```
 
 These tests make minimal API calls to keep costs low (using small `max_tokens` values and cost-effective models).
+
+### Additional coding guidelines
+
+The `AGENTS.md` file at the repository root contains detailed coding guidelines that apply to all contributions. Key points include:
+
+- **OS operations through adaptors only** — never import `os`, `subprocess`, `sys`, etc. directly in `src/` code; use the functions in `dd_license_attribution.adaptors.os` instead. See the "Command Execution Rules" section for subprocess usage conventions.
+- **CHANGELOG.md updates** — required for all user-facing changes. See `AGENTS.md` for format and examples.
+- **Modern Python 3.11+ type syntax** — use `list[str]` not `List[str]`, `str | None` not `Optional[str]`.
+- **Contract tests for new dependencies** — when adding a new external library, add contract tests to `tests/contract/` to validate the specific behaviors your code relies on.
 
 ## Contributing to issues
 

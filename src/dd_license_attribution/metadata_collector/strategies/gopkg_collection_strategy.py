@@ -102,7 +102,10 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             if not (m.name == self.top_package and m.version is None)
         ]
         project_path = self.local_project_path
-        assert project_path is not None
+        if project_path is None:
+            raise ValueError(
+                "local_project_path must be set before calling this method"
+            )
 
         module_data_list = self._run_go_list_modules(project_path)
         if not module_data_list:
@@ -143,7 +146,9 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         nested Module key, skipping stdlib packages (no Module key).
         """
         output = output_from_command(
-            f"CWD=`pwd`; cd {project_path} && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+            ["go", "list", "-json", "all"],
+            cwd=project_path,
+            env={"GOTOOLCHAIN": "auto"},
         )
         if not output.strip():
             logger.warning("go list produced no output in %s", project_path)
@@ -202,7 +207,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             if repo_url not in self._head_branch_cache:
                 try:
                     ls_remote_output = output_from_command(
-                        f"git ls-remote --symref {repo_url} HEAD"
+                        ["git", "ls-remote", "--symref", repo_url, "HEAD"]
                     )
                     tokens = ls_remote_output.split()
                     if len(tokens) >= 2:
@@ -212,7 +217,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                     else:
                         logger.warning("Could not detect HEAD branch for %s", repo_url)
                         self._head_branch_cache[repo_url] = ""
-                except Exception:
+                except OSError:
                     logger.warning(
                         "git ls-remote failed for %s, skipping branch detection",
                         repo_url,

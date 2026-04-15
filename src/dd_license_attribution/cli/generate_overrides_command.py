@@ -117,7 +117,7 @@ def generate_overrides(
     except ValueError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=1)
-    except Exception as e:
+    except (OSError, UnicodeDecodeError) as e:
         typer.echo(f"Error reading CSV file: {e}", err=True)
         raise typer.Exit(code=1)
 
@@ -242,7 +242,7 @@ def generate_overrides(
                 f"\n✓ Successfully created override file: {output_file} "
                 f"with {num_rules} rule(s)."
             )
-        except Exception as e:
+        except OSError as e:
             typer.echo(f"Error writing override file: {e}", err=True)
             raise typer.Exit(code=1)
     else:

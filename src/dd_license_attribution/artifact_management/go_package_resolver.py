@@ -37,12 +37,12 @@ class GoPackageResolver:
         Falls back to "1.22" if detection fails.
         """
         try:
-            raw = output_from_command("go env GOVERSION").strip()
+            raw = output_from_command(["go", "env", "GOVERSION"]).strip()
             # raw is like "go1.22.5" — extract "1.22"
             match = re.match(r"go(\d+\.\d+)", raw)
             if match:
                 return match.group(1)
-        except Exception:
+        except OSError:
             pass
         return "1.22"
 
@@ -112,26 +112,28 @@ class GoPackageResolver:
         try:
             get_arg = f"{import_path}@{version}" if version else import_path
             exit_code, output = run_command_with_check(
-                f"GOTOOLCHAIN=auto go get {get_arg}",
+                ["go", "get", get_arg],
                 cwd=resolve_dir,
+                env={"GOTOOLCHAIN": "auto"},
             )
             if exit_code != 0:
                 logger.error("go get failed for %s: %s", go_package_spec, output)
                 return None
-        except Exception as e:
+        except OSError as e:
             logger.error("Failed to resolve Go package %s: %s", go_package_spec, e)
             return None
 
         # Run go mod tidy to resolve transitive dependencies and download modules
         try:
             exit_code, output = run_command_with_check(
-                "GOTOOLCHAIN=auto go mod tidy",
+                ["go", "mod", "tidy"],
                 cwd=resolve_dir,
+                env={"GOTOOLCHAIN": "auto"},
             )
             if exit_code != 0:
                 logger.error("go mod tidy failed for %s: %s", go_package_spec, output)
                 return None
-        except Exception as e:
+        except OSError as e:
             logger.error("Failed to resolve Go package %s: %s", go_package_spec, e)
             return None
 

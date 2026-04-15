@@ -108,10 +108,21 @@ def test_python_env_is_created_if_python_project_detected_and_not_cached(
     run_command_mock.assert_has_calls(
         [
             mocker.call(
-                "python -m venv cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+                [
+                    "python",
+                    "-m",
+                    "venv",
+                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv",
+                ]
             ),
             mocker.call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python -m pip install ."
+                [
+                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "-m",
+                    "pip",
+                    "install",
+                    ".",
+                ]
             ),
         ]
     )
@@ -167,7 +178,13 @@ def test_python_env_is_returned_if_python_project_detected_and_cached(
     run_command_mock.assert_has_calls(
         [
             mocker.call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python -m pip install ."
+                [
+                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "-m",
+                    "pip",
+                    "install",
+                    ".",
+                ]
             ),
         ]
     )
@@ -224,10 +241,21 @@ def test_python_env_is_created_if_python_project_detected_and_force_update(
     run_command_mock.assert_has_calls(
         [
             mocker.call(
-                "python -m venv cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+                [
+                    "python",
+                    "-m",
+                    "venv",
+                    "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv",
+                ]
             ),
             mocker.call(
-                "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python -m pip install ."
+                [
+                    "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "-m",
+                    "pip",
+                    "install",
+                    ".",
+                ]
             ),
         ]
     )
@@ -244,7 +272,11 @@ def test_get_dependencies_gets_full_list(mocker: MockFixture) -> None:
     assert dependencies == [("pytest", "8.3.4"), ("pytest-cov", "6.0.0")]
 
     output_from_command_mock.assert_called_once_with(
-        "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/pip list --format=json"
+        [
+            "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/pip",
+            "list",
+            "--format=json",
+        ]
     )
 
 
@@ -288,7 +320,12 @@ def test_fail_to_create_pyenv_throws(mocker: MockFixture) -> None:
     python_env_list_dir_mock.assert_has_calls([call(resource_path), call("cache_dir")])
     chdir_mock.assert_called_once_with(resource_path)
     run_command_mock.assert_called_once_with(
-        "python -m venv cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+        [
+            "python",
+            "-m",
+            "venv",
+            "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv",
+        ]
     )
 
 
@@ -337,10 +374,21 @@ def test_fail_to_install_dependencies_in_pyenv_throws(mocker: MockFixture) -> No
     run_command_mock.assert_has_calls(
         [
             mocker.call(
-                "python -m venv cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+                [
+                    "python",
+                    "-m",
+                    "venv",
+                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv",
+                ]
             ),
             mocker.call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python -m pip install ."
+                [
+                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "-m",
+                    "pip",
+                    "install",
+                    ".",
+                ]
             ),
         ]
     )

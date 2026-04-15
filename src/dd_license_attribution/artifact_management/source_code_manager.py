@@ -48,16 +48,14 @@ def extract_ref(ref: str, url: str) -> str:
     split_ref = ref.split("/")
     for i in range(len(split_ref)):
         ref_guess = "/".join(split_ref[: i + 1])
-        validated = run_command(
-            f"git ls-remote {url} {ref_guess} | grep -q {ref_guess}"
-        )
-        if validated == 0:
+        ls_output = output_from_command(["git", "ls-remote", url, ref_guess])
+        if ref_guess in ls_output:
             logger.debug("Found valid ref: %s", ref_guess)
             return ref_guess
     if len(split_ref) > 0:  # may be a hash
         ref_guess = split_ref[0]
-        validated = run_command(f"git ls-remote {url} | grep -q {ref_guess}")
-        if validated == 0:
+        ls_output = output_from_command(["git", "ls-remote", url])
+        if ref_guess in ls_output:
             logger.debug("Found valid ref from hash: %s", ref_guess)
             return ref_guess
     return ""
@@ -256,7 +254,7 @@ class SourceCodeManager(ArtifactManager):
         """
         try:
             discovered_branch = (
-                output_from_command(f"git ls-remote --symref {url} HEAD")
+                output_from_command(["git", "ls-remote", "--symref", url, "HEAD"])
                 .split()[1]
                 .removeprefix("refs/heads/")
             )
@@ -264,7 +262,7 @@ class SourceCodeManager(ArtifactManager):
                 "Discovered default branch in repository: %s", discovered_branch
             )
             return discovered_branch
-        except Exception as e:
+        except (OSError, IndexError) as e:
             raise NonAccessibleRepository(
                 f"Could not discover default branch for {url}"
             ) from e
@@ -450,7 +448,17 @@ class SourceCodeManager(ArtifactManager):
             local_branch_path,
         )
         run_command(
-            f"git clone -c advice.detachedHead=False --depth 1 --branch={effective_branch} {effective_repository_url} {local_branch_path}"
+            [
+                "git",
+                "clone",
+                "-c",
+                "advice.detachedHead=False",
+                "--depth",
+                "1",
+                f"--branch={effective_branch}",
+                effective_repository_url,
+                local_branch_path,
+            ]
         )
 
         logger.debug(

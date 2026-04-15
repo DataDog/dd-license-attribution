@@ -25,3 +25,5 @@ jobs:
         run: black --check .
       - name: Run isort
         run: isort --profile black --check-only --diff .
+      - name: Run ruff
+        run: ruff check src/

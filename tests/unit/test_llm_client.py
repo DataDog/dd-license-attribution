@@ -105,12 +105,12 @@ class TestOpenAIClient:
         """Test handling of API errors."""
         mock_client = Mock()
         mock_openai_class.return_value = mock_client
-        mock_client.chat.completions.create.side_effect = Exception("API Error")
+        mock_client.chat.completions.create.side_effect = ConnectionError("API Error")
 
         client = OpenAIClient(api_key=self.api_key)
         license_text = "Some license text"
 
-        with pytest.raises(Exception, match="API Error"):
+        with pytest.raises(ConnectionError, match="API Error"):
             client.convert_to_spdx(license_text)
 
         mock_client.chat.completions.create.assert_called_once()
@@ -415,12 +415,12 @@ class TestAnthropicClient:
         """Test handling of API errors."""
         mock_client = Mock()
         mock_anthropic_class.return_value = mock_client
-        mock_client.messages.create.side_effect = Exception("API Error")
+        mock_client.messages.create.side_effect = ConnectionError("API Error")
 
         client = AnthropicClient(api_key=self.api_key)
         license_text = "Some license text"
 
-        with pytest.raises(Exception, match="API Error"):
+        with pytest.raises(ConnectionError, match="API Error"):
             client.convert_to_spdx(license_text)
 
         mock_client.messages.create.assert_called_once()

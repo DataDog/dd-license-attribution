@@ -279,6 +279,31 @@ class FileProcessor:
         return ""
 ```
 
+### Command Execution Rules
+
+All external command execution MUST go through the adaptor functions in `dd_license_attribution.adaptors.os`. These functions accept **argument lists**, not shell command strings.
+
+```python
+# ✅ REQUIRED: Use argument lists through adaptors
+from dd_license_attribution.adaptors.os import run_command, output_from_command, run_command_with_check
+
+run_command(["git", "clone", "--depth", "1", url, path])
+output = output_from_command(["go", "list", "-json", "all"], cwd=project_path, env={"GOTOOLCHAIN": "auto"})
+exit_code, output = run_command_with_check(["npm", "install", "--production"], cwd=project_path)
+
+# ❌ FORBIDDEN: Shell command strings, shell=True, os.system, os.popen
+run_command(f"git clone --depth 1 {url} {path}")              # string command
+subprocess.run(command, shell=True)                            # shell=True
+os.system(f"git clone {url}")                                  # os.system
+os.popen(command).read()                                       # os.popen
+```
+
+**Key conventions:**
+- Use `cwd=` parameter instead of `cd path &&` shell patterns
+- Use `env=` parameter instead of `VAR=value` shell prefixes (env is merged with the current environment)
+- Use Python string operations instead of shell pipes (`|`), e.g., check `if ref in output` instead of piping to `grep`
+- Shell redirections (`2>/dev/null`, `2>&1`) are not needed — subprocess captures stdout and stderr separately
+
 ### Creating New Adaptors
 
 When OS functionality is needed that doesn't exist:

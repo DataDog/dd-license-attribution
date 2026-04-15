@@ -12,12 +12,25 @@ import subprocess
 from typing import Iterator
 
 
+def _merge_env(extra: dict[str, str] | None) -> dict[str, str] | None:
+    if extra is None:
+        return None
+    merged = os.environ.copy()
+    merged.update(extra)
+    return merged
+
+
 def list_dir(path: str) -> list[str]:
     return os.listdir(path)
 
 
-def run_command(command: str) -> int:
-    return os.system(f"{command} >&2")
+def run_command(
+    args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+) -> int:
+    result = subprocess.run(
+        args, stdout=subprocess.DEVNULL, cwd=cwd, env=_merge_env(env)
+    )
+    return result.returncode
 
 
 def path_exists(file_path: str) -> bool:
@@ -32,8 +45,13 @@ def walk_directory(path: str) -> Iterator[tuple[str, list[str], list[str]]]:
     return os.walk(path)
 
 
-def output_from_command(command: str) -> str:
-    return os.popen(command).read()
+def output_from_command(
+    args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+) -> str:
+    result = subprocess.run(
+        args, capture_output=True, text=True, cwd=cwd, env=_merge_env(env)
+    )
+    return result.stdout
 
 
 def change_directory(dir_name: str) -> None:
@@ -66,18 +84,21 @@ def is_dir(path: str) -> bool:
     return os.path.isdir(path)
 
 
-def run_command_with_check(command: str, cwd: str | None = None) -> tuple[int, str]:
-    """Run a shell command and return (exit_code, output).
+def run_command_with_check(
+    args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+) -> tuple[int, str]:
+    """Run a command and return (exit_code, output).
 
     Args:
-        command: Shell command to execute
+        args: Command as list of arguments
         cwd: Working directory (if None, uses current directory)
+        env: Extra environment variables to merge with current environment
 
     Returns:
         Tuple of (exit_code, combined_stdout_stderr)
     """
     result = subprocess.run(
-        command, shell=True, capture_output=True, text=True, cwd=cwd
+        args, capture_output=True, text=True, cwd=cwd, env=_merge_env(env)
     )
     output = result.stdout + result.stderr
     return result.returncode, output

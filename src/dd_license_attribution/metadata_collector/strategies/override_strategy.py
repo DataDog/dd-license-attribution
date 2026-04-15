@@ -102,7 +102,7 @@ class OverrideCollectionStrategy(MetadataCollectionStrategy):
             for target in rule.get("target", {}):
                 try:
                     match_field = OverrideTargetField(target)
-                except Exception as e:
+                except ValueError as e:
                     print(f"Error: {e}")
                     raise ValueError(
                         f"Target field must be a origin or component: {target}"

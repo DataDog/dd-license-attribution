@@ -222,11 +222,23 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
     mock_output_from_command.assert_has_calls(
         [
             mocker.call(
-                "CWD=`pwd`; cd org_package1 && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+                ["go", "list", "-json", "all"],
+                cwd="org_package1",
+                env={"GOTOOLCHAIN": "auto"},
             ),
-            mocker.call(f"git ls-remote --symref https://github.com/org/package1 HEAD"),
             mocker.call(
-                "CWD=`pwd`; cd org_package1/package3 && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+                [
+                    "git",
+                    "ls-remote",
+                    "--symref",
+                    "https://github.com/org/package1",
+                    "HEAD",
+                ]
+            ),
+            mocker.call(
+                ["go", "list", "-json", "all"],
+                cwd="org_package1/package3",
+                env={"GOTOOLCHAIN": "auto"},
             ),
         ]
     )
@@ -374,11 +386,23 @@ require github.com/org/package1 v1.0
     mock_output_from_command.assert_has_calls(
         [
             mocker.call(
-                "CWD=`pwd`; cd org_package1 && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+                ["go", "list", "-json", "all"],
+                cwd="org_package1",
+                env={"GOTOOLCHAIN": "auto"},
             ),
-            mocker.call(f"git ls-remote --symref https://github.com/org/package1 HEAD"),
             mocker.call(
-                "CWD=`pwd`; cd org_package1/src && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+                [
+                    "git",
+                    "ls-remote",
+                    "--symref",
+                    "https://github.com/org/package1",
+                    "HEAD",
+                ]
+            ),
+            mocker.call(
+                ["go", "list", "-json", "all"],
+                cwd="org_package1/src",
+                env={"GOTOOLCHAIN": "auto"},
             ),
         ]
     )
@@ -493,10 +517,14 @@ def test_gopkg_collection_strategy_only_updates_local_source_path_when_only_root
     mock_output_from_command.assert_has_calls(
         [
             call(
-                "CWD=`pwd`; cd org_package1 && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+                ["go", "list", "-json", "all"],
+                cwd="org_package1",
+                env={"GOTOOLCHAIN": "auto"},
             ),
             call(
-                "CWD=`pwd`; cd org_package1/src && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+                ["go", "list", "-json", "all"],
+                cwd="org_package1/src",
+                env={"GOTOOLCHAIN": "auto"},
             ),
         ]
     )
@@ -579,7 +607,9 @@ def test_gopkg_local_project_path_skips_get_code_and_resolves_dependencies(
     mock_source_code_manager.get_canonical_urls.assert_not_called()
 
     mock_output_from_command.assert_called_once_with(
-        "CWD=`pwd`; cd /tmp/go-resolve/github_com_stretchr_testify && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+        ["go", "list", "-json", "all"],
+        cwd="/tmp/go-resolve/github_com_stretchr_testify",
+        env={"GOTOOLCHAIN": "auto"},
     )
 
 
@@ -1089,5 +1119,7 @@ def test_gopkg_local_project_path_indirect_dep_without_dir(
     mock_source_code_manager.get_code.assert_not_called()
     mock_source_code_manager.get_canonical_urls.assert_not_called()
     mock_output_from_command.assert_called_once_with(
-        "CWD=`pwd`; cd /tmp/go-resolve/testify && GOTOOLCHAIN=auto go list -json all; cd $CWD"
+        ["go", "list", "-json", "all"],
+        cwd="/tmp/go-resolve/testify",
+        env={"GOTOOLCHAIN": "auto"},
     )

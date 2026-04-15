@@ -191,9 +191,16 @@ def test_source_code_manager_get_non_cached_code(
     # Configure mocks
     github_client_mock = create_github_client_mock()
     run_command_mock.return_value = 0
-    output_from_command_mock.return_value = (
-        "ref: refs/heads/main\tHEAD\n72a11341aa684010caf1ca5dee779f0e7e84dfe9\tHEAD\n"
-    )
+
+    def _fake_output(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> str:
+        if "--symref" in args:
+            return "ref: refs/heads/main\tHEAD\n72a11341aa684010caf1ca5dee779f0e7e84dfe9\tHEAD\n"
+        ref = args[-1] if len(args) > 3 else ""
+        return f"72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/{ref}\n"
+
+    output_from_command_mock.side_effect = _fake_output
     get_datetime_now_mock.side_effect = [
         datetime.fromisoformat("2022-01-01T00:00:00+00:00")
     ]
@@ -208,22 +215,39 @@ def test_source_code_manager_get_non_cached_code(
 
     assert code_ref == expected_source_code_reference
     if mocked_parser_results.path_raw != "":
-        run_command_mock.assert_has_calls(
+        output_from_command_mock.assert_any_call(
             [
-                call(
-                    f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
-                ),
-                call(
-                    f"git clone -c advice.detachedHead=False --depth 1 --branch={expected_branch} {expected_clone_url} {expected_local_path_root}"
-                ),
+                "git",
+                "ls-remote",
+                expected_source_code_reference.repo_url,
+                expected_source_code_reference.branch,
+            ]
+        )
+        run_command_mock.assert_called_once_with(
+            [
+                "git",
+                "clone",
+                "-c",
+                "advice.detachedHead=False",
+                "--depth",
+                "1",
+                f"--branch={expected_branch}",
+                expected_clone_url,
+                expected_local_path_root,
             ]
         )
     if (
         mocked_parser_results.branch == ""
         and not "test_branch" in mocked_parser_results.path_raw
     ):
-        output_from_command_mock.assert_called_once_with(
-            f"git ls-remote --symref {expected_source_code_reference.repo_url} HEAD"
+        output_from_command_mock.assert_any_call(
+            [
+                "git",
+                "ls-remote",
+                "--symref",
+                expected_source_code_reference.repo_url,
+                "HEAD",
+            ]
         )
     assert get_datetime_now_mock.call_count == 1
     assert (
@@ -234,6 +258,9 @@ def test_source_code_manager_get_non_cached_code(
     source_code_list_dir_mock.assert_called_once_with("cache_dir")
 
 
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
 @patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
 @patch("dd_license_attribution.artifact_management.source_code_manager.list_dir")
 @patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
@@ -249,6 +276,7 @@ def test_source_code_manager_get_cached_code(
     artifact_list_dir_mock: Mock,
     source_code_list_dir_mock: Mock,
     run_command_mock: Mock,
+    output_from_command_mock: Mock,
 ) -> None:
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
 
@@ -270,6 +298,9 @@ def test_source_code_manager_get_cached_code(
     artifact_list_dir_mock.return_value = ["20211231_001000Z"]
     source_code_list_dir_mock.return_value = ["20211231_001000Z"]
     run_command_mock.return_value = 0
+    output_from_command_mock.return_value = (
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+    )
 
     source_code_manager = SourceCodeManager("cache_dir", github_client_mock, 86400)
     code_ref = source_code_manager.get_code(request_url)
@@ -293,11 +324,20 @@ def test_source_code_manager_get_cached_code(
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     source_code_list_dir_mock.assert_called_once_with("cache_dir")
 
-    run_command_mock.assert_called_once_with(
-        f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
+    output_from_command_mock.assert_called_once_with(
+        [
+            "git",
+            "ls-remote",
+            expected_source_code_reference.repo_url,
+            expected_source_code_reference.branch,
+        ]
     )
+    run_command_mock.assert_not_called()
 
 
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
 @patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
 @patch("dd_license_attribution.artifact_management.source_code_manager.list_dir")
 @patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
@@ -313,6 +353,7 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
     artifact_list_dir_mock: Mock,
     source_code_list_dir_mock: Mock,
     run_command_mock: Mock,
+    output_from_command_mock: Mock,
 ) -> None:
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
 
@@ -333,6 +374,9 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
     artifact_list_dir_mock.return_value = ["20210101_000000Z"]
     source_code_list_dir_mock.return_value = ["20210101_000000Z"]
     run_command_mock.return_value = 0
+    output_from_command_mock.return_value = (
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+    )
 
     source_code_manager = SourceCodeManager("cache_dir", github_client_mock, 86400)
     code_ref = source_code_manager.get_code(request_url)
@@ -354,19 +398,33 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     source_code_list_dir_mock.assert_called_once_with("cache_dir")
 
-    run_command_mock.assert_has_calls(
+    output_from_command_mock.assert_called_once_with(
         [
-            call(
-                f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
-            ),
-            call(
-                f"git clone -c advice.detachedHead=False --depth 1 --branch={expected_source_code_reference.branch} {expected_source_code_reference.repo_url} {expected_cache_dir}"
-            ),
+            "git",
+            "ls-remote",
+            expected_source_code_reference.repo_url,
+            expected_source_code_reference.branch,
+        ]
+    )
+    run_command_mock.assert_called_once_with(
+        [
+            "git",
+            "clone",
+            "-c",
+            "advice.detachedHead=False",
+            "--depth",
+            "1",
+            f"--branch={expected_source_code_reference.branch}",
+            expected_source_code_reference.repo_url,
+            expected_cache_dir,
         ]
     )
     mock_create_dirs.assert_called_once_with(expected_cache_dir)
 
 
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
 @patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
 @patch("dd_license_attribution.artifact_management.source_code_manager.list_dir")
 @patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
@@ -382,6 +440,7 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
     artifact_mock_list_dir: Mock,
     source_code_mock_list_dir: Mock,
     mock_create_dirs: Mock,
+    output_from_command_mock: Mock,
 ) -> None:
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
 
@@ -400,6 +459,9 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
     )
     path_exists_mock.return_value = True
     run_command_mock.return_value = 0
+    output_from_command_mock.return_value = (
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+    )
     artifact_mock_list_dir.return_value = ["20210101_000000Z"]
     source_code_mock_list_dir.return_value = ["20210101_000000Z"]
 
@@ -425,14 +487,25 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
 
     mock_create_dirs.assert_called_once_with(expected_cache_dir)
 
-    run_command_mock.assert_has_calls(
+    output_from_command_mock.assert_called_once_with(
         [
-            call(
-                f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
-            ),
-            call(
-                f"git clone -c advice.detachedHead=False --depth 1 --branch={expected_source_code_reference.branch} {expected_source_code_reference.repo_url} {expected_cache_dir}"
-            ),
+            "git",
+            "ls-remote",
+            expected_source_code_reference.repo_url,
+            expected_source_code_reference.branch,
+        ]
+    )
+    run_command_mock.assert_called_once_with(
+        [
+            "git",
+            "clone",
+            "-c",
+            "advice.detachedHead=False",
+            "--depth",
+            "1",
+            f"--branch={expected_source_code_reference.branch}",
+            expected_source_code_reference.repo_url,
+            expected_cache_dir,
         ]
     )
 
@@ -469,6 +542,9 @@ def test_non_github_returns_none(
     mock_list_dir.assert_called_once_with("cache_dir")
 
 
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
 @patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
 @patch("dd_license_attribution.artifact_management.source_code_manager.list_dir")
 @patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
@@ -482,6 +558,7 @@ def test_artifact_manager_get_non_cached_code_for_ambiguous_branch_names(
     artifact_list_dir_mock: Mock,
     source_code_list_dir_mock: Mock,
     run_command_mock: Mock,
+    output_from_command_mock: Mock,
 ) -> None:
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
 
@@ -502,6 +579,9 @@ def test_artifact_manager_get_non_cached_code_for_ambiguous_branch_names(
     artifact_list_dir_mock.return_value = ["20210101_000000Z"]
     source_code_list_dir_mock.return_value = ["20210101_000000Z"]
     run_command_mock.return_value = 0
+    output_from_command_mock.return_value = (
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+    )
 
     source_code_manager = SourceCodeManager("cache_dir", github_client_mock, 86400)
 
@@ -523,15 +603,26 @@ def test_artifact_manager_get_non_cached_code_for_ambiguous_branch_names(
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     source_code_list_dir_mock.assert_called_once_with("cache_dir")
 
-    assert run_command_mock.call_count == 2
-    run_command_mock.assert_has_calls(
+    assert output_from_command_mock.call_count == 1
+    output_from_command_mock.assert_called_once_with(
         [
-            call(
-                f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
-            ),
-            call(
-                f"git clone -c advice.detachedHead=False --depth 1 --branch={expected_source_code_reference.branch} {expected_source_code_reference.repo_url} {expected_source_code_reference.local_root_path}"
-            ),
+            "git",
+            "ls-remote",
+            expected_source_code_reference.repo_url,
+            expected_source_code_reference.branch,
+        ]
+    )
+    run_command_mock.assert_called_once_with(
+        [
+            "git",
+            "clone",
+            "-c",
+            "advice.detachedHead=False",
+            "--depth",
+            "1",
+            f"--branch={expected_source_code_reference.branch}",
+            expected_source_code_reference.repo_url,
+            expected_source_code_reference.local_root_path,
         ]
     )
 
@@ -569,6 +660,9 @@ def test_source_code_manager_fails_init_if_cache_dir_contains_unexpected_files(
     list_dir_mock.assert_called_once_with("cache_dir")
 
 
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
 @patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
 @patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
 @patch("dd_license_attribution.artifact_management.source_code_manager.path_exists")
@@ -582,6 +676,7 @@ def test_source_code_manager_with_mirror_url(
     path_exists_source_code_mock: Mock,
     run_command_mock: Mock,
     mock_create_dirs: Mock,
+    output_from_command_mock: Mock,
 ) -> None:
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
 
@@ -601,6 +696,9 @@ def test_source_code_manager_with_mirror_url(
     path_exists_artifact_mock.return_value = True
     path_exists_source_code_mock.return_value = False
     run_command_mock.return_value = 0
+    output_from_command_mock.return_value = (
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+    )
 
     mirror_spec = MirrorSpec(
         original_url="https://github.com/test_owner/test_repo",
@@ -627,18 +725,32 @@ def test_source_code_manager_with_mirror_url(
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
     mock_create_dirs.assert_called_once_with(expected_cache_dir)
-    run_command_mock.assert_has_calls(
+    output_from_command_mock.assert_called_once_with(
         [
-            call(
-                f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
-            ),
-            call(
-                f"git clone -c advice.detachedHead=False --depth 1 --branch={expected_source_code_reference.branch} https://github.com/mirror_owner/mirror_repo {expected_cache_dir}"
-            ),
+            "git",
+            "ls-remote",
+            expected_source_code_reference.repo_url,
+            expected_source_code_reference.branch,
+        ]
+    )
+    run_command_mock.assert_called_once_with(
+        [
+            "git",
+            "clone",
+            "-c",
+            "advice.detachedHead=False",
+            "--depth",
+            "1",
+            f"--branch={expected_source_code_reference.branch}",
+            "https://github.com/mirror_owner/mirror_repo",
+            expected_cache_dir,
         ]
     )
 
 
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
 @patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
 @patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
 @patch("dd_license_attribution.artifact_management.source_code_manager.path_exists")
@@ -652,6 +764,7 @@ def test_source_code_manager_with_mirror_ref_mapping(
     path_exists_source_code_mock: Mock,
     run_command_mock: Mock,
     mock_create_dirs: Mock,
+    output_from_command_mock: Mock,
 ) -> None:
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
 
@@ -671,6 +784,9 @@ def test_source_code_manager_with_mirror_ref_mapping(
     path_exists_artifact_mock.return_value = True
     path_exists_source_code_mock.return_value = False
     run_command_mock.return_value = 0
+    output_from_command_mock.return_value = (
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+    )
 
     mirror_spec = MirrorSpec(
         original_url="https://github.com/test_owner/test_repo",
@@ -700,18 +816,32 @@ def test_source_code_manager_with_mirror_ref_mapping(
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
     mock_create_dirs.assert_called_once_with(expected_cache_dir)
-    run_command_mock.assert_has_calls(
+    output_from_command_mock.assert_called_once_with(
         [
-            call(
-                f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
-            ),
-            call(
-                f"git clone -c advice.detachedHead=False --depth 1 --branch=mirror_branch https://github.com/mirror_owner/mirror_repo {expected_cache_dir}"
-            ),
+            "git",
+            "ls-remote",
+            expected_source_code_reference.repo_url,
+            expected_source_code_reference.branch,
+        ]
+    )
+    run_command_mock.assert_called_once_with(
+        [
+            "git",
+            "clone",
+            "-c",
+            "advice.detachedHead=False",
+            "--depth",
+            "1",
+            "--branch=mirror_branch",
+            "https://github.com/mirror_owner/mirror_repo",
+            expected_cache_dir,
         ]
     )
 
 
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
 @patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
@@ -721,6 +851,7 @@ def test_source_code_manager_with_unsupported_ref_type(
     git_url_parse_mock: Mock,
     path_exists_artifact_mock: Mock,
     run_command_mock: Mock,
+    output_from_command_mock: Mock,
 ) -> None:
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
 
@@ -739,6 +870,9 @@ def test_source_code_manager_with_unsupported_ref_type(
     )
     path_exists_artifact_mock.return_value = True
     run_command_mock.return_value = 0
+    output_from_command_mock.return_value = (
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+    )
 
     mirror_spec = MirrorSpec(
         original_url="https://github.com/test_owner/test_repo",
@@ -761,9 +895,10 @@ def test_source_code_manager_with_unsupported_ref_type(
         git_url_parse_mock.call_count == 3
     )  # Called: in get_code (disambiguation), in get_canonical_urls, in get_code (before failure)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
-    run_command_mock.assert_called_once_with(
-        f"git ls-remote https://github.com/test_owner/test_repo test_branch | grep -q test_branch"
+    output_from_command_mock.assert_called_once_with(
+        ["git", "ls-remote", "https://github.com/test_owner/test_repo", "test_branch"]
     )
+    run_command_mock.assert_not_called()
 
 
 @patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
@@ -833,13 +968,32 @@ def test_source_code_manager_with_mirror_url_and_ref_mapping_for_the_default_bra
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
     mock_create_dirs.assert_called_once_with(expected_cache_dir)
     output_from_command_mock.assert_called_once_with(
-        f"git ls-remote --symref {expected_source_code_reference.repo_url} HEAD"
+        [
+            "git",
+            "ls-remote",
+            "--symref",
+            expected_source_code_reference.repo_url,
+            "HEAD",
+        ]
     )
     run_command_mock.assert_called_once_with(
-        f"git clone -c advice.detachedHead=False --depth 1 --branch=development https://github.com/mirror_owner/mirror_repo {expected_cache_dir}"
+        [
+            "git",
+            "clone",
+            "-c",
+            "advice.detachedHead=False",
+            "--depth",
+            "1",
+            "--branch=development",
+            "https://github.com/mirror_owner/mirror_repo",
+            expected_cache_dir,
+        ]
     )
 
 
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
 @patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
 @patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
 @patch("dd_license_attribution.artifact_management.source_code_manager.path_exists")
@@ -853,6 +1007,7 @@ def test_source_code_manager_with_multiple_mirrors(
     path_exists_source_code_mock: Mock,
     run_command_mock: Mock,
     mock_create_dirs: Mock,
+    output_from_command_mock: Mock,
 ) -> None:
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
 
@@ -872,6 +1027,9 @@ def test_source_code_manager_with_multiple_mirrors(
     path_exists_artifact_mock.return_value = True
     path_exists_source_code_mock.return_value = False
     run_command_mock.return_value = 0
+    output_from_command_mock.return_value = (
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+    )
 
     mirror_specs = [
         MirrorSpec(
@@ -907,18 +1065,32 @@ def test_source_code_manager_with_multiple_mirrors(
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
     mock_create_dirs.assert_called_once_with(expected_cache_dir)
-    run_command_mock.assert_has_calls(
+    output_from_command_mock.assert_called_once_with(
         [
-            call(
-                f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
-            ),
-            call(
-                f"git clone -c advice.detachedHead=False --depth 1 --branch=mirror_branch https://github.com/mirror_owner/mirror_repo {expected_cache_dir}"
-            ),
+            "git",
+            "ls-remote",
+            expected_source_code_reference.repo_url,
+            expected_source_code_reference.branch,
+        ]
+    )
+    run_command_mock.assert_called_once_with(
+        [
+            "git",
+            "clone",
+            "-c",
+            "advice.detachedHead=False",
+            "--depth",
+            "1",
+            "--branch=mirror_branch",
+            "https://github.com/mirror_owner/mirror_repo",
+            expected_cache_dir,
         ]
     )
 
 
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
 @patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
 @patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
 @patch("dd_license_attribution.artifact_management.source_code_manager.path_exists")
@@ -932,6 +1104,7 @@ def test_source_code_manager_with_no_mirror_match(
     path_exists_source_code_mock: Mock,
     run_command_mock: Mock,
     mock_create_dirs: Mock,
+    output_from_command_mock: Mock,
 ) -> None:
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
 
@@ -951,6 +1124,9 @@ def test_source_code_manager_with_no_mirror_match(
     path_exists_artifact_mock.return_value = True
     path_exists_source_code_mock.return_value = False
     run_command_mock.return_value = 0
+    output_from_command_mock.return_value = (
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+    )
 
     mirror_spec = MirrorSpec(
         original_url="https://github.com/other_owner/other_repo",
@@ -977,14 +1153,25 @@ def test_source_code_manager_with_no_mirror_match(
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
     mock_create_dirs.assert_called_once_with(expected_cache_dir)
-    run_command_mock.assert_has_calls(
+    output_from_command_mock.assert_called_once_with(
         [
-            call(
-                f"git ls-remote {expected_source_code_reference.repo_url} {expected_source_code_reference.branch} | grep -q {expected_source_code_reference.branch}"
-            ),
-            call(
-                f"git clone -c advice.detachedHead=False --depth 1 --branch={expected_source_code_reference.branch} {expected_source_code_reference.repo_url} {expected_cache_dir}"
-            ),
+            "git",
+            "ls-remote",
+            expected_source_code_reference.repo_url,
+            expected_source_code_reference.branch,
+        ]
+    )
+    run_command_mock.assert_called_once_with(
+        [
+            "git",
+            "clone",
+            "-c",
+            "advice.detachedHead=False",
+            "--depth",
+            "1",
+            f"--branch={expected_source_code_reference.branch}",
+            expected_source_code_reference.repo_url,
+            expected_cache_dir,
         ]
     )
 
@@ -1350,21 +1537,29 @@ def test_get_canonical_urls_caches_different_urls_separately(
 # Tests for error handling and edge cases
 
 
-@patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
-def test_extract_ref_with_commit_hash(run_command_mock: Mock) -> None:
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+def test_extract_ref_with_commit_hash(output_from_command_mock: Mock) -> None:
     """Test extract_ref with commit hash fallback when branch/tag validation fails."""
     from dd_license_attribution.artifact_management.source_code_manager import (
         extract_ref,
     )
 
     # extract_ref tries progressively longer prefixes:
-    # 1. "abc123def456" - fails (returns non-zero)
-    # 2. "abc123def456/path" - fails
-    # 3. "abc123def456/path/to" - fails
-    # 4. "abc123def456/path/to/file" - fails
+    # 1. "abc123def456" - no match in output
+    # 2. "abc123def456/path" - no match
+    # 3. "abc123def456/path/to" - no match
+    # 4. "abc123def456/path/to/file" - no match
     # Then tries hash fallback:
-    # 5. "abc123def456" as hash - succeeds (returns 0)
-    run_command_mock.side_effect = [1, 1, 1, 1, 0]
+    # 5. "abc123def456" as hash - found in full ls-remote output
+    output_from_command_mock.side_effect = [
+        "",
+        "",
+        "",
+        "",
+        "abc123def456\trefs/heads/main\n",
+    ]
 
     ref = "abc123def456/path/to/file"
     url = "https://github.com/owner/repo"
@@ -1372,24 +1567,28 @@ def test_extract_ref_with_commit_hash(run_command_mock: Mock) -> None:
     result = extract_ref(ref, url)
 
     assert result == "abc123def456"
-    assert run_command_mock.call_count == 5
+    assert output_from_command_mock.call_count == 5
     # Verify the hash check was called
-    run_command_mock.assert_any_call(f"git ls-remote {url} | grep -q abc123def456")
+    output_from_command_mock.assert_any_call(["git", "ls-remote", url])
 
 
-@patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
-def test_extract_ref_with_invalid_hash_returns_empty(run_command_mock: Mock) -> None:
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+def test_extract_ref_with_invalid_hash_returns_empty(
+    output_from_command_mock: Mock,
+) -> None:
     """Test extract_ref returns empty string when hash validation also fails."""
     from dd_license_attribution.artifact_management.source_code_manager import (
         extract_ref,
     )
 
     # extract_ref tries progressively longer prefixes:
-    # 1. "invalid_ref" - fails (returns non-zero)
-    # 2. "invalid_ref/path" - fails
+    # 1. "invalid_ref" - no match in output
+    # 2. "invalid_ref/path" - no match
     # Then tries hash fallback:
-    # 3. "invalid_ref" as hash - also fails (returns non-zero)
-    run_command_mock.side_effect = [1, 1, 1]
+    # 3. "invalid_ref" as hash - also no match
+    output_from_command_mock.side_effect = ["", "", ""]
 
     ref = "invalid_ref/path"
     url = "https://github.com/owner/repo"
@@ -1397,7 +1596,7 @@ def test_extract_ref_with_invalid_hash_returns_empty(run_command_mock: Mock) -> 
     result = extract_ref(ref, url)
 
     assert result == ""
-    assert run_command_mock.call_count == 3
+    assert output_from_command_mock.call_count == 3
 
 
 @patch(
@@ -1412,7 +1611,7 @@ def test_discover_default_branch_with_exception(
         SourceCodeManager,
     )
 
-    output_from_command_mock.side_effect = Exception("git command failed")
+    output_from_command_mock.side_effect = OSError("git command failed")
 
     github_client_mock = Mock()
     source_code_manager = SourceCodeManager("cache_dir", github_client_mock, 86400)
@@ -1425,7 +1624,7 @@ def test_discover_default_branch_with_exception(
     assert "Could not discover default branch for" in str(exc_info.value)
     assert url in str(exc_info.value)
     output_from_command_mock.assert_called_once_with(
-        f"git ls-remote --symref {url} HEAD"
+        ["git", "ls-remote", "--symref", url, "HEAD"]
     )
 
 

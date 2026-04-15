@@ -121,7 +121,7 @@ class TestResolvePackage:
 
         # Verify run_command_with_check was called with --ignore-scripts and cwd
         mock_run_command.assert_called_once_with(
-            "npm install --package-lock-only --force --ignore-scripts",
+            ["npm", "install", "--package-lock-only", "--force", "--ignore-scripts"],
             cwd="/cache/express",
         )
 
@@ -151,7 +151,7 @@ class TestResolvePackage:
 
     def test_npm_exception_returns_none(self, mocker: pytest_mock.MockFixture) -> None:
         _, _, mock_run_command, _, _ = self._setup_mocks(mocker)
-        mock_run_command.side_effect = Exception("npm not found")
+        mock_run_command.side_effect = OSError("npm not found")
 
         result = self.resolver.resolve_package("nonexistent-pkg")
 

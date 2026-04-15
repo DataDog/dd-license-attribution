@@ -111,7 +111,7 @@ class TestDetectGoVersion:
     def test_falls_back_on_exception(self, mocker: pytest_mock.MockFixture) -> None:
         mocker.patch(
             "dd_license_attribution.artifact_management.go_package_resolver.output_from_command",
-            side_effect=Exception("go not found"),
+            side_effect=OSError("go not found"),
         )
         resolver = GoPackageResolver("/cache")
         assert resolver._detect_go_version() == "1.22"
@@ -190,12 +190,14 @@ class TestResolvePackage:
         # Verify go get was called to add the dependency, then go mod tidy
         assert mock_run_command.call_count == 2
         mock_run_command.assert_any_call(
-            "GOTOOLCHAIN=auto go get github.com/stretchr/testify@v1.9.0",
+            ["go", "get", "github.com/stretchr/testify@v1.9.0"],
             cwd="/cache/github_com_stretchr_testify",
+            env={"GOTOOLCHAIN": "auto"},
         )
         mock_run_command.assert_any_call(
-            "GOTOOLCHAIN=auto go mod tidy",
+            ["go", "mod", "tidy"],
             cwd="/cache/github_com_stretchr_testify",
+            env={"GOTOOLCHAIN": "auto"},
         )
 
         # Verify go.sum existence was checked
@@ -232,8 +234,9 @@ class TestResolvePackage:
 
         # go get without version fetches latest
         mock_run_command.assert_any_call(
-            "GOTOOLCHAIN=auto go get github.com/stretchr/testify",
+            ["go", "get", "github.com/stretchr/testify"],
             cwd="/cache/github_com_stretchr_testify",
+            env={"GOTOOLCHAIN": "auto"},
         )
 
     def test_version_passed_to_go_get(self, mocker: pytest_mock.MockFixture) -> None:
@@ -242,8 +245,9 @@ class TestResolvePackage:
         self.resolver.resolve_package("github.com/stretchr/testify@v1.9.0")
 
         mock_run_command.assert_any_call(
-            "GOTOOLCHAIN=auto go get github.com/stretchr/testify@v1.9.0",
+            ["go", "get", "github.com/stretchr/testify@v1.9.0"],
             cwd="/cache/github_com_stretchr_testify",
+            env={"GOTOOLCHAIN": "auto"},
         )
 
     def test_go_get_failure_returns_none(self, mocker: pytest_mock.MockFixture) -> None:
@@ -262,7 +266,7 @@ class TestResolvePackage:
         self, mocker: pytest_mock.MockFixture
     ) -> None:
         _, _, mock_run_command, _, _ = self._setup_mocks(mocker)
-        mock_run_command.side_effect = Exception("go not found")
+        mock_run_command.side_effect = OSError("go not found")
 
         result = self.resolver.resolve_package("github.com/stretchr/testify")
 
@@ -319,8 +323,9 @@ class TestResolvePackage:
 
         # Version should be normalized to v1.9.0 in the go get command
         mock_run_command.assert_any_call(
-            "GOTOOLCHAIN=auto go get github.com/stretchr/testify@v1.9.0",
+            ["go", "get", "github.com/stretchr/testify@v1.9.0"],
             cwd="/cache/github_com_stretchr_testify",
+            env={"GOTOOLCHAIN": "auto"},
         )
 
     def test_import_path_with_shell_metacharacters_returns_none(
