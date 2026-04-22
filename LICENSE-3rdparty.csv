@@ -63,7 +63,7 @@
 "parameter-expansion-patched","https://github.com/nexB/parameter-expansion-patched","['Apache-2.0']","['Michael A. Smith and Philippe Ombredanne']"
 "pdfminer.six","https://github.com/pdfminer/pdfminer.six","['MIT']","['Pieter Marsman', 'Yusuke Shinyama']"
 "pefile","https://github.com/erocarrera/pefile","['MIT']","['Ero Carrera']"
-"pip","https://github.com/pypa/pip","['MIT']","['Andrey Petrov and contributors', 'Corporation for National Research Initiatives', 'Eric Larson', 'INADA Naoki', 'Kim Davies and contributors', 'Python Software Foundation', 'Seth Michael Larson', 'Stephen Rosen', 'Stichting Mathematisch Centrum Amsterdam, The Netherlands', 'Taneli Hukkinen', 'The pip developers', 'The platformdirs developers', 'Thomas Kluyver', 'Tzu-ping Chung', 'Will McGugan']"
+"pip","https://github.com/pypa/pip","['MIT']","['Andrey Petrov and contributors', 'Corporation for National Research Initiatives', 'Eric Larson', 'INADA Naoki', 'Kim Davies and contributors', 'Python Software Foundation', 'Seth Michael Larson', 'Stichting Mathematisch Centrum Amsterdam, The Netherlands', 'Taneli Hukkinen', 'The pip developers', 'The platformdirs developers', 'Thomas Kluyver', 'Tzu-ping Chung', 'Will McGugan']"
 "pip-requirements-parser","https://github.com/aboutcode-org/pip-requirements-parser","['MIT']","['The pip authors', 'nexB. Inc. and others']"
 "pkginfo2","https://github.com/aboutcode-org/pkginfo2","['MIT']","['Agendaless Consulting', 'Maintained by nexB, Inc. Authored by Tres Seaver']"
 "pluggy","https://github.com/pytest-dev/pluggy","['MIT']","['Holger Krekel']"
