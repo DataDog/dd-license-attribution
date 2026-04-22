@@ -35,7 +35,7 @@ jobs:
             | grep '^src/dd_license_attribution/.*\.py$' \
             | grep -v '/cli/' \
             | grep -v '/adaptors/' \
-            | grep -v '/config/')
+            | grep -v '/config/') || true
 
           # Source files corresponding to changed test files (test_X.py -> X.py)
           TEST_DERIVED=$(git diff --name-only "$BASE" "$HEAD" \
@@ -45,11 +45,11 @@ jobs:
                 find src/dd_license_attribution -name "$basename" \
                   ! -path '*/cli/*' ! -path '*/adaptors/*' ! -path '*/config/*' \
                   2>/dev/null
-              done)
+              done) || true
 
           # Union, deduplicated, comma-joined
           CHANGED=$(printf '%s\n%s\n' "$SRC_FILES" "$TEST_DERIVED" \
-            | sort -u | grep -v '^$' | paste -sd ',')
+            | sort -u | grep -v '^$' | paste -sd ',') || true
 
           echo "paths=$CHANGED" >> "$GITHUB_OUTPUT"
           if [ -z "$CHANGED" ]; then

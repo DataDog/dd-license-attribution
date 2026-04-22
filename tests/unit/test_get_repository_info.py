@@ -61,7 +61,9 @@ def test_get_repository_info_caches_results(
     assert result1["license"]["spdx_id"] == "Apache-2.0"
 
     # Verify GitHub API was only called once (caching works)
-    assert repo_mock.get.call_count == 1
+    repo_mock.get.assert_called_once_with()
+    path_exists_mock.assert_called_once_with("cache_dir")
+    list_dir_mock.assert_called_once_with("cache_dir")
 
 
 @patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
@@ -139,8 +141,10 @@ def test_get_repository_info_handles_301_redirects(
     assert result2 == result
 
     # Verify API calls happened only once (caching works after redirect)
-    assert first_repo_mock.get.call_count == 1
-    assert final_repo_mock.get.call_count == 1
+    first_repo_mock.get.assert_called_once_with()
+    final_repo_mock.get.assert_called_once_with()
+    path_exists_mock.assert_called_once_with("cache_dir")
+    list_dir_mock.assert_called_once_with("cache_dir")
 
 
 @patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
@@ -180,7 +184,9 @@ def test_get_repository_info_caches_error_responses(
     assert result2 is None
 
     # Verify GitHub API was only called once (error is cached)
-    assert repo_mock.get.call_count == 1
+    repo_mock.get.assert_called_once_with()
+    path_exists_mock.assert_called_once_with("cache_dir")
+    list_dir_mock.assert_called_once_with("cache_dir")
 
 
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
@@ -238,7 +244,12 @@ def test_get_canonical_urls_then_get_repository_info_reuses_cache(
     assert result["license"]["spdx_id"] == "Apache-2.0"
 
     # Verify GitHub API was only called once total
-    assert repo_mock.get.call_count == 1
+    repo_mock.get.assert_called_once_with()
+    git_url_parse_mock.assert_called_once_with(
+        "https://github.com/DataDog/dd-license-attribution"
+    )
+    path_exists_mock.assert_called_once_with("cache_dir")
+    list_dir_mock.assert_called_once_with("cache_dir")
 
 
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
@@ -296,4 +307,9 @@ def test_get_repository_info_then_get_canonical_urls_reuses_cache(
     assert canonical_url == "https://github.com/DataDog/dd-license-attribution"
 
     # Verify GitHub API was only called once total
-    assert repo_mock.get.call_count == 1
+    repo_mock.get.assert_called_once_with()
+    git_url_parse_mock.assert_called_once_with(
+        "https://github.com/DataDog/dd-license-attribution"
+    )
+    path_exists_mock.assert_called_once_with("cache_dir")
+    list_dir_mock.assert_called_once_with("cache_dir")
