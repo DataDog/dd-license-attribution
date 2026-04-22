@@ -367,10 +367,11 @@ def test_check_spdx_ids_non_osi_emits_warning() -> None:
     ) as mock_warn:
         checker.check_spdx_ids([metadata])
         mock_warn.assert_called_once_with(
-            "Package %s has a license (%s) that is not a recognized SPDX "
-            "identifier or is not properly written. To address this, use "
-            "'generate-overrides' for interactive correction or 'clean-spdx-id' "
-            "for AI-assisted cleanup.",
+            "Package %s has a license (%s) that is not a properly written SPDX "
+            "expression composed entirely of OSI-approved identifiers. Using a "
+            "non-OSI-approved license may be acceptable depending on your project's "
+            "requirements. To address this, use 'generate-overrides' for interactive "
+            "correction or 'clean-spdx-id' for AI-assisted cleanup.",
             "test-package",
             "CC-BY-4.0",
         )
