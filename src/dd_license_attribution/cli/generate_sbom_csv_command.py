@@ -689,8 +689,12 @@ def generate_sbom_csv(
 
         csv_reporter = ReportGenerator(CSVReportingWritter())
 
-        checker = LicenseChecker(cli_config.default_config.preset_cautionary_licenses)
+        checker = LicenseChecker(
+            cli_config.default_config.preset_cautionary_licenses,
+            cli_config.default_config.recognized_licenses,
+        )
         checker.check_cautionary_licenses(metadata)
+        checker.check_spdx_ids(metadata)
 
         output = csv_reporter.generate_report(metadata)
 

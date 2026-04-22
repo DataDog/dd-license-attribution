@@ -24,6 +24,7 @@ dependencies = [
     "pytz",
     "giturlparse",
     "requests",
+    "license-expression",
     "openai>=1.0.0",
     "anthropic>=0.18.0",
     "semver>=3.0.0"
@@ -100,6 +101,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "anthropic"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "license_expression"
 ignore_missing_imports = true
 
 [tool.ruff]
