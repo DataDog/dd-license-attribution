@@ -4,6 +4,9 @@ on:
   pull_request:
     branches:
       - "*"
+    paths:
+      - "src/**"
+      - "tests/unit/**"
 
 permissions:
   contents: read

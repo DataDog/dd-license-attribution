@@ -46,12 +46,12 @@ class LicenseChecker:
                     logger.warning(msg)
 
     def check_spdx_ids(self, metadata_list: list[Metadata]) -> None:
-        """Warn about licenses that are not recognized SPDX identifiers.
+        """Warn about licenses that are not OSI-approved SPDX identifiers.
 
         For each package, each license string is checked against the set of
-        recognized SPDX identifiers in self._recognized_licenses. A warning is
-        emitted for any value that is not a valid SPDX expression composed
-        entirely of recognized identifiers.
+        OSI-approved SPDX identifiers. A warning is emitted for any value that
+        is not a valid SPDX expression composed entirely of OSI-approved
+        identifiers.
         """
         for metadata in metadata_list:
             if not metadata.license:
@@ -59,10 +59,11 @@ class LicenseChecker:
             for license_text in metadata.license:
                 if not self._is_osi_approved_spdx_expression(license_text):
                     logger.warning(
-                        "Package %s has a license (%s) that is not a recognized SPDX "
-                        "identifier or is not properly written. To address this, use "
-                        "'generate-overrides' for interactive correction or 'clean-spdx-id' "
-                        "for AI-assisted cleanup.",
+                        "Package %s has a license (%s) that is not a properly written SPDX "
+                        "expression composed entirely of OSI-approved identifiers. Using a "
+                        "non-OSI-approved license may be acceptable depending on your project's "
+                        "requirements. To address this, use 'generate-overrides' for interactive "
+                        "correction or 'clean-spdx-id' for AI-assisted cleanup.",
                         metadata.name,
                         license_text,
                     )
