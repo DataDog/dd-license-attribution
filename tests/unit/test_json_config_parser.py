@@ -6,7 +6,6 @@
 # Copyright 2024-present Datadog, Inc.
 
 import json
-import tempfile
 from unittest.mock import Mock, patch
 
 import pytest
@@ -72,6 +71,7 @@ class TestJsonConfigParser:
 
         mirrors = JsonConfigParser.load_mirror_configs("test.json")
 
+        mock_open_file.assert_called_once_with("test.json")
         assert len(mirrors) == 1
         mirror = mirrors[0]
         assert mirror.original_url == "https://github.com/DataDog/test"
@@ -94,6 +94,7 @@ class TestJsonConfigParser:
 
         mirrors = JsonConfigParser.load_mirror_configs("test.json")
 
+        mock_open_file.assert_called_once_with("test.json")
         assert len(mirrors) == 1
         mirror = mirrors[0]
         assert mirror.original_url == "https://github.com/DataDog/test"
@@ -108,6 +109,8 @@ class TestJsonConfigParser:
         with pytest.raises(FileNotFoundError):
             JsonConfigParser.load_mirror_configs("nonexistent.json")
 
+        mock_open_file.assert_called_once_with("nonexistent.json")
+
     @patch("dd_license_attribution.config.json_config_parser.open_file")
     def test_load_mirror_configs_invalid_json(self, mock_open_file: Mock) -> None:
         """Test loading mirror configurations with invalid JSON."""
@@ -115,6 +118,8 @@ class TestJsonConfigParser:
 
         with pytest.raises(json.JSONDecodeError):
             JsonConfigParser.load_mirror_configs("test.json")
+
+        mock_open_file.assert_called_once_with("test.json")
 
     @patch("dd_license_attribution.config.json_config_parser.open_file")
     def test_load_override_configs_valid(self, mock_open_file: Mock) -> None:
@@ -137,6 +142,7 @@ class TestJsonConfigParser:
 
         override_rules = JsonConfigParser.load_override_configs("test.json")
 
+        mock_open_file.assert_called_once_with("test.json")
         assert len(override_rules) == 1
         rule = override_rules[0]
         assert isinstance(rule, OverrideRule)
@@ -153,6 +159,8 @@ class TestJsonConfigParser:
         with pytest.raises(FileNotFoundError):
             JsonConfigParser.load_override_configs("nonexistent.json")
 
+        mock_open_file.assert_called_once_with("nonexistent.json")
+
     @patch("dd_license_attribution.config.json_config_parser.open_file")
     def test_load_override_configs_invalid_json(self, mock_open_file: Mock) -> None:
         """Test loading override configurations with invalid JSON."""
@@ -160,3 +168,5 @@ class TestJsonConfigParser:
 
         with pytest.raises(json.JSONDecodeError):
             JsonConfigParser.load_override_configs("test.json")
+
+        mock_open_file.assert_called_once_with("test.json")
