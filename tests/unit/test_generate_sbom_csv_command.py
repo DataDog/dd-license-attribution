@@ -69,10 +69,10 @@ def test_github_auth_env() -> None:
         (["--no-scancode-strategy"], "ScanCodeToolkitMetadataCollectionStrategy"),
     ],
 )
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 def test_skip_strategies_options(
     mock_metadata_collector: Mock,
     mock_python_env_manager: Mock,
@@ -100,10 +100,10 @@ def test_skip_strategies_options(
     assert strategy_name not in strategy_classes
 
 
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 def test_skip_all_strategies(
     mock_metadata_collector: Mock,
     mock_python_env_manager: Mock,
@@ -146,10 +146,10 @@ def test_missing_package() -> None:
 
 
 @patch("dd_license_attribution.config.json_config_parser.open_file")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 def test_use_mirrors_invalid_json(
     mock_metadata_collector: Mock,
     mock_python_env_manager: Mock,
@@ -176,10 +176,10 @@ def test_use_mirrors_invalid_json(
 
 
 @patch("dd_license_attribution.config.json_config_parser.open_file")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 def test_use_mirrors_valid_config(
     mock_metadata_collector: Mock,
     mock_python_env_manager: Mock,
@@ -216,10 +216,10 @@ def test_use_mirrors_valid_config(
     assert result.exit_code == 0
 
 
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.NpmPackageResolver")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.NpmPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 def test_ecosystem_npm_builds_correct_strategy_pipeline(
     mock_metadata_collector: Mock,
     mock_source_code_manager: Mock,
@@ -281,10 +281,10 @@ def test_ecosystem_invalid_value_rejected() -> None:
     )
 
 
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.NpmPackageResolver")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.NpmPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 def test_ecosystem_npm_resolver_failure_exits(
     mock_metadata_collector: Mock,
     mock_source_code_manager: Mock,
@@ -309,10 +309,10 @@ def test_ecosystem_npm_resolver_failure_exits(
     )
 
 
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.NpmPackageResolver")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.NpmPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 def test_ecosystem_npm_passes_local_project_path_to_strategy(
     mock_metadata_collector: Mock,
     mock_source_code_manager: Mock,
@@ -343,11 +343,11 @@ def test_ecosystem_npm_passes_local_project_path_to_strategy(
     assert npm_strategy.local_project_path == "/tmp/npm_resolve/express"
 
 
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.PypiPackageResolver")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.PypiPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 def test_ecosystem_python_builds_correct_strategy_pipeline(
     mock_metadata_collector: Mock,
     mock_source_code_manager: Mock,
@@ -391,11 +391,11 @@ def test_ecosystem_python_builds_correct_strategy_pipeline(
     mock_pypi_resolver.return_value.resolve_package.assert_called_once_with("requests")
 
 
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.PypiPackageResolver")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.PypiPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 def test_ecosystem_pypi_alias_builds_same_pipeline(
     mock_metadata_collector: Mock,
     mock_source_code_manager: Mock,
@@ -432,11 +432,11 @@ def test_ecosystem_pypi_alias_builds_same_pipeline(
     mock_pypi_resolver.return_value.resolve_package.assert_called_once_with("requests")
 
 
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.PypiPackageResolver")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.PypiPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 def test_ecosystem_python_resolver_failure_exits(
     mock_metadata_collector: Mock,
     mock_source_code_manager: Mock,
@@ -462,11 +462,11 @@ def test_ecosystem_python_resolver_failure_exits(
     )
 
 
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.PypiPackageResolver")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.PypiPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 def test_ecosystem_python_passes_local_project_path_to_strategy(
     mock_metadata_collector: Mock,
     mock_source_code_manager: Mock,
@@ -500,10 +500,10 @@ def test_ecosystem_python_passes_local_project_path_to_strategy(
     assert pypi_strategy.local_project_path == "/tmp/pypi_resolve/requests"
 
 
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GoPackageResolver")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.GoPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 def test_ecosystem_go_builds_correct_strategy_pipeline(
     mock_metadata_collector: Mock,
     mock_source_code_manager: Mock,
@@ -548,10 +548,10 @@ def test_ecosystem_go_builds_correct_strategy_pipeline(
     )
 
 
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GoPackageResolver")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.GoPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 def test_ecosystem_go_resolver_failure_exits(
     mock_metadata_collector: Mock,
     mock_source_code_manager: Mock,
@@ -576,10 +576,10 @@ def test_ecosystem_go_resolver_failure_exits(
     )
 
 
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GoPackageResolver")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.GitHub")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_csv_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.GoPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 def test_ecosystem_go_passes_local_project_path_to_strategy(
     mock_metadata_collector: Mock,
     mock_source_code_manager: Mock,

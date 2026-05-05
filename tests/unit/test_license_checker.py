@@ -61,6 +61,24 @@ def test_is_cautionary_license_case_insensitive() -> None:
     assert checker._is_cautionary_license("agpl-3.0")
 
 
+def test_is_osi_approved_spdx_expression_rejects_unknown_symbol_type() -> None:
+    class ParsedExpression:
+        symbols = [object()]
+
+    checker = LicenseChecker(
+        default_config.preset_cautionary_licenses, default_config.recognized_licenses
+    )
+    with patch(
+        "dd_license_attribution.metadata_collector.license_checker._spdx_licensing"
+    ) as mock_spdx_licensing:
+        mock_spdx_licensing.parse.return_value = ParsedExpression()
+
+        result = checker._is_osi_approved_spdx_expression("MIT")
+
+    assert result is False
+    mock_spdx_licensing.parse.assert_called_once_with("MIT", validate=True)
+
+
 def test_check_cautionary_licenses_with_empty_metadata_list() -> None:
     """Test that checking an empty metadata list exists fast."""
     checker = LicenseChecker(

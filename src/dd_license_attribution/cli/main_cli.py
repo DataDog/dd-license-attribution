@@ -13,12 +13,14 @@ from dd_license_attribution.cli.clean_spdx_id_command import clean_spdx_id
 from dd_license_attribution.cli.generate_overrides_command import (
     generate_overrides,
 )
-from dd_license_attribution.cli.generate_sbom_csv_command import (
+from dd_license_attribution.cli.generate_sbom_command import (
+    generate_sbom,
     generate_sbom_csv,
 )
 
 app = typer.Typer(add_completion=False)
-app.command()(generate_sbom_csv)
+app.command(name="generate-sbom-csv", hidden=True)(generate_sbom_csv)
+app.command(name="generate-sbom")(generate_sbom)
 app.command()(generate_overrides)
 app.command()(clean_spdx_id)
 
