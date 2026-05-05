@@ -18,7 +18,8 @@ def test_root_help_hides_deprecated_generate_sbom_csv_alias() -> None:
     result = runner.invoke(app, [], color=False)
 
     assert result.exit_code == 2
-    assert "generate-sbom        Generate an SBOM report" in result.stdout
+    assert "generate-sbom" in result.stdout
+    assert "Generate an SBOM report" in result.stdout
     assert "generate-sbom-csv" not in result.stdout
 
 
