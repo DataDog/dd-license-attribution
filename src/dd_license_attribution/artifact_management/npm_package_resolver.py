@@ -80,7 +80,7 @@ class NpmPackageResolver:
 
         # Run npm install --package-lock-only to resolve the dependency tree
         try:
-            exit_code, output = run_command_with_check(
+            exit_code, output, error_output = run_command_with_check(
                 [
                     "npm",
                     "install",
@@ -91,7 +91,11 @@ class NpmPackageResolver:
                 cwd=resolve_dir,
             )
             if exit_code != 0:
-                logger.error("npm install failed for %s: %s", npm_package_spec, output)
+                logger.error(
+                    "npm install failed for %s: %s",
+                    npm_package_spec,
+                    output + error_output,
+                )
                 return None
         except OSError as e:
             logger.error("Failed to resolve npm package %s: %s", npm_package_spec, e)

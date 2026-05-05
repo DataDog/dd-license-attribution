@@ -111,13 +111,17 @@ class GoPackageResolver:
         # the version. Without a version, go get fetches the latest.
         try:
             get_arg = f"{import_path}@{version}" if version else import_path
-            exit_code, output = run_command_with_check(
+            exit_code, output, error_output = run_command_with_check(
                 ["go", "get", get_arg],
                 cwd=resolve_dir,
                 env={"GOTOOLCHAIN": "auto"},
             )
             if exit_code != 0:
-                logger.error("go get failed for %s: %s", go_package_spec, output)
+                logger.error(
+                    "go get failed for %s: %s",
+                    go_package_spec,
+                    output + error_output,
+                )
                 return None
         except OSError as e:
             logger.error("Failed to resolve Go package %s: %s", go_package_spec, e)
@@ -125,13 +129,17 @@ class GoPackageResolver:
 
         # Run go mod tidy to resolve transitive dependencies and download modules
         try:
-            exit_code, output = run_command_with_check(
+            exit_code, output, error_output = run_command_with_check(
                 ["go", "mod", "tidy"],
                 cwd=resolve_dir,
                 env={"GOTOOLCHAIN": "auto"},
             )
             if exit_code != 0:
-                logger.error("go mod tidy failed for %s: %s", go_package_spec, output)
+                logger.error(
+                    "go mod tidy failed for %s: %s",
+                    go_package_spec,
+                    output + error_output,
+                )
                 return None
         except OSError as e:
             logger.error("Failed to resolve Go package %s: %s", go_package_spec, e)

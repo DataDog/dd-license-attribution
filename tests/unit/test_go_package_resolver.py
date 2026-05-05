@@ -124,7 +124,7 @@ class TestResolvePackage:
     def _setup_mocks(
         self,
         mocker: pytest_mock.MockFixture,
-        run_command_return: tuple[int, str] = (0, "go mod tidy completed"),
+        run_command_return: tuple[int, str, str] = (0, "go mod tidy completed", ""),
         path_exists_return: bool = True,
     ) -> tuple[Any, Any, Any, Any, Any]:
         def fake_path_join(*args: Any) -> str:
@@ -253,7 +253,7 @@ class TestResolvePackage:
     def test_go_get_failure_returns_none(self, mocker: pytest_mock.MockFixture) -> None:
         _, _, mock_run_command, _, _ = self._setup_mocks(
             mocker,
-            run_command_return=(1, "go: module not found"),
+            run_command_return=(1, "", "go: module not found"),
         )
 
         result = self.resolver.resolve_package("github.com/nonexistent/pkg")
@@ -279,8 +279,8 @@ class TestResolvePackage:
         _, _, mock_run_command, _, _ = self._setup_mocks(mocker)
         # go get succeeds, go mod tidy fails
         mock_run_command.side_effect = [
-            (0, "go get completed"),
-            (1, "go mod tidy failed"),
+            (0, "go get completed", ""),
+            (1, "", "go mod tidy failed"),
         ]
 
         result = self.resolver.resolve_package("github.com/stretchr/testify@v1.9.0")

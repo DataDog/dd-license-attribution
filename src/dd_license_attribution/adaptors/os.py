@@ -86,8 +86,8 @@ def is_dir(path: str) -> bool:
 
 def run_command_with_check(
     args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
-) -> tuple[int, str]:
-    """Run a command and return (exit_code, output).
+) -> tuple[int, str, str]:
+    """Run a command and return (exit_code, stdout, stderr).
 
     Args:
         args: Command as list of arguments
@@ -95,13 +95,12 @@ def run_command_with_check(
         env: Extra environment variables to merge with current environment
 
     Returns:
-        Tuple of (exit_code, combined_stdout_stderr)
+        Tuple of (exit_code, stdout, stderr)
     """
     result = subprocess.run(
         args, capture_output=True, text=True, cwd=cwd, env=_merge_env(env)
     )
-    output = result.stdout + result.stderr
-    return result.returncode, output
+    return result.returncode, result.stdout, result.stderr
 
 
 def path_join(path: str, *paths: str) -> str:

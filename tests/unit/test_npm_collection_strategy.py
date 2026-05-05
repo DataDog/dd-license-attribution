@@ -63,7 +63,7 @@ def setup_npm_strategy_mocks(
 
     def fake_run_command(
         args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
-    ) -> tuple[int, str]:
+    ) -> tuple[int, str, str]:
         if "list" in args and "npm" in args:
             # Convert package_lock structure to npm list format
             npm_list_output: dict[str, Any] = {
@@ -82,10 +82,10 @@ def setup_npm_strategy_mocks(
                             "version": pkg_data["version"]
                         }
 
-            return (0, json.dumps(npm_list_output))
+            return (0, json.dumps(npm_list_output), "")
 
         # npm install
-        return (0, "npm install completed")
+        return (0, "npm install completed", "")
 
     # Mock all the required functions
     mock_exists = mocker.patch(
@@ -265,11 +265,11 @@ def test_npm_collection_strategy_adds_npm_metadata(
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
-        ["npm", "install", "--production", "--ignore-scripts"],
+        ["npm", "install", "--omit=dev", "--ignore-scripts"],
         cwd="cache_dir/org_package1",
     )
     mock_run_command.assert_any_call(
-        ["npm", "list", "--json", "--production", "--all"],
+        ["npm", "list", "--json", "--omit=dev", "--all"],
         cwd="cache_dir/org_package1",
     )
     mock_output_from_command.assert_not_called()
@@ -384,11 +384,11 @@ def test_npm_collection_strategy_extracts_transitive_dependencies(
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
-        ["npm", "install", "--production", "--ignore-scripts"],
+        ["npm", "install", "--omit=dev", "--ignore-scripts"],
         cwd="cache_dir/org_package1",
     )
     mock_run_command.assert_any_call(
-        ["npm", "list", "--json", "--production", "--all"],
+        ["npm", "list", "--json", "--omit=dev", "--all"],
         cwd="cache_dir/org_package1",
     )
     mock_output_from_command.assert_not_called()
@@ -459,11 +459,11 @@ def test_npm_collection_strategy_avoids_duplicates_and_respects_only_transitive(
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
-        ["npm", "install", "--production", "--ignore-scripts"],
+        ["npm", "install", "--omit=dev", "--ignore-scripts"],
         cwd="cache_dir/org_package1",
     )
     mock_run_command.assert_any_call(
-        ["npm", "list", "--json", "--production", "--all"],
+        ["npm", "list", "--json", "--omit=dev", "--all"],
         cwd="cache_dir/org_package1",
     )
     mock_output_from_command.assert_not_called()
@@ -513,11 +513,11 @@ def test_npm_collection_strategy_handles_missing_packages_key(
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
-        ["npm", "install", "--production", "--ignore-scripts"],
+        ["npm", "install", "--omit=dev", "--ignore-scripts"],
         cwd="cache_dir/org_package1",
     )
     mock_run_command.assert_any_call(
-        ["npm", "list", "--json", "--production", "--all"],
+        ["npm", "list", "--json", "--omit=dev", "--all"],
         cwd="cache_dir/org_package1",
     )
     mock_output_from_command.assert_not_called()
@@ -587,11 +587,11 @@ def test_npm_collection_strategy_handles_missing_root_package(
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
-        ["npm", "install", "--production", "--ignore-scripts"],
+        ["npm", "install", "--omit=dev", "--ignore-scripts"],
         cwd="cache_dir/org_package1",
     )
     mock_run_command.assert_any_call(
-        ["npm", "list", "--json", "--production", "--all"],
+        ["npm", "list", "--json", "--omit=dev", "--all"],
         cwd="cache_dir/org_package1",
     )
     mock_output_from_command.assert_not_called()
@@ -657,11 +657,11 @@ def test_npm_collection_strategy_handles_registry_api_failures(
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
-        ["npm", "install", "--production", "--ignore-scripts"],
+        ["npm", "install", "--omit=dev", "--ignore-scripts"],
         cwd="cache_dir/org_package1",
     )
     mock_run_command.assert_any_call(
-        ["npm", "list", "--json", "--production", "--all"],
+        ["npm", "list", "--json", "--omit=dev", "--all"],
         cwd="cache_dir/org_package1",
     )
     mock_output_from_command.assert_not_called()
@@ -725,11 +725,11 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
-        ["npm", "install", "--production", "--ignore-scripts"],
+        ["npm", "install", "--omit=dev", "--ignore-scripts"],
         cwd="cache_dir/org_package1",
     )
     mock_run_command.assert_any_call(
-        ["npm", "list", "--json", "--production", "--all"],
+        ["npm", "list", "--json", "--omit=dev", "--all"],
         cwd="cache_dir/org_package1",
     )
     mock_output_from_command.assert_not_called()
@@ -759,7 +759,7 @@ def test_npm_collection_strategy_handles_npm_install_failure(
 
     # Override run_command_with_check to return non-zero exit code
     mock_run_command.side_effect = None
-    mock_run_command.return_value = (1, "npm ERR! not found")
+    mock_run_command.return_value = (1, "", "npm ERR! not found")
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -784,7 +784,7 @@ def test_npm_collection_strategy_handles_npm_install_failure(
     assert result == initial_metadata
     # Verify npm install was attempted via run_command_with_check
     mock_run_command.assert_called_once_with(
-        ["npm", "install", "--production", "--ignore-scripts"],
+        ["npm", "install", "--omit=dev", "--ignore-scripts"],
         cwd="cache_dir/org_package1",
     )
     # npm list should NOT have been called (install failed)
@@ -1724,7 +1724,7 @@ def test_collect_yarn_deps_from_location_with_existing_lock(
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.run_command_with_check",
-        return_value=(0, "npm install completed"),
+        return_value=(0, "npm install completed", ""),
     )
 
     result = strategy._collect_yarn_deps_from_location("/test/path", "test-location")
@@ -1838,7 +1838,7 @@ def test_augment_metadata_with_single_subdirectory(
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.run_command_with_check",
-        return_value=(0, "npm install completed"),
+        return_value=(0, "npm install completed", ""),
     )
 
     # Mock requests for npm registry
@@ -1950,7 +1950,7 @@ def test_augment_metadata_with_multiple_subdirectories(
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.run_command_with_check",
-        return_value=(0, "npm install completed"),
+        return_value=(0, "npm install completed", ""),
     )
 
     # Mock requests for npm registry
@@ -2054,7 +2054,7 @@ def test_augment_metadata_with_missing_subdirectory(
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.run_command_with_check",
-        return_value=(0, "npm install completed"),
+        return_value=(0, "npm install completed", ""),
     )
 
     # Mock requests for npm registry
@@ -2165,7 +2165,7 @@ def test_augment_metadata_with_version_conflicts(
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.run_command_with_check",
-        return_value=(0, "npm install completed"),
+        return_value=(0, "npm install completed", ""),
     )
 
     # Mock requests for npm registry
@@ -2393,7 +2393,7 @@ def test_get_yarn_dependencies_resolves_aliases_from_lock(
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.run_command_with_check",
-        return_value=(0, "npm install completed"),
+        return_value=(0, "npm install completed", ""),
     )
 
     result = strategy._get_yarn_dependencies("/test/path")
@@ -2466,7 +2466,7 @@ def test_augment_metadata_with_yarn_aliases_from_lock(
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.run_command_with_check",
-        return_value=(0, "npm install completed"),
+        return_value=(0, "npm install completed", ""),
     )
 
     # Mock npm registry response for the REAL package name
@@ -2567,7 +2567,7 @@ def test_yarn_lock_aliases_precedence_over_tree_aliases(
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.run_command_with_check",
-        return_value=(0, "npm install completed"),
+        return_value=(0, "npm install completed", ""),
     )
 
     result = strategy._get_yarn_dependencies("/test/path")
@@ -2817,7 +2817,7 @@ def test_augment_metadata_with_npm_aliases_from_lock(
 
     def fake_run_command(
         args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
-    ) -> tuple[int, str]:
+    ) -> tuple[int, str, str]:
         if "list" in args and "npm" in args:
             npm_list_output = {
                 "version": "1.0.0",
@@ -2826,8 +2826,8 @@ def test_augment_metadata_with_npm_aliases_from_lock(
                     "source-map": {"version": "0.6.1"}  # Real package name, not alias
                 },
             }
-            return (0, json.dumps(npm_list_output))
-        return (0, "npm install completed")
+            return (0, json.dumps(npm_list_output), "")
+        return (0, "npm install completed", "")
 
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
@@ -3087,7 +3087,7 @@ def test_npm_local_project_path_skips_get_code(
 
     def fake_run_command(
         args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
-    ) -> tuple[int, str]:
+    ) -> tuple[int, str, str]:
         if "list" in args and "npm" in args:
             npm_list_output = {
                 "version": "1.0.0",
@@ -3096,8 +3096,8 @@ def test_npm_local_project_path_skips_get_code(
                     "dep1": {"version": "1.0.5"},
                 },
             }
-            return (0, json.dumps(npm_list_output))
-        return (0, "npm install completed")
+            return (0, json.dumps(npm_list_output), "")
+        return (0, "npm install completed", "")
 
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
@@ -3248,7 +3248,7 @@ def test_npm_local_project_path_all_mode_processes_lock_deps(
 
     def fake_run_command(
         args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
-    ) -> tuple[int, str]:
+    ) -> tuple[int, str, str]:
         if "list" in args and "npm" in args:
             npm_list_output = {
                 "version": "4.18.2",
@@ -3258,8 +3258,8 @@ def test_npm_local_project_path_all_mode_processes_lock_deps(
                     "accepts": {"version": "1.3.8"},
                 },
             }
-            return (0, json.dumps(npm_list_output))
-        return (0, "npm install completed")
+            return (0, json.dumps(npm_list_output), "")
+        return (0, "npm install completed", "")
 
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
@@ -3387,7 +3387,7 @@ def test_npm_list_discovers_dependencies(mocker: pytest_mock.MockFixture) -> Non
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.run_command_with_check",
-        return_value=(0, json.dumps(npm_list_output)),
+        return_value=(0, json.dumps(npm_list_output), ""),
     )
 
     result = strategy._get_npm_list_dependencies("/test/path")
@@ -3400,6 +3400,41 @@ def test_npm_list_discovers_dependencies(mocker: pytest_mock.MockFixture) -> Non
     assert result["mime-types"] == "2.1.35"
     assert "lodash" in result
     assert result["lodash"] == "4.17.21"
+
+
+def test_npm_list_ignores_stderr_warnings(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test npm list JSON parsing ignores warnings on stderr."""
+    source_code_manager_mock = create_source_code_manager_mock()
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+
+    npm_list_json = json.dumps(
+        {
+            "dependencies": {
+                "dd-trace": {"version": "5.51.0"},
+            }
+        }
+    )
+    mock_run_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.run_command_with_check",
+        return_value=(
+            0,
+            npm_list_json,
+            "npm WARN config production Use `--omit=dev` instead.\n",
+        ),
+    )
+
+    result = strategy._get_npm_list_dependencies("/test/path")
+
+    assert result == {"dd-trace": "5.51.0"}
+    mock_run_command.assert_called_once_with(
+        ["npm", "list", "--json", "--omit=dev", "--all"],
+        cwd="/test/path",
+    )
 
 
 def test_npm_list_handles_missing_version(mocker: pytest_mock.MockFixture) -> None:
@@ -3416,7 +3451,7 @@ def test_npm_list_handles_missing_version(mocker: pytest_mock.MockFixture) -> No
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.run_command_with_check",
-        return_value=(0, json.dumps(npm_list_output)),
+        return_value=(0, json.dumps(npm_list_output), ""),
     )
 
     result = strategy._get_npm_list_dependencies("/test/path")
@@ -3437,7 +3472,7 @@ def test_npm_list_handles_nonzero_exit_code(
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.run_command_with_check",
-        return_value=(1, "npm ERR! missing dependencies"),
+        return_value=(1, "", "npm ERR! missing dependencies"),
     )
 
     with caplog.at_level(logging.WARNING):
@@ -3846,7 +3881,7 @@ def test_collect_vendored_deps_with_yarn_lock(
     mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.run_command_with_check",
-        return_value=(0, "npm install completed"),
+        return_value=(0, "npm install completed", ""),
     )
 
     result = strategy._collect_vendored_deps("/project", "pkg1")
@@ -4034,7 +4069,7 @@ def test_augment_metadata_from_local_path_with_yarn_subdirs(
 
     def fake_run_command(
         args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
-    ) -> tuple[int, str]:
+    ) -> tuple[int, str, str]:
         if "list" in args and "npm" in args:
             return (
                 0,
@@ -4048,8 +4083,9 @@ def test_augment_metadata_from_local_path_with_yarn_subdirs(
                         },
                     }
                 ),
+                "",
             )
-        return (0, "npm install completed")
+        return (0, "npm install completed", "")
 
     def fake_list_dir(path: str) -> list[str]:
         if path.endswith("/dist"):
@@ -4149,7 +4185,7 @@ def test_augment_metadata_from_local_path_vendored_deps_dont_overwrite_npm_deps(
 
     def fake_run_command(
         args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
-    ) -> tuple[int, str]:
+    ) -> tuple[int, str, str]:
         if "list" in args and "npm" in args:
             return (
                 0,
@@ -4163,8 +4199,9 @@ def test_augment_metadata_from_local_path_vendored_deps_dont_overwrite_npm_deps(
                         },
                     }
                 ),
+                "",
             )
-        return (0, "npm install completed")
+        return (0, "npm install completed", "")
 
     def fake_list_dir(path: str) -> list[str]:
         if path.endswith("/dist"):

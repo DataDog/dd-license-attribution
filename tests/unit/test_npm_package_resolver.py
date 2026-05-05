@@ -66,7 +66,7 @@ class TestResolvePackage:
     def _setup_mocks(
         self,
         mocker: pytest_mock.MockFixture,
-        run_command_return: tuple[int, str] = (0, "npm install completed"),
+        run_command_return: tuple[int, str, str] = (0, "npm install completed", ""),
         path_exists_return: bool = True,
     ) -> tuple[Any, Any, Any, Any, Any]:
         def fake_path_join(*args: Any) -> str:
@@ -141,7 +141,7 @@ class TestResolvePackage:
 
     def test_npm_failure_returns_none(self, mocker: pytest_mock.MockFixture) -> None:
         _, _, mock_run_command, _, _ = self._setup_mocks(
-            mocker, run_command_return=(1, "npm ERR! not found")
+            mocker, run_command_return=(1, "", "npm ERR! not found")
         )
 
         result = self.resolver.resolve_package("nonexistent-pkg")
