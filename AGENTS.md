@@ -51,6 +51,7 @@ Before suggesting any code changes, verify:
 - [ ] Modern Python 3.11+ syntax used for type hints (e.g., `list[str]` not `List[str]`)
 - [ ] Logging follows consistent format and patterns
 - [ ] Contract tests added for any new external library dependencies
+- [ ] Full end-to-end CLI validation run completed for new user-facing features
 - [ ] All Python files include SPDX-License-Identifier header on first line
 
 ## 🔧 Type Safety Requirements
@@ -197,6 +198,33 @@ class TestGitURLParseContract:
 ```
 
 Only test the specific features our codebase uses — not the full library API.
+
+### End-to-End Feature Validation
+
+When adding or changing a user-facing feature, run at least one full end-to-end
+CLI command that exercises the feature against a real, representative target.
+Do this in addition to unit, contract, type, and formatting checks.
+
+For `generate-sbom` changes, this means running the command with the normal
+strategy set enabled against a real repository or package, using real
+authentication when required. Do not rely only on minimal smoke commands that
+disable collectors with `--no-*-strategy` flags unless the feature is
+specifically about those skip paths.
+
+Capture the output and stderr to reviewable files under `/tmp`, then inspect the
+result for semantic correctness:
+
+- The command exits successfully.
+- The output parses as the expected format.
+- The output identifies the requested target as the document/root subject where
+  applicable.
+- The output contains representative real dependency data, not just the seed
+  package.
+- Warnings are reviewed and either expected or investigated.
+
+If a full end-to-end run cannot be completed because of missing credentials,
+network access, service availability, or runtime cost, document the blocker, the
+exact command that should be run, and any smaller validation that was completed.
 
 ## 🎨 Code Formatting and Import Management
 
