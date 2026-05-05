@@ -32,19 +32,19 @@ pip install .
 ```
 4. Run the tool on a GitHub repository:
 ```bash
-dd-license-attribution generate-sbom-csv https://github.com/owner/repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
 5. Or run on an npm package directly:
 ```bash
-dd-license-attribution generate-sbom-csv --ecosystem npm --no-gh-auth express > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom --ecosystem npm --no-gh-auth express > LICENSE-3rdparty.csv
 ```
 6. Or run on a PyPI package directly:
 ```bash
-dd-license-attribution generate-sbom-csv --ecosystem python --no-gh-auth requests==2.31.0 > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom --ecosystem python --no-gh-auth requests==2.31.0 > LICENSE-3rdparty.csv
 ```
 7. Or run on a Go module directly:
 ```bash
-dd-license-attribution generate-sbom-csv --ecosystem go --no-gh-auth github.com/stretchr/testify@v1.9.0 > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom --ecosystem go --no-gh-auth github.com/stretchr/testify@v1.9.0 > LICENSE-3rdparty.csv
 ```
 
 For more advanced usage, see the sections below.
@@ -53,9 +53,11 @@ For more advanced usage, see the sections below.
 
 `dd-license-attribution` provides the following commands:
 
-1. **`generate-sbom-csv`** - Generate a CSV report (SBOM) of third-party dependencies
+1. **`generate-sbom`** - Generate an SBOM of third-party dependencies as CSV or SPDX 2.3 JSON
 2. **`generate-overrides`** - Interactively generate override configuration files
 3. **`clean-spdx-id`** - Convert long license descriptions to valid SPDX license expressions using AI
+
+`generate-sbom-csv` remains available as a deprecated alias for `generate-sbom --format csv`.
 
 Run `dd-license-attribution --help` to see all available commands.
 
@@ -85,10 +87,13 @@ pip install .
 
 # Optionally you can define a GITHUB_TOKEN, if used it will raise the throttling threashold and maspeed up your generation calls to github APIs.
 export GITHUB_TOKEN=YOUR_TOKEN
-dd-license-attribution generate-sbom-csv https://github.com/owner/repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom https://github.com/owner/repo > LICENSE-3rdparty.csv
+
+# Emit SPDX 2.3 JSON instead of CSV
+dd-license-attribution generate-sbom https://github.com/owner/repo --format spdx > sbom.spdx.json
 ```
 
-The following optional parameters are available for `generate-sbom-csv`:
+The following optional parameters are available for `generate-sbom`:
 
 #### Scanning Options
 
@@ -106,6 +111,9 @@ The following optional parameters are available for `generate-sbom-csv`:
 - `--no-github-sbom-strategy`: Skips the strategy that gets the dependency tree from GitHub.
 - `--no-npm-strategy`: Skips the strategy that collects dependencies from NPM.
 - `--no-scancode-strategy`: Skips the strategy that gets licenses and copyright attribution using ScanCode Toolkit.
+
+#### Output Options
+- `--format <csv|spdx>`: Selects the SBOM output format. Defaults to `csv`; `spdx` emits SPDX 2.3 JSON.
 
 #### Cache Configuration
 
@@ -175,13 +183,13 @@ The easiest way to create overrides is using the **interactive `generate-overrid
 
 ```bash
 # Generate the SBOM first
-dd-license-attribution generate-sbom-csv https://github.com/owner/repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom https://github.com/owner/repo > LICENSE-3rdparty.csv
 
 # Interactively fix entries with missing information
 dd-license-attribution generate-overrides LICENSE-3rdparty.csv
 
 # Regenerate with overrides applied
-dd-license-attribution generate-sbom-csv https://github.com/owner/repo --override-spec .ddla-overrides > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom https://github.com/owner/repo --override-spec .ddla-overrides > LICENSE-3rdparty.csv
 ```
 
 The `generate-overrides` command will:
@@ -216,7 +224,7 @@ Alternatively, you can manually create an override configuration file:
 Then use it with the `--override-spec` parameter:
 
 ```bash
-dd-license-attribution generate-sbom-csv --override-spec .ddla-overrides https://github.com/your-org/your-project
+dd-license-attribution generate-sbom --override-spec .ddla-overrides https://github.com/your-org/your-project
 ```
 
 📖 **For complete documentation, examples, and best practices, see [Override Configuration Guide](docs/overrides.md)**
@@ -294,7 +302,7 @@ dd-license-attribution clean-spdx-id LICENSE-3rdparty.csv LICENSE-cleaned.csv --
 
 ```bash
 # Step 1: Generate SBOM
-dd-license-attribution generate-sbom-csv https://github.com/owner/repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom https://github.com/owner/repo > LICENSE-3rdparty.csv
 
 # Step 2: Clean up license identifiers with AI
 dd-license-attribution clean-spdx-id LICENSE-3rdparty.csv LICENSE-cleaned.csv --api-key your_key
@@ -314,66 +322,66 @@ cat LICENSE-cleaned.csv
 
 #### Basic License Attribution
 ```bash
-dd-license-attribution generate-sbom-csv https://github.com/owner/repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
 
 #### Analyzing Go Packages by Module Path
 ```bash
 # Analyze a Go module and its transitive dependencies
-dd-license-attribution generate-sbom-csv --ecosystem go --no-gh-auth github.com/DataDog/dd-trace-go/v2/ddtrace/tracer > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom --ecosystem go --no-gh-auth github.com/DataDog/dd-trace-go/v2/ddtrace/tracer > LICENSE-3rdparty.csv
 
 # Analyze a specific version of a Go module
-dd-license-attribution generate-sbom-csv --ecosystem go --no-gh-auth github.com/stretchr/testify@v1.9.0 > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom --ecosystem go --no-gh-auth github.com/stretchr/testify@v1.9.0 > LICENSE-3rdparty.csv
 ```
 
 #### Analyzing npm Packages by Name
 ```bash
 # Analyze an npm package without needing a GitHub URL
-dd-license-attribution generate-sbom-csv --ecosystem npm --no-gh-auth express > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom --ecosystem npm --no-gh-auth express > LICENSE-3rdparty.csv
 
 # Analyze a specific version of a scoped npm package
-dd-license-attribution generate-sbom-csv --ecosystem npm --no-gh-auth @datadog/browser-sdk@4.0.0 > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom --ecosystem npm --no-gh-auth @datadog/browser-sdk@4.0.0 > LICENSE-3rdparty.csv
 ```
 
 #### Analyzing PyPI Packages by Name
 ```bash
 # Analyze a PyPI package without needing a GitHub URL
-dd-license-attribution generate-sbom-csv --ecosystem python --no-gh-auth requests > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom --ecosystem python --no-gh-auth requests > LICENSE-3rdparty.csv
 
 # Analyze a specific version of a PyPI package
-dd-license-attribution generate-sbom-csv --ecosystem python --no-gh-auth "requests==2.31.0" > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom --ecosystem python --no-gh-auth "requests==2.31.0" > LICENSE-3rdparty.csv
 
 # The 'pypi' alias also works
-dd-license-attribution generate-sbom-csv --ecosystem pypi --no-gh-auth Flask > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom --ecosystem pypi --no-gh-auth Flask > LICENSE-3rdparty.csv
 ```
 
 #### Deep Scanning with Caching
 ```bash
-dd-license-attribution generate-sbom-csv --deep-scanning --cache-dir ./cache https://github.com/owner/repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom --deep-scanning --cache-dir ./cache https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
 
 #### Working with Private Repositories
 ```bash
 export GITHUB_TOKEN=your_token
-dd-license-attribution generate-sbom-csv https://github.com/owner/private-repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom https://github.com/owner/private-repo > LICENSE-3rdparty.csv
 ```
 
 #### Using Mirror Repositories
 ```bash
 # Create mirrors.json with your mirror configurations
-dd-license-attribution generate-sbom-csv --use-mirrors=mirrors.json https://github.com/owner/repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom --use-mirrors=mirrors.json https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
 
 #### Interactive Override Generation
 ```bash
 # Step 1: Generate initial SBOM
-dd-license-attribution generate-sbom-csv https://github.com/owner/repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom https://github.com/owner/repo > LICENSE-3rdparty.csv
 
 # Step 2: Fix entries with missing information interactively
 dd-license-attribution generate-overrides LICENSE-3rdparty.csv
 
 # Step 3: Regenerate with overrides
-dd-license-attribution generate-sbom-csv --override-spec .ddla-overrides https://github.com/owner/repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom --override-spec .ddla-overrides https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
 
 #### Cleaning License Identifiers
