@@ -12,23 +12,13 @@ from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.report_generator.writters.abstract_reporting_writter import (
     ReportingWritter,
 )
+from dd_license_attribution.report_generator.writters.metadata_combiner import (
+    combine_metadata,
+)
 
 
 class CSVReportingWritter(ReportingWritter):
     def write(self, metadata: list[Metadata]) -> str:
-        class RowOfData:
-            def __init__(
-                self,
-                component: str | None,
-                origin: str | None,
-                license: set[str],
-                copyright: set[str],
-            ):
-                self.component = component
-                self.origin = origin
-                self.license = license
-                self.copyright = copyright
-
         field_names = ["component", "origin", "license", "copyright"]
         output = io.StringIO()
         writer = csv.DictWriter(
@@ -36,20 +26,7 @@ class CSVReportingWritter(ReportingWritter):
         )
 
         writer.writeheader()
-        combined_metadata: dict[tuple[str | None, str | None], RowOfData] = {}
-        for md in metadata:
-            key = (md.name, md.origin)
-            if key not in combined_metadata:
-                combined_metadata[key] = RowOfData(
-                    md.name, md.origin, set(md.license), set(md.copyright)
-                )
-            else:
-                combined_metadata[key].license.update(md.license)
-                combined_metadata[key].copyright.update(md.copyright)
-
-        for row_data in sorted(
-            combined_metadata.values(), key=lambda x: (x.component, x.origin)
-        ):
+        for row_data in combine_metadata(metadata):
             prepared_row = {
                 "component": row_data.component,
                 "origin": row_data.origin,
