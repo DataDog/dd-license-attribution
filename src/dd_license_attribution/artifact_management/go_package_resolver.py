@@ -10,6 +10,7 @@ import re
 
 from dd_license_attribution.adaptors.os import (
     create_dirs,
+    format_command_output,
     output_from_command,
     path_exists,
     path_join,
@@ -120,7 +121,7 @@ class GoPackageResolver:
                 logger.error(
                     "go get failed for %s: %s",
                     go_package_spec,
-                    output + error_output,
+                    format_command_output(output, error_output),
                 )
                 return None
         except OSError as e:
@@ -138,7 +139,7 @@ class GoPackageResolver:
                 logger.error(
                     "go mod tidy failed for %s: %s",
                     go_package_spec,
-                    output + error_output,
+                    format_command_output(output, error_output),
                 )
                 return None
         except OSError as e:

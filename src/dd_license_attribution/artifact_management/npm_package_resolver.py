@@ -11,6 +11,7 @@ import re
 
 from dd_license_attribution.adaptors.os import (
     create_dirs,
+    format_command_output,
     path_exists,
     path_join,
     run_command_with_check,
@@ -94,7 +95,7 @@ class NpmPackageResolver:
                 logger.error(
                     "npm install failed for %s: %s",
                     npm_package_spec,
-                    output + error_output,
+                    format_command_output(output, error_output),
                 )
                 return None
         except OSError as e:

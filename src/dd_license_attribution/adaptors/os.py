@@ -103,5 +103,14 @@ def run_command_with_check(
     return result.returncode, result.stdout, result.stderr
 
 
+def format_command_output(output: str, error_output: str) -> str:
+    parts: list[str] = []
+    if output.strip():
+        parts.append(f"stdout:\n{output.strip()}")
+    if error_output.strip():
+        parts.append(f"stderr:\n{error_output.strip()}")
+    return "\n".join(parts)
+
+
 def path_join(path: str, *paths: str) -> str:
     return os.path.join(path, *paths)

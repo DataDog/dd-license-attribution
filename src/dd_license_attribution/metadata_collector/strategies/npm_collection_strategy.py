@@ -17,6 +17,7 @@ import semver
 from giturlparse import validate as validate_git_url
 
 from dd_license_attribution.adaptors.os import (
+    format_command_output,
     is_dir,
     list_dir,
     open_file,
@@ -304,11 +305,13 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 cwd=project_path,
             )
             if exit_code != 0:
+                if output and error_output:
+                    logger.debug("npm list stdout for %s: %s", project_path, output)
                 logger.warning(
                     "npm list failed (exit %d) for %s: %s",
                     exit_code,
                     project_path,
-                    error_output or output,
+                    format_command_output(output, error_output),
                 )
                 return all_deps
             if error_output:
@@ -936,7 +939,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                 logger.warning(
                     "npm install failed for %s: %s",
                     self.top_package,
-                    install_output + install_error_output,
+                    format_command_output(install_output, install_error_output),
                 )
                 return updated_metadata
 
@@ -1112,7 +1115,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     logger.warning(
                         "npm install failed for %s: %s",
                         self.top_package,
-                        install_output + install_error_output,
+                        format_command_output(install_output, install_error_output),
                     )
                     return updated_metadata
 

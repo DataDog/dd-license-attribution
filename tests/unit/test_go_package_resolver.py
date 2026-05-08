@@ -5,9 +5,11 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2026-present Datadog, Inc.
 
+import logging
 from typing import Any
 
 import pytest_mock
+from pytest import LogCaptureFixture
 
 from dd_license_attribution.artifact_management.go_package_resolver import (
     SYNTHETIC_MODULE_NAME,
@@ -250,17 +252,28 @@ class TestResolvePackage:
             env={"GOTOOLCHAIN": "auto"},
         )
 
-    def test_go_get_failure_returns_none(self, mocker: pytest_mock.MockFixture) -> None:
+    def test_go_get_failure_returns_none(
+        self, mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture
+    ) -> None:
         _, _, mock_run_command, _, _ = self._setup_mocks(
             mocker,
-            run_command_return=(1, "", "go: module not found"),
+            run_command_return=(1, "go get stdout", "go: module not found"),
         )
 
-        result = self.resolver.resolve_package("github.com/nonexistent/pkg")
+        with caplog.at_level(logging.ERROR):
+            result = self.resolver.resolve_package("github.com/nonexistent/pkg")
 
         assert result is None
+        assert any(
+            "stdout:\ngo get stdout\nstderr:\ngo: module not found" in record.message
+            for record in caplog.records
+        )
         # Only go get is called; it fails so go mod tidy is never reached
-        mock_run_command.assert_called_once()
+        mock_run_command.assert_called_once_with(
+            ["go", "get", "github.com/nonexistent/pkg"],
+            cwd="/cache/github_com_nonexistent_pkg",
+            env={"GOTOOLCHAIN": "auto"},
+        )
 
     def test_go_get_exception_returns_none(
         self, mocker: pytest_mock.MockFixture
@@ -274,7 +287,7 @@ class TestResolvePackage:
         mock_run_command.assert_called_once()
 
     def test_go_mod_tidy_failure_returns_none(
-        self, mocker: pytest_mock.MockFixture
+        self, mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture
     ) -> None:
         _, _, mock_run_command, _, _ = self._setup_mocks(mocker)
         # go get succeeds, go mod tidy fails
@@ -283,10 +296,24 @@ class TestResolvePackage:
             (1, "", "go mod tidy failed"),
         ]
 
-        result = self.resolver.resolve_package("github.com/stretchr/testify@v1.9.0")
+        with caplog.at_level(logging.ERROR):
+            result = self.resolver.resolve_package("github.com/stretchr/testify@v1.9.0")
 
         assert result is None
+        assert any(
+            "stderr:\ngo mod tidy failed" in record.message for record in caplog.records
+        )
         assert mock_run_command.call_count == 2
+        mock_run_command.assert_any_call(
+            ["go", "get", "github.com/stretchr/testify@v1.9.0"],
+            cwd="/cache/github_com_stretchr_testify",
+            env={"GOTOOLCHAIN": "auto"},
+        )
+        mock_run_command.assert_any_call(
+            ["go", "mod", "tidy"],
+            cwd="/cache/github_com_stretchr_testify",
+            env={"GOTOOLCHAIN": "auto"},
+        )
 
     def test_missing_go_sum_returns_none(self, mocker: pytest_mock.MockFixture) -> None:
         _, _, mock_run_command, _, _ = self._setup_mocks(

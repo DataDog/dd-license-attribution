@@ -759,7 +759,7 @@ def test_npm_collection_strategy_handles_npm_install_failure(
 
     # Override run_command_with_check to return non-zero exit code
     mock_run_command.side_effect = None
-    mock_run_command.return_value = (1, "", "npm ERR! not found")
+    mock_run_command.return_value = (1, "npm install stdout", "npm ERR! not found")
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -778,7 +778,10 @@ def test_npm_collection_strategy_handles_npm_install_failure(
     with caplog.at_level(logging.WARNING):
         result = strategy.augment_metadata(initial_metadata)
 
-    expected_warning = "npm install failed for package1: npm ERR! not found"
+    expected_warning = (
+        "npm install failed for package1: "
+        "stdout:\nnpm install stdout\nstderr:\nnpm ERR! not found"
+    )
     assert any(expected_warning in record.message for record in caplog.records)
 
     assert result == initial_metadata
@@ -3404,6 +3407,7 @@ def test_npm_list_discovers_dependencies(mocker: pytest_mock.MockFixture) -> Non
 
 def test_npm_list_ignores_stderr_warnings(
     mocker: pytest_mock.MockFixture,
+    caplog: LogCaptureFixture,
 ) -> None:
     """Test npm list JSON parsing ignores warnings on stderr."""
     source_code_manager_mock = create_source_code_manager_mock()
@@ -3428,9 +3432,15 @@ def test_npm_list_ignores_stderr_warnings(
         ),
     )
 
-    result = strategy._get_npm_list_dependencies("/test/path")
+    with caplog.at_level(logging.DEBUG, logger="dd_license_attribution"):
+        result = strategy._get_npm_list_dependencies("/test/path")
 
     assert result == {"dd-trace": "5.51.0"}
+    assert any(
+        "npm list stderr for /test/path: npm WARN config production "
+        "Use `--omit=dev` instead." in record.message
+        for record in caplog.records
+    )
     mock_run_command.assert_called_once_with(
         ["npm", "list", "--json", "--omit=dev", "--all"],
         cwd="/test/path",
@@ -3469,17 +3479,29 @@ def test_npm_list_handles_nonzero_exit_code(
         "package1", source_code_manager_mock, ProjectScope.ALL
     )
 
-    mocker.patch(
+    mock_run_command = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.run_command_with_check",
-        return_value=(1, "", "npm ERR! missing dependencies"),
+        return_value=(1, "npm list stdout", "npm ERR! missing dependencies"),
     )
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.DEBUG, logger="dd_license_attribution"):
         result = strategy._get_npm_list_dependencies("/test/path")
 
     assert result == {}
-    assert any("npm list failed" in record.message for record in caplog.records)
+    assert any(
+        "npm list stdout for /test/path: npm list stdout" in record.message
+        for record in caplog.records
+    )
+    expected_warning = (
+        "npm list failed (exit 1) for /test/path: "
+        "stdout:\nnpm list stdout\nstderr:\nnpm ERR! missing dependencies"
+    )
+    assert any(expected_warning in record.message for record in caplog.records)
+    mock_run_command.assert_called_once_with(
+        ["npm", "list", "--json", "--omit=dev", "--all"],
+        cwd="/test/path",
+    )
 
 
 def test_npm_list_handles_command_exception(
