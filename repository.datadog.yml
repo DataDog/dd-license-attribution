@@ -1,5 +1,7 @@
----
 schema-version: v1
-kind: mergequeue
-enable: true
-merge_method: rebase
+kind: mergegate
+name: mergegate-ospo
+rules:
+  - require: commit-signatures
+  - require: all-files-are-owned
+  - require: reviewers-approval
