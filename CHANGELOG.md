@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - PyPI collection strategy now performs case-insensitive key matching for project_urls dictionary to better handle different key capitalizations from PyPI metadata
 
 ### Fixed
+- Fixed npm ecosystem SBOM generation when `npm list --json` emits warnings on stderr, which previously caused empty CSV output for packages such as `dd-trace`.
 - Fixed npm metadata collection using semver ranges instead of resolved versions, causing incorrect or failed npm registry API lookups
 - Fixed support for package aliases in both Yarn and npm projects (e.g., `"@datadog/source-map": "npm:source-map@^0.6.0"`). The tool now parses both yarn.lock and package-lock.json files to resolve aliases to their real package names before fetching npm registry metadata, eliminating 404 errors for aliased packages
 - Fixed CSV output to use consistent Windows-style line endings (`\r\n`) across all platforms and Python versions, preventing line ending inconsistencies between different Python versions

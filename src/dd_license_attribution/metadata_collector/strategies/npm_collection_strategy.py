@@ -17,6 +17,7 @@ import semver
 from giturlparse import validate as validate_git_url
 
 from dd_license_attribution.adaptors.os import (
+    format_command_output,
     is_dir,
     list_dir,
     open_file,
@@ -299,15 +300,22 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         try:
             # Use npm list to get all dependencies (excluding dev dependencies)
             logger.debug("Running npm list in %s", project_path)
-            exit_code, output = run_command_with_check(
-                ["npm", "list", "--json", "--production", "--all"],
+            exit_code, output, error_output = run_command_with_check(
+                ["npm", "list", "--json", "--omit=dev", "--all"],
                 cwd=project_path,
             )
             if exit_code != 0:
+                if output and error_output:
+                    logger.debug("npm list stdout for %s: %s", project_path, output)
                 logger.warning(
-                    "npm list failed (exit %d) for %s", exit_code, project_path
+                    "npm list failed (exit %d) for %s: %s",
+                    exit_code,
+                    project_path,
+                    format_command_output(output, error_output),
                 )
                 return all_deps
+            if error_output:
+                logger.debug("npm list stderr for %s: %s", project_path, error_output)
             logger.debug("npm list output length: %d characters", len(output))
 
             # Parse JSON output (single object, not JSON Lines like yarn)
@@ -523,7 +531,8 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         total_deps = len(dependencies)
         logger.info(
-            f"Fetching metadata from npm registry for {total_deps} dependencies..."
+            "Fetching metadata from npm registry for %d dependencies...",
+            total_deps,
         )
 
         for idx, (dep_name, version) in enumerate(dependencies.items(), 1):
@@ -922,13 +931,15 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         try:
             # First ensure dependencies are installed
             logger.debug("Running npm install for %s", project_path)
-            exit_code, install_output = run_command_with_check(
-                ["npm", "install", "--production", "--ignore-scripts"],
+            exit_code, install_output, install_error_output = run_command_with_check(
+                ["npm", "install", "--omit=dev", "--ignore-scripts"],
                 cwd=project_path,
             )
             if exit_code != 0:
                 logger.warning(
-                    "npm install failed for %s: %s", self.top_package, install_output
+                    "npm install failed for %s: %s",
+                    self.top_package,
+                    format_command_output(install_output, install_error_output),
                 )
                 return updated_metadata
 
@@ -1094,15 +1105,17 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             try:
                 # First ensure dependencies are installed
                 logger.debug("Running npm install for %s", project_path)
-                exit_code, install_output = run_command_with_check(
-                    ["npm", "install", "--production", "--ignore-scripts"],
-                    cwd=project_path,
+                exit_code, install_output, install_error_output = (
+                    run_command_with_check(
+                        ["npm", "install", "--omit=dev", "--ignore-scripts"],
+                        cwd=project_path,
+                    )
                 )
                 if exit_code != 0:
                     logger.warning(
                         "npm install failed for %s: %s",
                         self.top_package,
-                        install_output,
+                        format_command_output(install_output, install_error_output),
                     )
                     return updated_metadata
 

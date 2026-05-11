@@ -6,9 +6,11 @@
 # Copyright 2026-present Datadog, Inc.
 
 import json
+import logging
 from typing import Any
 
 import pytest_mock
+from pytest import LogCaptureFixture
 
 from dd_license_attribution.artifact_management.npm_package_resolver import (
     NpmPackageResolver,
@@ -66,7 +68,7 @@ class TestResolvePackage:
     def _setup_mocks(
         self,
         mocker: pytest_mock.MockFixture,
-        run_command_return: tuple[int, str] = (0, "npm install completed"),
+        run_command_return: tuple[int, str, str] = (0, "npm install completed", ""),
         path_exists_return: bool = True,
     ) -> tuple[Any, Any, Any, Any, Any]:
         def fake_path_join(*args: Any) -> str:
@@ -139,15 +141,25 @@ class TestResolvePackage:
         # @ and / are sanitized to _
         mock_create_dirs.assert_called_once_with("/cache/_datadog_browser-sdk")
 
-    def test_npm_failure_returns_none(self, mocker: pytest_mock.MockFixture) -> None:
+    def test_npm_failure_returns_none(
+        self, mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture
+    ) -> None:
         _, _, mock_run_command, _, _ = self._setup_mocks(
-            mocker, run_command_return=(1, "npm ERR! not found")
+            mocker, run_command_return=(1, "npm install stdout", "npm ERR! not found")
         )
 
-        result = self.resolver.resolve_package("nonexistent-pkg")
+        with caplog.at_level(logging.ERROR):
+            result = self.resolver.resolve_package("nonexistent-pkg")
 
         assert result is None
-        mock_run_command.assert_called_once()
+        assert any(
+            "stdout:\nnpm install stdout\nstderr:\nnpm ERR! not found" in record.message
+            for record in caplog.records
+        )
+        mock_run_command.assert_called_once_with(
+            ["npm", "install", "--package-lock-only", "--force", "--ignore-scripts"],
+            cwd="/cache/nonexistent-pkg",
+        )
 
     def test_npm_exception_returns_none(self, mocker: pytest_mock.MockFixture) -> None:
         _, _, mock_run_command, _, _ = self._setup_mocks(mocker)

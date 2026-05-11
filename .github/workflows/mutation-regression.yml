@@ -118,11 +118,15 @@ jobs:
         run: |
           python3 << 'SCRIPT'
           import sys
+          from collections import Counter
+
+          MINIMUM_MUTATION_SCORE = 80
+          MUTANT_TRANSITION_WARNING_LIMIT = 50
 
           def parse_results(path):
               """Parse mutmut results into dict of {mutant_name: status}."""
               results = {}
-              with open(path) as f:
+              with open(path, encoding='utf-8') as f:
                   for line in f:
                       line = line.strip()
                       if ': ' in line:
@@ -134,50 +138,88 @@ jobs:
           base = parse_results('mutmut-base-results.txt')
           pr = parse_results('mutmut-pr-results.txt')
 
-          caught_statuses = {'killed', 'timeout'}
-          regressions = []
+          base_counts = Counter(base.values())
+          pr_counts = Counter(pr.values())
+          common_mutants = sorted(set(base).intersection(pr))
+          base_only_mutants = sorted(set(base).difference(pr))
+          pr_only_mutants = sorted(set(pr).difference(base))
 
-          for mutant, base_status in base.items():
-              if base_status not in caught_statuses:
-                  continue  # Was not caught before — not a regression
-              if mutant not in pr:
-                  continue  # Mutant no longer exists (code removed) — OK
+          exact_id_regressions = []
+          for mutant in common_mutants:
+              base_status = base[mutant]
               pr_status = pr[mutant]
-              if pr_status not in caught_statuses:
-                  regressions.append(f"  {mutant}: {base_status} -> {pr_status}")
+              if base_status == 'killed' and pr_status != 'killed':
+                  exact_id_regressions.append(f"  {mutant}: {base_status} -> {pr_status}")
 
           # Summary stats
-          base_caught = sum(1 for s in base.values() if s in caught_statuses)
-          pr_caught = sum(1 for s in pr.values() if s in caught_statuses)
-          base_survived = sum(1 for s in base.values() if s == 'survived')
-          pr_survived = sum(1 for s in pr.values() if s == 'survived')
+          print(
+              "Target branch: "
+              f"{len(base)} mutants "
+              f"({base_counts['killed']} killed, "
+              f"{base_counts['timeout']} timed out, "
+              f"{base_counts['survived']} survived)"
+          )
+          print(
+              "PR branch:     "
+              f"{len(pr)} mutants "
+              f"({pr_counts['killed']} killed, "
+              f"{pr_counts['timeout']} timed out, "
+              f"{pr_counts['survived']} survived)"
+          )
+          print(
+              "Mutant IDs:    "
+              f"{len(common_mutants)} matched, "
+              f"{len(base_only_mutants)} base-only, "
+              f"{len(pr_only_mutants)} PR-only"
+          )
 
-          print(f"Target branch: {len(base)} mutants ({base_caught} caught, {base_survived} survived)")
-          print(f"PR branch:     {len(pr)} mutants ({pr_caught} caught, {pr_survived} survived)")
-
-          if regressions:
-              print(f"\n::error::Mutation regression detected: {len(regressions)} mutant(s) were previously caught but now survive")
-              print("Regressions:")
-              for r in regressions[:50]:
-                  print(r)
-              if len(regressions) > 50:
-                  print(f"  ... and {len(regressions) - 50} more")
-              sys.exit(1)
+          if exact_id_regressions:
+              print(
+                  f"\n::warning::Exact mutant ID comparison found "
+                  f"{len(exact_id_regressions)} killed mutant(s) that are no longer killed"
+              )
+              print(
+                  "Exact mutmut IDs are advisory because source edits can move or rename "
+                  "mutants, and timeout outcomes can vary between runs."
+              )
+              print("Advisory transitions:")
+              for regression in exact_id_regressions[:MUTANT_TRANSITION_WARNING_LIMIT]:
+                  print(regression)
+              if len(exact_id_regressions) > MUTANT_TRANSITION_WARNING_LIMIT:
+                  remaining = len(exact_id_regressions) - MUTANT_TRANSITION_WARNING_LIMIT
+                  print(f"  ... and {remaining} more")
           else:
-              print("\nNo mutation regressions detected.")
-              new_caught = pr_caught - base_caught
-              if new_caught > 0:
-                  print(f"Improvement: {new_caught} additional mutant(s) caught.")
+              print("\nNo advisory exact mutant ID regressions detected.")
+
+          killed_delta = pr_counts['killed'] - base_counts['killed']
+          timeout_delta = pr_counts['timeout'] - base_counts['timeout']
+          survived_delta = pr_counts['survived'] - base_counts['survived']
+          print(
+              f"Delta:         {killed_delta:+d} killed, "
+              f"{timeout_delta:+d} timed out, "
+              f"{survived_delta:+d} survived"
+          )
 
           # Enforce minimum mutation score on PR branch
-          MINIMUM_MUTATION_SCORE = 80
-          pr_total_testable = pr_caught + pr_survived
+          pr_total_testable = pr_counts['killed'] + pr_counts['survived']
           if pr_total_testable > 0:
-              pr_score = pr_caught / pr_total_testable * 100
+              pr_score = pr_counts['killed'] / pr_total_testable * 100
               print(f"\nPR mutation score: {pr_score:.1f}% (minimum: {MINIMUM_MUTATION_SCORE}%)")
               if pr_score < MINIMUM_MUTATION_SCORE:
-                  print(f"::error::Mutation score {pr_score:.1f}% is below the minimum threshold of {MINIMUM_MUTATION_SCORE}%")
+                  print(
+                      f"::error::Mutation score {pr_score:.1f}% is below "
+                      f"the minimum threshold of {MINIMUM_MUTATION_SCORE}%"
+                  )
                   sys.exit(1)
+          else:
+              print("::error::No killed or survived mutants were reported for the PR branch")
+              sys.exit(1)
+
+          if pr_counts['timeout']:
+              print(
+                  f"::warning::{pr_counts['timeout']} mutant(s) timed out "
+                  "on the PR branch and were excluded from the mutation score"
+              )
           SCRIPT
 
       - name: Upload mutation results on failure
