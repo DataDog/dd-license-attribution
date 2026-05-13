@@ -501,7 +501,7 @@ The command generates a JSON file with proper override rules:
 You can then use this file with the main generation command:
 
 ```bash
-dd-license-attribution generate-sbom-csv https://github.com/user/repo --override-spec .ddla-overrides
+dd-license-attribution generate-sbom https://github.com/user/repo --override-spec .ddla-overrides
 ```
 
 ### Tips for Using `generate-overrides`
@@ -522,13 +522,13 @@ A typical workflow might look like:
 
 ```bash
 # Step 1: Generate initial SBOM
-dd-license-attribution generate-sbom-csv https://github.com/user/repo > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom https://github.com/user/repo > LICENSE-3rdparty.csv
 
 # Step 2: Generate overrides interactively
 dd-license-attribution generate-overrides LICENSE-3rdparty.csv
 
 # Step 3: Regenerate SBOM with overrides
-dd-license-attribution generate-sbom-csv https://github.com/user/repo --override-spec .ddla-overrides > LICENSE-3rdparty.csv
+dd-license-attribution generate-sbom https://github.com/user/repo --override-spec .ddla-overrides > LICENSE-3rdparty.csv
 
 # Step 4: Commit both files
 git add LICENSE-3rdparty.csv .ddla-overrides

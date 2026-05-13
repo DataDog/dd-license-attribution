@@ -27,7 +27,8 @@ dependencies = [
     "license-expression",
     "openai>=1.0.1",
     "anthropic>=0.18.1",
-    "semver>=3.0.4"
+    "semver>=3.0.4",
+    "spdx-tools>=0.8"
 ]
 
 [project.optional-dependencies]
@@ -105,6 +106,10 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "license_expression"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "spdx_tools.*"
 ignore_missing_imports = true
 
 [tool.ruff]

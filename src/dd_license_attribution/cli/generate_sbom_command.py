@@ -5,16 +5,19 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2025-present Datadog, Inc.
 
-# Command for generating SBOM (Software Bill of Materials) CSV reports
+# Command for generating SBOM (Software Bill of Materials) reports.
 
 import contextlib
+import copy
+import inspect
 import json
 import logging
 import sys
 import tempfile
 from collections.abc import Callable
-from typing import Annotated
+from typing import Annotated, Any, get_args, get_origin
 
+import click
 import typer
 from agithub.GitHub import GitHub
 
@@ -73,8 +76,14 @@ from dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_meta
     ScanCodeToolkitMetadataCollectionStrategy,
 )
 from dd_license_attribution.report_generator.report_generator import ReportGenerator
+from dd_license_attribution.report_generator.writters.abstract_reporting_writter import (
+    ReportingWritter,
+)
 from dd_license_attribution.report_generator.writters.csv_reporting_writter import (
     CSVReportingWritter,
+)
+from dd_license_attribution.report_generator.writters.spdx_reporting_writter import (
+    SPDXReportingWritter,
 )
 from dd_license_attribution.utils.logging import setup_logging
 
@@ -85,11 +94,10 @@ logger = logging.getLogger("dd_license_attribution")
 def mutually_exclusive_group() -> (
     Callable[[typer.Context, typer.CallbackParam, bool], bool | None]
 ):
-    group = set()
-
     def callback(
         ctx: typer.Context, param: typer.CallbackParam, value: bool
     ) -> bool | None:
+        group: set[str] = ctx.meta.setdefault("mutually_exclusive_group", set())
         # Add cli option to group if it was called with a value
         if (
             value is True
@@ -117,13 +125,16 @@ only_root_project_or_transitive_callback = mutually_exclusive_group()
 def cache_validation() -> (
     Callable[[typer.Context, typer.CallbackParam, str | None], str | None]
 ):
-    group = {}
-    param_dir = set()
-    param_ttl = set()
-
     def callback(
         ctx: typer.Context, param: typer.CallbackParam, value: str | None
     ) -> str | None:
+        group: dict[str, Any] = ctx.meta.setdefault("cache_validation_group", {})
+        param_dir: set[typer.CallbackParam] = ctx.meta.setdefault(
+            "cache_validation_param_dir", set()
+        )
+        param_ttl: set[typer.CallbackParam] = ctx.meta.setdefault(
+            "cache_validation_param_ttl", set()
+        )
         if (
             param.name == "cache_dir"
             or param.name == "cache_ttl"
@@ -172,12 +183,13 @@ def github_token_conditional_group() -> Callable[
     [typer.Context, typer.CallbackParam, str | bool | None],
     str | bool | None,
 ]:
-    group = {}
-    param_token = set()
-
     def callback(
         ctx: typer.Context, param: typer.CallbackParam, value: str | bool | None
     ) -> str | bool | None:
+        group: dict[str, Any] = ctx.meta.setdefault("github_token_group", {})
+        param_token: set[typer.CallbackParam] = ctx.meta.setdefault(
+            "github_token_param_token", set()
+        )
         if param.name == "github_token":
             param_token.add(param)
         if param.name == "github_token" or param.name == "no_gh_auth":
@@ -197,7 +209,8 @@ def github_token_conditional_group() -> Callable[
 github_token_callback = github_token_conditional_group()
 
 
-def generate_sbom_csv(
+def generate_sbom(
+    ctx: typer.Context,
     package: Annotated[
         str,
         typer.Argument(
@@ -361,11 +374,22 @@ def generate_sbom_csv(
             rich_help_panel="Scanning Options",
         ),
     ] = None,
+    output_format: Annotated[
+        str,
+        typer.Option(
+            "--format",
+            help="Output format. One of: csv, spdx (SPDX 2.3 JSON). Default: csv.",
+            rich_help_panel="Output Options",
+        ),
+    ] = "csv",
 ) -> None:
     """
-    Generate a CSV report (SBOM) of third party dependencies for a given
+    Generate an SBOM report of third party dependencies for a given
     open source repository.
     """
+    if package is None:
+        raise click.MissingParameter(param=click.Argument(["package"]))
+
     if log_level.upper() == "DEBUG":
         setup_logging(logging.DEBUG)
     elif log_level.upper() == "ERROR":
@@ -377,6 +401,18 @@ def generate_sbom_csv(
     else:
         raise ValueError(
             f"Invalid log level. Must be one of: DEBUG, ERROR, WARNING, INFO. Provided: {log_level}"
+        )
+
+    if ctx.info_name == "generate-sbom-csv":
+        logger.warning(
+            "generate-sbom-csv is deprecated; use generate-sbom --format csv instead."
+        )
+        output_format = "csv"
+
+    supported_output_formats = {"csv", "spdx"}
+    if output_format not in supported_output_formats:
+        raise typer.BadParameter(
+            f"Unsupported output format: '{output_format}'. Supported formats: {', '.join(sorted(supported_output_formats))}."
         )
 
     supported_ecosystems = ["npm", "python", "pypi", "go"]
@@ -687,7 +723,14 @@ def generate_sbom_csv(
             )
             sys.exit(1)
 
-        csv_reporter = ReportGenerator(CSVReportingWritter())
+        reporting_writter: ReportingWritter
+        if output_format == "spdx":
+            reporting_writter = SPDXReportingWritter(
+                document_name=package.replace("https://", "").replace("http://", "")
+            )
+        else:
+            reporting_writter = CSVReportingWritter()
+        reporter = ReportGenerator(reporting_writter)
 
         checker = LicenseChecker(
             cli_config.default_config.preset_cautionary_licenses,
@@ -696,9 +739,9 @@ def generate_sbom_csv(
         checker.check_cautionary_licenses(metadata)
         checker.check_spdx_ids(metadata)
 
-        output = csv_reporter.generate_report(metadata)
+        output = reporter.generate_report(metadata)
 
-    # Output CSV to STDOUT for piping/redirection (e.g., ddla generate-sbom-csv URL > output.csv)
+    # Output report to STDOUT for piping/redirection (e.g., ddla generate-sbom URL > output.csv)
     # This is intentional CLI output, not logging. Do not replace with logger.info()
     print(output, end="")
     if override_strategy is not None and len(override_strategy.unused_targets()) != 0:
@@ -707,3 +750,32 @@ def generate_sbom_csv(
             "Unused targets: %s. Consider removing them.",
             override_strategy.unused_targets(),
         )
+
+
+def generate_sbom_csv(**kwargs: Any) -> None:
+    if kwargs.get("package") is None:
+        raise click.MissingParameter(param=click.Argument(["package"]))
+    kwargs["output_format"] = "csv"
+    generate_sbom(**kwargs)
+
+
+def _generate_sbom_csv_signature() -> inspect.Signature:
+    signature = inspect.signature(generate_sbom)
+    parameters = [
+        _clone_signature_parameter(parameter)
+        for parameter in signature.parameters.values()
+        if parameter.name != "output_format"
+    ]
+    return signature.replace(parameters=parameters)
+
+
+def _clone_signature_parameter(parameter: inspect.Parameter) -> inspect.Parameter:
+    annotation = parameter.annotation
+    if get_origin(annotation) is Annotated:
+        annotated_args = get_args(annotation)
+        metadata = tuple(copy.copy(item) for item in annotated_args[1:])
+        annotation = Annotated[annotated_args[0], *metadata]
+    return parameter.replace(annotation=annotation)
+
+
+setattr(generate_sbom_csv, "__signature__", _generate_sbom_csv_signature())

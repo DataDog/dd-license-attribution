@@ -6,7 +6,7 @@ This document describes the full architecture of the dd-license-attribution tool
 
 dd-license-attribution is a Python CLI tool that collects license and copyright information for third-party dependencies in open-source projects. It supports Go, Python (PyPI), and Node.js (npm/yarn) ecosystems.
 
-The tool produces a `LICENSE-3rdparty.csv` file with columns: `component`, `origin`, `license`, `copyright`.
+The tool produces CSV by default with columns: `component`, `origin`, `license`, `copyright`. It can also emit SPDX 2.3 JSON with `generate-sbom --format spdx`.
 
 ## Project Layout
 
@@ -14,7 +14,7 @@ The tool produces a `LICENSE-3rdparty.csv` file with columns: `component`, `orig
 src/dd_license_attribution/
 ├── cli/                          # CLI entry points (Typer framework)
 │   ├── main_cli.py               # App definition, registers commands
-│   ├── generate_sbom_csv_command.py   # Main command: build strategy pipeline, run collection, output CSV
+│   ├── generate_sbom_command.py       # Build strategy pipeline, run collection, output selected format
 │   ├── generate_overrides_command.py  # Interactive override generation
 │   └── clean_spdx_id_command.py       # AI-powered SPDX license cleaning
 ├── metadata_collector/
@@ -43,13 +43,16 @@ src/dd_license_attribution/
 ├── report_generator/
 │   ├── report_generator.py       # Delegates to a reporting writer
 │   └── writters/
-│       └── csv_reporting_writter.py  # Merges duplicates, outputs CSV
+│       ├── csv_reporting_writter.py   # Merges duplicates, outputs CSV
+│       ├── spdx_reporting_writter.py  # Merges duplicates, outputs SPDX 2.3 JSON
+│       └── metadata_combiner.py       # Shared duplicate merge helper
 ├── config/
 │   ├── cli_configs.py            # Preset file locations, cautionary licenses
 │   └── json_config_parser.py     # Parses mirror configs and override configs
 ├── adaptors/
 │   ├── os.py                     # Wraps all filesystem/subprocess operations
-│   └── datetime.py               # Wraps datetime.now() for testability
+│   ├── datetime.py               # Wraps datetime.now() for testability
+│   └── uuid.py                   # Wraps uuid4() for testability
 └── utils/
     ├── license_utils.py          # Detects long license text vs. SPDX identifiers
     ├── custom_splitting.py       # CSV-aware string splitting with quote/protected-term handling
@@ -89,7 +92,7 @@ class MetadataCollectionStrategy(ABC):
 
 ### Strategy Execution Order
 
-The `generate_sbom_csv_command.py` builds the pipeline based on CLI flags. A typical full pipeline:
+The `generate-sbom` command builds the pipeline based on CLI flags. A typical full pipeline:
 
 | Order | Strategy | Purpose |
 |-------|----------|---------|
@@ -209,7 +212,7 @@ The `generate-overrides` command provides an interactive workflow to create thes
 ## Data Flow: End to End
 
 ```
-CLI invocation (generate-sbom-csv)
+CLI invocation (generate-sbom)
     │
     ├── Parse arguments, setup logging
     ├── Load configs (mirrors, overrides)

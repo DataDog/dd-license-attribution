@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 
 ### Added
+- New `generate-sbom` subcommand with a `--format` option supporting CSV output by default and SPDX 2.3 JSON output via `--format spdx`.
 - `generate-sbom-csv` now emits a WARNING for each package whose license value is not a properly written SPDX expression composed entirely of OSI-approved identifiers. Using a non-OSI-approved license may be acceptable depending on your project's requirements. The warning message includes a reference to `generate-overrides` (interactive) and `clean-spdx-id` (AI-assisted) as remediation options.
 - Add `--ecosystem go` support for direct Go package/module dependency analysis (e.g., `ddla generate-sbom-csv --ecosystem go github.com/stretchr/testify@v1.9.0`)
 - New `--ecosystem` CLI option for `generate-sbom-csv` to accept package names by ecosystem. Supports `npm`, `python`, and `pypi` (e.g., `ddla generate-sbom-csv --ecosystem python --no-gh-auth requests==2.31.0`)
@@ -18,6 +19,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Changed
 - PyPI collection strategy now performs case-insensitive key matching for project_urls dictionary to better handle different key capitalizations from PyPI metadata
+
+### Deprecated
+- `generate-sbom-csv` is deprecated in favor of `generate-sbom --format csv`; it still works and emits a deprecation warning.
 
 ### Fixed
 - Fixed npm ecosystem SBOM generation when `npm list --json` emits warnings on stderr, which previously caused empty CSV output for packages such as `dd-trace`.

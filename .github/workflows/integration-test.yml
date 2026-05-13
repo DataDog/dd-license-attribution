@@ -62,10 +62,10 @@ jobs:
             MIRROR_URL="https://github.com/${{ github.event.pull_request.head.repo.full_name }}"
             echo "Testing PR branch: ${BRANCH_NAME}"
             echo "[{\"original_url\": \"https://github.com/DataDog/dd-license-attribution\", \"mirror_url\": \"${MIRROR_URL}\", \"ref_mapping\": {\"branch:main\": \"branch:${BRANCH_NAME}\"}}]" > mirrors.json
-            dd-license-attribution generate-sbom-csv --override-spec=.ddla-overrides --use-mirrors=mirrors.json https://github.com/DataDog/dd-license-attribution > ddla-output.txt
+            dd-license-attribution generate-sbom --override-spec=.ddla-overrides --use-mirrors=mirrors.json https://github.com/DataDog/dd-license-attribution > ddla-output.txt
           else
             echo "Testing main branch"
-            dd-license-attribution generate-sbom-csv --override-spec=.ddla-overrides https://github.com/DataDog/dd-license-attribution > ddla-output.txt
+            dd-license-attribution generate-sbom --override-spec=.ddla-overrides https://github.com/DataDog/dd-license-attribution > ddla-output.txt
           fi
 
           # Only compare CSV output on the primary development version (3.14).
@@ -86,13 +86,46 @@ jobs:
             echo "CSV comparison skipped on Python ${{ matrix.python-version }} (closure may differ). Output has $((line_count - 1)) dependencies."
           fi
 
-      - name: Upload ddla-output.txt on failure
+      - name: Run the dd-license-attribution script with SPDX output
+        if: ${{ matrix.python-version == '3.14' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            dd-license-attribution generate-sbom --format spdx --use-mirrors=mirrors.json https://github.com/DataDog/dd-license-attribution > ddla-spdx-output.json
+          else
+            dd-license-attribution generate-sbom --format spdx https://github.com/DataDog/dd-license-attribution > ddla-spdx-output.json
+          fi
+
+          python - <<'PY'
+          import json
+
+          with open("ddla-spdx-output.json", encoding="utf-8") as spdx_file:
+              document = json.load(spdx_file)
+
+          packages = document.get("packages", [])
+          relationships = document.get("relationships", [])
+
+          assert document["spdxVersion"] == "SPDX-2.3"
+          assert document["dataLicense"] == "CC0-1.0"
+          assert document["name"] == "github.com/DataDog/dd-license-attribution"
+          assert len(packages) > 1, "Expected real dependency data, not just the seed package"
+          assert len(relationships) >= len(packages)
+          assert any(
+              package.get("name") == "github.com/DataDog/dd-license-attribution"
+              for package in packages
+          )
+          PY
+
+      - name: Upload ddla outputs on failure
         if: failure()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ddla-output-${{ matrix.python-version }}
-          path: ddla-output.txt
-          if-no-files-found: error
+          path: |
+            ddla-output.txt
+            ddla-spdx-output.json
+          if-no-files-found: ignore
 
       - name: Run dd-license-attribution with --ecosystem go against a known Go package
         run: |
