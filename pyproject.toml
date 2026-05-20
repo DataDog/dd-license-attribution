@@ -8,6 +8,7 @@ version = "0.5.0"
 description = "A tool that collects license and copyright information for third party dependencies of a project."
 readme = "README.md"
 requires-python = ">=3.11"
+license = "Apache-2.0"
 authors = [
     { name = "Damian Vicino", email = "damian.vicino@datadoghq.com" },
     { name = "Ara Pulido", email = "ara.pulido@datadoghq.com" }
