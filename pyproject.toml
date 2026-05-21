@@ -34,7 +34,7 @@ dependencies = [
 
 [project.optional-dependencies]
 lint = [
-    "black==26.3.1",
+    "black==26.5.1",
     "isort==8.0.1",
     "ruff",
 ]
@@ -43,7 +43,7 @@ dev = [
     "pytest-cov",
     "pytest-mock",
     "mypy",
-    "black==26.3.1",
+    "black==26.5.1",
     "isort==8.0.1",
     "mutmut",
     "pytest-timeout",
