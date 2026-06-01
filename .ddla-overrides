@@ -140,17 +140,25 @@
   {
     "override_type": "replace",
     "target": {
-      "origin": "https://github.com/pypa/setuptools"
+      "component": "black",
+      "origin": "black"
     },
     "replacement": {
-      "name": "setuptools",
-      "origin": "https://github.com/pypa/setuptools",
-      "version": "67.8.0",
+      "name": "black",
+      "origin": "black",
       "license": [
         "MIT"
       ],
       "copyright": [
-        "Python Packaging Authority"
+        "Corporation for National Research Initiatives",
+        "Elemental Security, Inc.",
+        "Google, Inc.",
+        "Lukasz Langa",
+        "Lukasz Langa and contributors",
+        "Python Software Foundation",
+        "Reece Hart",
+        "Stichting Mathematisch Centrum Amsterdam",
+        "The Netherlands"
       ]
     }
   },
@@ -221,23 +229,7 @@
       ]
     }
   },
-  {
-    "override_type": "replace",
-    "target": {
-      "component": "multiregex",
-      "origin": "pypi:multiregex"
-    },
-    "replacement": {
-      "name": "multiregex",
-      "origin": "https://github.com/quantco/multiregex",
-      "license": [
-        "BSD-3-Clause"
-      ],
-      "copyright": [
-        "QuantCo Inc"
-      ]
-    }
-  },
+
   {
     "override_type": "replace",
     "target": {
