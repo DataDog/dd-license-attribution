@@ -97,7 +97,7 @@
 "tqdm","https://github.com/tqdm/tqdm","['MPL-2.0 AND MIT']","['Casper da Costa-Luis casperdcl', 'Noam Yorav-Raphael, original author', 'noamraph']"
 "typecode","https://github.com/aboutcode-org/typecode","['Apache-2.0']","['nexB. Inc. and others']"
 "typecode-libmagic","https://github.com/aboutcode-org/scancode-plugins","['apache-2.0 AND bsd-simplified-darwin AND (bsd-simplified AND public-domain AND bsd-new AND isc AND (bsd-new OR gpl-1.0-plus) AND bsd-original)']","['nexB']"
-"typer","https://github.com/fastapi/typer","['MIT']","['Sebastian Ramirez']"
+"typer","https://github.com/fastapi/typer","['MIT']","['Pallets', 'Sebastian Ramirez']"
 "typing-inspection","https://github.com/pydantic/typing-inspection","['MIT']","['Pydantic Services Inc.']"
 "typing_extensions","https://github.com/python/typing_extensions","['PSF-2.0']","['Corporation for National Research Initiatives', 'Python Software Foundation', 'Stichting Mathematisch Centrum Amsterdam, The Netherlands']"
 "uritools","https://github.com/tkem/uritools","['MIT']","['Thomas Kemmer']"
