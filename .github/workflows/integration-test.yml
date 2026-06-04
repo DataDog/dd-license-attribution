@@ -53,13 +53,17 @@ jobs:
       - name: Run the dd-license-attribution script against the dd-license-attribution repository with overrides
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PYTHON_VERSION: ${{ matrix.python-version }}
         run: |
           # For PRs: Use mirror configuration to test against the PR branch
           # For main: Test against main branch directly (no mirror needed)
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            BRANCH_NAME="${{ github.head_ref }}"
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
+            BRANCH_NAME="${HEAD_REF}"
             # Use head repo so fork PRs clone the branch from the fork, not upstream
-            MIRROR_URL="https://github.com/${{ github.event.pull_request.head.repo.full_name }}"
+            MIRROR_URL="https://github.com/${PR_HEAD_REPO}"
             echo "Testing PR branch: ${BRANCH_NAME}"
             echo "[{\"original_url\": \"https://github.com/DataDog/dd-license-attribution\", \"mirror_url\": \"${MIRROR_URL}\", \"ref_mapping\": {\"branch:main\": \"branch:${BRANCH_NAME}\"}}]" > mirrors.json
             dd-license-attribution generate-sbom --override-spec=.ddla-overrides --use-mirrors=mirrors.json https://github.com/DataDog/dd-license-attribution > ddla-output.txt
@@ -71,7 +75,7 @@ jobs:
           # Only compare CSV output on the primary development version (3.14).
           # Dependency closures differ across Python versions (e.g., setuptools
           # appears on 3.11 but not 3.14), so exact comparison only works on one.
-          if [ "${{ matrix.python-version }}" = "3.14" ]; then
+          if [ "${PYTHON_VERSION}" = "3.14" ]; then
             if ! cmp -s LICENSE-3rdparty.csv ddla-output.txt; then
               echo "Error: LICENSE-3rdparty.csv differs from ddla-output.txt"
               echo "Diff between files:"
@@ -83,15 +87,16 @@ jobs:
             # On other versions, just validate the output is non-empty CSV with expected header
             head -1 ddla-output.txt | grep -iq "component.*origin.*license.*copyright"
             line_count=$(wc -l < ddla-output.txt)
-            echo "CSV comparison skipped on Python ${{ matrix.python-version }} (closure may differ). Output has $((line_count - 1)) dependencies."
+            echo "CSV comparison skipped on Python ${PYTHON_VERSION} (closure may differ). Output has $((line_count - 1)) dependencies."
           fi
 
       - name: Run the dd-license-attribution script with SPDX output
         if: ${{ matrix.python-version == '3.14' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
+          if [ "${EVENT_NAME}" = "pull_request" ]; then
             dd-license-attribution generate-sbom --format spdx --use-mirrors=mirrors.json https://github.com/DataDog/dd-license-attribution > ddla-spdx-output.json
           else
             dd-license-attribution generate-sbom --format spdx https://github.com/DataDog/dd-license-attribution > ddla-spdx-output.json
