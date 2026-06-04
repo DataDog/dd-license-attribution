@@ -26,19 +26,22 @@ jobs:
 
       - name: Detect changed mutatable source files
         id: changed-files
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          BASE=${{ github.event.pull_request.base.sha }}
-          HEAD=${{ github.event.pull_request.head.sha }}
+          BASE="${PR_BASE_SHA}"
+          HEAD="${PR_HEAD_SHA}"
 
           # Source files changed directly
-          SRC_FILES=$(git diff --name-only "$BASE" "$HEAD" \
+          SRC_FILES=$(git diff --name-only "${BASE}" "${HEAD}" \
             | grep '^src/dd_license_attribution/.*\.py$' \
             | grep -v '/cli/' \
             | grep -v '/adaptors/' \
             | grep -v '/config/') || true
 
           # Source files corresponding to changed test files (test_X.py -> X.py)
-          TEST_DERIVED=$(git diff --name-only "$BASE" "$HEAD" \
+          TEST_DERIVED=$(git diff --name-only "${BASE}" "${HEAD}" \
             | grep '^tests/unit/test_.*\.py$' \
             | sed 's|tests/unit/test_||' \
             | while IFS= read -r basename; do
@@ -74,13 +77,18 @@ jobs:
 
       - name: Run mutation testing on target branch
         if: steps.changed-files.outputs.paths != ''
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CHANGED_PATHS: ${{ steps.changed-files.outputs.paths }}
         run: |
-          git checkout ${{ github.event.pull_request.base.sha }}
+          git checkout "${PR_BASE_SHA}"
           pip install -e "." --quiet
           python3 << 'PYEOF'
+          import os
           import re
           content = open('pyproject.toml').read()
-          paths = "${{ steps.changed-files.outputs.paths }}".split(',')
+          paths = os.environ['CHANGED_PATHS'].split(',')
           paths_str = '[' + ', '.join('"' + p.strip() + '"' for p in paths) + ']'
           content = re.sub(r'paths_to_mutate = \[.*\]', 'paths_to_mutate = ' + paths_str, content)
           # also_copy ensures the full src/ tree is in mutants/ so imports work when
@@ -94,16 +102,19 @@ jobs:
           mutmut results --all true > mutmut-base-results.txt
           rm -rf mutants/ .mutmut-cache
           git checkout -- pyproject.toml
-          git checkout ${{ github.event.pull_request.head.sha }}
+          git checkout "${PR_HEAD_SHA}"
           pip install -e "." --quiet
 
       - name: Run mutation testing on PR branch
         if: steps.changed-files.outputs.paths != ''
+        env:
+          CHANGED_PATHS: ${{ steps.changed-files.outputs.paths }}
         run: |
           python3 << 'PYEOF'
+          import os
           import re
           content = open('pyproject.toml').read()
-          paths = "${{ steps.changed-files.outputs.paths }}".split(',')
+          paths = os.environ['CHANGED_PATHS'].split(',')
           paths_str = '[' + ', '.join('"' + p.strip() + '"' for p in paths) + ']'
           content = re.sub(r'paths_to_mutate = \[.*\]', 'paths_to_mutate = ' + paths_str, content)
           if 'also_copy' not in content:
