@@ -54,8 +54,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT_NAME: ${{ github.event_name }}
-          HEAD_REF: ${{ github.head_ref }}
-          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_REF: ${{ github.head_ref || '' }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || '' }}
           PYTHON_VERSION: ${{ matrix.python-version }}
         run: |
           # For PRs: Use mirror configuration to test against the PR branch
