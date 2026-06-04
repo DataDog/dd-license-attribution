@@ -37,10 +37,21 @@ jobs:
       - name: Run mypy type checks
         run: mypy src tests
 
+      - name: Configure Datadog Test Optimization
+        uses: datadog/test-visibility-github-action@v2
+        with:
+          languages: python
+          api_key: ${{ secrets.DD_API_KEY }}
+          site: datadoghq.com
+
       - name: Run contract tests
+        env:
+          JOB_ID: ${{ job.check_run_id }}
         run: pytest tests/contract
 
       - name: Run tests with coverage
+        env:
+          JOB_ID: ${{ job.check_run_id }}
         run: pytest --cov-report=xml --cov-fail-under=90 tests/unit
 
       - name: Upload coverage report

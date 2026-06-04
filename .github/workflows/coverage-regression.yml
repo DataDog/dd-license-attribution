@@ -32,7 +32,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e ".[dev]"
 
+      - name: Configure Datadog Test Optimization
+        uses: datadog/test-visibility-github-action@v2
+        with:
+          languages: python
+          api_key: ${{ secrets.DD_API_KEY }}
+          site: datadoghq.com
+
       - name: Run coverage on target branch
+        env:
+          JOB_ID: ${{ job.check_run_id }}
         run: |
           git checkout ${{ github.event.pull_request.base.sha }}
           pip install -e "." --quiet
@@ -45,6 +54,8 @@ jobs:
           pip install -e "." --quiet
 
       - name: Run coverage on PR branch
+        env:
+          JOB_ID: ${{ job.check_run_id }}
         run: |
           pytest tests/unit/ --cov=src/dd_license_attribution --cov-report=xml:coverage-pr.xml -q
 
