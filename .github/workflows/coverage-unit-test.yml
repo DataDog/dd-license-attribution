@@ -15,6 +15,9 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
 
     env:
       TERM: dumb
@@ -37,10 +40,29 @@ jobs:
       - name: Run mypy type checks
         run: mypy src tests
 
+      - name: Get Datadog credentials
+        id: dd-sts
+        continue-on-error: true
+        uses: DataDog/dd-sts-action@2e8187910199bd93129520183c093e19aa585c75 # v1.0.0
+        with:
+          policy: dd-license-attribution-unit-test
+
+      - name: Configure Datadog Test Optimization
+        if: steps.dd-sts.outcome == 'success'
+        uses: DataDog/test-visibility-github-action@4e7afb05b464fd349275e41e65a7f4de83e7f46b # v2.10.0
+        with:
+          languages: python
+          api_key: ${{ steps.dd-sts.outputs.api_key }}
+          site: datadoghq.com
+
       - name: Run contract tests
+        env:
+          JOB_ID: ${{ job.check_run_id }}
         run: pytest tests/contract
 
       - name: Run tests with coverage
+        env:
+          JOB_ID: ${{ job.check_run_id }}
         run: pytest --cov-report=xml --cov-fail-under=90 tests/unit
 
       - name: Upload coverage report
