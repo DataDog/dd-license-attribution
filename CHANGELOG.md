@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `generate-sbom-csv` is deprecated in favor of `generate-sbom --format csv`; it still works and emits a deprecation warning.
 
 ### Fixed
+- Fixed source checkout for public GitHub repositories when GitHub API authentication is unavailable but `git clone` access still works.
 - Fixed npm ecosystem SBOM generation when `npm list --json` emits warnings on stderr, which previously caused empty CSV output for packages such as `dd-trace`.
 - Fixed npm metadata collection using semver ranges instead of resolved versions, causing incorrect or failed npm registry API lookups
 - Fixed support for package aliases in both Yarn and npm projects (e.g., `"@datadog/source-map": "npm:source-map@^0.6.0"`). The tool now parses both yarn.lock and package-lock.json files to resolve aliases to their real package names before fetching npm registry metadata, eliminating 404 errors for aliased packages
