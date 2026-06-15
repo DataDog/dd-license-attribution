@@ -48,7 +48,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          dd-license-attribution generate-sbom-csv --only-root-project https://github.com/DataDog/stratus-red-team
+          dd-license-attribution generate-sbom-csv --only-root-project --no-rust-strategy https://github.com/DataDog/stratus-red-team
 
       - name: Run the dd-license-attribution script against the dd-license-attribution repository with overrides
         env:
@@ -66,10 +66,10 @@ jobs:
             MIRROR_URL="https://github.com/${PR_HEAD_REPO}"
             echo "Testing PR branch: ${BRANCH_NAME}"
             echo "[{\"original_url\": \"https://github.com/DataDog/dd-license-attribution\", \"mirror_url\": \"${MIRROR_URL}\", \"ref_mapping\": {\"branch:main\": \"branch:${BRANCH_NAME}\"}}]" > mirrors.json
-            dd-license-attribution generate-sbom --override-spec=.ddla-overrides --use-mirrors=mirrors.json https://github.com/DataDog/dd-license-attribution > ddla-output.txt
+            dd-license-attribution generate-sbom --override-spec=.ddla-overrides --use-mirrors=mirrors.json --no-rust-strategy https://github.com/DataDog/dd-license-attribution > ddla-output.txt
           else
             echo "Testing main branch"
-            dd-license-attribution generate-sbom --override-spec=.ddla-overrides https://github.com/DataDog/dd-license-attribution > ddla-output.txt
+            dd-license-attribution generate-sbom --override-spec=.ddla-overrides --no-rust-strategy https://github.com/DataDog/dd-license-attribution > ddla-output.txt
           fi
 
           # Only compare CSV output on the primary development version (3.14).
@@ -97,9 +97,9 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ "${EVENT_NAME}" = "pull_request" ]; then
-            dd-license-attribution generate-sbom --format spdx --use-mirrors=mirrors.json https://github.com/DataDog/dd-license-attribution > ddla-spdx-output.json
+            dd-license-attribution generate-sbom --format spdx --use-mirrors=mirrors.json --no-rust-strategy https://github.com/DataDog/dd-license-attribution > ddla-spdx-output.json
           else
-            dd-license-attribution generate-sbom --format spdx https://github.com/DataDog/dd-license-attribution > ddla-spdx-output.json
+            dd-license-attribution generate-sbom --format spdx --no-rust-strategy https://github.com/DataDog/dd-license-attribution > ddla-spdx-output.json
           fi
 
           python - <<'PY'
