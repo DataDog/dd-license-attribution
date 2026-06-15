@@ -107,7 +107,7 @@ The following optional parameters are available for `generate-sbom`:
 - `--only-root-project`: Extracts information from the licenses and copyright of the passed package, not its dependencies.
 
 ##### Ecosystem Mode
-- `--ecosystem <name>`: Treat the package argument as a package name in the given ecosystem instead of a GitHub repository URL. Supported ecosystems: `go`, `npm`, `python` (alias: `pypi`), `rust`. Both `python` and `pypi` are equivalent and produce identical output. Example: `--ecosystem go github.com/stretchr/testify@v1.9.0`, `--ecosystem npm express`, `--ecosystem python requests==2.31.0`, `--ecosystem pypi requests==2.31.0`, `--ecosystem rust serde@1.0`.
+- `--ecosystem <name>`: Treat the package argument as a package name in the given ecosystem instead of a GitHub repository URL. Supported ecosystems: `go`, `npm`, `python` (alias: `pypi`), `rust`. Both `python` and `pypi` are equivalent and produce identical output. Example: `--ecosystem go github.com/stretchr/testify@v1.9.0`, `--ecosystem npm express`, `--ecosystem python requests==2.31.0`, `--ecosystem pypi requests==2.31.0`, `--ecosystem rust serde@1.0`. Rust ecosystem mode resolves library crates through Cargo and falls back to the published crates.io source archive for binary-only crates.
 
 ##### Strategy Selection
 - `--deep-scanning`: Enables intensive source code analysis using [scancode-toolkit](https://scancode-toolkit.readthedocs.io/en/latest/getting-started/home.html). This will parse license and copyright information from full package source code. Note: This is a resource-intensive task that may take hours or days to process depending on package size.
@@ -368,6 +368,9 @@ dd-license-attribution generate-sbom --ecosystem rust --no-gh-auth serde > LICEN
 
 # Analyze a specific Rust crate version
 dd-license-attribution generate-sbom --ecosystem rust --no-gh-auth serde@1.0 > LICENSE-3rdparty.csv
+
+# Binary-only crates are also supported through published crates.io source
+dd-license-attribution generate-sbom --ecosystem rust --no-gh-auth dd-rust-license-tool > LICENSE-3rdparty.csv
 ```
 
 #### Deep Scanning with Caching

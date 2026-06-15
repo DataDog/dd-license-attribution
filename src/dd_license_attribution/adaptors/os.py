@@ -7,9 +7,17 @@
 
 """Here we collect a set of OS wrappers and adaptors to be easily replaced during testing and debugging."""
 
+import io
 import os
 import subprocess
+import tarfile
 from typing import Iterator
+
+import requests
+
+DDLA_USER_AGENT = (
+    "dd-license-attribution (https://github.com/DataDog/dd-license-attribution)"
+)
 
 
 def _merge_env(extra: dict[str, str] | None) -> dict[str, str] | None:
@@ -78,6 +86,49 @@ def open_file(file_path: str) -> str:
 def write_file(file_path: str, content: str) -> None:
     with open(file_path, "w", encoding="utf-8") as file:
         file.write(content)
+
+
+def download_url(url: str, user_agent: str = DDLA_USER_AGENT) -> bytes:
+    try:
+        response = requests.get(
+            url,
+            allow_redirects=True,
+            headers={"User-Agent": user_agent},
+            timeout=30,
+        )
+        response.raise_for_status()
+    except requests.RequestException as e:
+        raise OSError(f"Failed to download {url}: {e}") from e
+    return response.content
+
+
+def _is_safe_tar_member(member: tarfile.TarInfo, destination: str) -> bool:
+    if member.issym() or member.islnk():
+        return False
+
+    if os.path.isabs(member.name) or ".." in member.name.split("/"):
+        return False
+
+    destination_abs = os.path.abspath(destination)
+    member_target = os.path.abspath(os.path.join(destination_abs, member.name))
+    return member_target == destination_abs or member_target.startswith(
+        f"{destination_abs}{os.sep}"
+    )
+
+
+def extract_tar_gz(archive_content: bytes, destination: str) -> list[str]:
+    with tarfile.open(fileobj=io.BytesIO(archive_content), mode="r:gz") as archive:
+        members = archive.getmembers()
+        unsafe_members = [
+            member.name
+            for member in members
+            if not _is_safe_tar_member(member, destination)
+        ]
+        if unsafe_members:
+            raise ValueError(f"Unsafe archive path: {unsafe_members[0]}")
+
+        archive.extractall(destination, members=members)
+        return [member.name for member in members]
 
 
 def is_dir(path: str) -> bool:

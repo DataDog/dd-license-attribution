@@ -754,6 +754,55 @@ def test_ecosystem_rust_passes_local_project_path_to_strategy(
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_ecosystem_rust_binary_fallback_passes_source_path_to_strategy(
+    mock_metadata_collector: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_ensure_rust_license_tool_installed: Mock,
+    mock_rust_resolver: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_rust_resolver.return_value.resolve_package.return_value = (
+        "/tmp/rust_resolve/dd-rust-license-tool/crate-source/"
+        "dd-rust-license-tool-1.0.6"
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "dd-rust-license-tool",
+            "--ecosystem",
+            "rust",
+            "--no-gh-auth",
+        ],
+    )
+    assert result.exit_code == 0
+
+    strategies = mock_metadata_collector.call_args[0][0]
+    rust_strategy = next(
+        s
+        for s in strategies
+        if s.__class__.__name__ == "RustMetadataCollectionStrategy"
+    )
+    assert (
+        rust_strategy.local_project_path
+        == "/tmp/rust_resolve/dd-rust-license-tool/crate-source/"
+        "dd-rust-license-tool-1.0.6"
+    )
+    mock_rust_resolver.return_value.resolve_package.assert_called_once_with(
+        "dd-rust-license-tool"
+    )
+    mock_ensure_rust_license_tool_installed.assert_called_once_with()
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.RustPackageResolver")
+@patch(
+    "dd_license_attribution.cli.generate_sbom_command.ensure_rust_license_tool_installed"
+)
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 def test_ecosystem_rust_missing_tool_error_exits_cleanly(
     mock_metadata_collector: Mock,
     mock_source_code_manager: Mock,

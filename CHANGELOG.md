@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - New `--yarn-subdir` CLI option for specifying subdirectories with additional `yarn.lock` files in monorepos
 - New `clean-spdx-id` CLI command to convert long license descriptions to valid SPDX license expressions using LLMs (OpenAI, Anthropic), including support for composite licenses (e.g., "MIT OR Apache-2.0")
 - Rust ecosystem support: auto-detect Cargo projects in GitHub URL mode, plus `--ecosystem rust` for direct crate analysis. Delegates to dd-rust-license-tool and honors per-project `license-tool.toml`.
+- `--ecosystem rust` now supports binary-only crates by falling back to the published crates.io source archive when Cargo cannot use the crate as a library dependency.
 
 ### Changed
 - PyPI collection strategy now performs case-insensitive key matching for project_urls dictionary to better handle different key capitalizations from PyPI metadata
