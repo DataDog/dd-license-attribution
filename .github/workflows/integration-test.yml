@@ -72,10 +72,11 @@ jobs:
             dd-license-attribution generate-sbom --override-spec=.ddla-overrides --no-rust-strategy https://github.com/DataDog/dd-license-attribution > ddla-output.txt
           fi
 
-          # Only compare CSV output on the primary development version (3.14).
-          # Dependency closures differ across Python versions (e.g., setuptools
-          # appears on 3.11 but not 3.14), so exact comparison only works on one.
-          if [ "${PYTHON_VERSION}" = "3.14" ]; then
+          # Only compare CSV output on the primary development version (3.14)
+          # for main branch runs. PR runs use the branch mirror and may change
+          # dependency metadata intentionally, so they validate output shape
+          # instead of exact golden-file equality.
+          if [ "${PYTHON_VERSION}" = "3.14" ] && [ "${EVENT_NAME}" != "pull_request" ]; then
             if ! cmp -s LICENSE-3rdparty.csv ddla-output.txt; then
               echo "Error: LICENSE-3rdparty.csv differs from ddla-output.txt"
               echo "Diff between files:"
@@ -84,10 +85,15 @@ jobs:
               exit 1
             fi
           else
-            # On other versions, just validate the output is non-empty CSV with expected header
+            # On PRs and other Python versions, just validate the output is
+            # non-empty CSV with expected header.
             head -1 ddla-output.txt | grep -iq "component.*origin.*license.*copyright"
             line_count=$(wc -l < ddla-output.txt)
-            echo "CSV comparison skipped on Python ${PYTHON_VERSION} (closure may differ). Output has $((line_count - 1)) dependencies."
+            if [ "${line_count}" -lt 2 ]; then
+              echo "Error: Expected at least 1 dependency in output, got $((line_count - 1))"
+              exit 1
+            fi
+            echo "CSV comparison skipped for event ${EVENT_NAME} on Python ${PYTHON_VERSION}. Output has $((line_count - 1)) dependencies."
           fi
 
       - name: Run the dd-license-attribution script with SPDX output
