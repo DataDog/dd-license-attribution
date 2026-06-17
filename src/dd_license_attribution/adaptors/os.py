@@ -11,13 +11,15 @@ import io
 import os
 import subprocess
 import tarfile
-from typing import Iterator
+from collections.abc import Iterator
 
 import requests
 
 DDLA_USER_AGENT = (
     "dd-license-attribution (https://github.com/DataDog/dd-license-attribution)"
 )
+DOWNLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
+MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 
 
 def _merge_env(extra: dict[str, str] | None) -> dict[str, str] | None:
@@ -88,21 +90,57 @@ def write_file(file_path: str, content: str) -> None:
         file.write(content)
 
 
-def download_url(url: str, user_agent: str = DDLA_USER_AGENT) -> bytes:
+def download_url(
+    url: str,
+    user_agent: str = DDLA_USER_AGENT,
+    max_bytes: int = MAX_DOWNLOAD_BYTES,
+) -> bytes:
+    if max_bytes <= 0:
+        raise ValueError("max_bytes must be greater than zero")
+
     try:
         response = requests.get(
             url,
             allow_redirects=True,
             headers={"User-Agent": user_agent},
+            stream=True,
             timeout=30,
         )
         response.raise_for_status()
+        content_length = response.headers.get("Content-Length")
+        if content_length is not None:
+            try:
+                expected_bytes = int(content_length)
+            except ValueError:
+                expected_bytes = 0
+            if expected_bytes > max_bytes:
+                raise OSError(
+                    f"Download from {url} exceeds maximum size of {max_bytes} bytes"
+                )
+
+        chunks: list[bytes] = []
+        downloaded_bytes = 0
+        for chunk in response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE_BYTES):
+            if not chunk:
+                continue
+            downloaded_bytes += len(chunk)
+            if downloaded_bytes > max_bytes:
+                raise OSError(
+                    f"Download from {url} exceeds maximum size of {max_bytes} bytes"
+                )
+            chunks.append(chunk)
     except requests.RequestException as e:
         raise OSError(f"Failed to download {url}: {e}") from e
-    return response.content
+    finally:
+        if "response" in locals():
+            response.close()
+    return b"".join(chunks)
 
 
 def _is_safe_tar_member(member: tarfile.TarInfo, destination: str) -> bool:
+    if not (member.isfile() or member.isdir()):
+        return False
+
     if member.issym() or member.islnk():
         return False
 
