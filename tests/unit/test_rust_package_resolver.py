@@ -54,6 +54,14 @@ class TestParseRustSpec:
         assert name == "serde"
         assert version == "*"
 
+    def test_version_may_contain_at_symbol(self) -> None:
+        resolver = RustPackageResolver("/cache")
+
+        name, version = resolver._parse_rust_spec("crate@1.0@metadata")
+
+        assert name == "crate"
+        assert version == "1.0@metadata"
+
 
 class TestResolvePackage:
     def setup_method(self) -> None:
@@ -671,6 +679,48 @@ class TestResolvePackage:
         mock_download_url.assert_not_called()
         mock_extract_tar_gz.assert_not_called()
 
+    def test_missing_lib_target_warning_detection_requires_all_terms(self) -> None:
+        assert self.resolver._metadata_reports_missing_lib_target(
+            "warning: Ignoring invalid dependency `serde` which is missing a lib target",
+            "serde",
+        )
+        assert not self.resolver._metadata_reports_missing_lib_target(
+            "warning: ignoring invalid dependency `serde`",
+            "serde",
+        )
+        assert not self.resolver._metadata_reports_missing_lib_target(
+            "warning: missing a lib target for unrelated",
+            "serde",
+        )
+        assert not self.resolver._metadata_reports_missing_lib_target(
+            "warning: ignoring invalid dependency `serde` which is missing a lib target",
+            "tokio",
+        )
+
+    def test_metadata_contains_crate_ignores_non_object_packages(self) -> None:
+        result = self.resolver._metadata_contains_crate(
+            json.dumps(
+                {
+                    "packages": [
+                        "serde",
+                        {"name": "serde_json"},
+                        {"name": "serde"},
+                    ]
+                }
+            ),
+            "serde",
+        )
+
+        assert result is True
+
+    def test_metadata_contains_crate_returns_false_when_absent(self) -> None:
+        result = self.resolver._metadata_contains_crate(
+            json.dumps({"packages": [{"name": "serde_json"}]}),
+            "serde",
+        )
+
+        assert result is False
+
     def test_missing_package_in_lockfile_returns_none(
         self, mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture
     ) -> None:
@@ -775,6 +825,30 @@ class TestResolvePackage:
             "did not contain packages" in record.message for record in caplog.records
         )
         mock_open_file.assert_called_once_with("/cache/dd-rust-license-tool/Cargo.lock")
+
+    def test_lockfile_ignores_non_object_packages_and_missing_versions(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        mock_open_file = mocker.patch(
+            "dd_license_attribution.artifact_management.rust_package_resolver.open_file",
+            return_value=(
+                "[[package]]\n"
+                'name = "other"\n'
+                'version = "1.0.0"\n'
+                "\n"
+                "[[package]]\n"
+                'name = "serde"\n'
+                "version = 123\n"
+            ),
+        )
+
+        result = self.resolver._get_resolved_crate_version(
+            "/cache/serde/Cargo.lock",
+            "serde",
+        )
+
+        assert result is None
+        mock_open_file.assert_called_once_with("/cache/serde/Cargo.lock")
 
     def test_lockfile_non_table_returns_none(
         self, mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture
@@ -970,10 +1044,30 @@ class TestResolvePackage:
 
         assert result == "/cache/source/renamed-root"
 
+    def test_extracted_root_prefers_expected_root_when_present(self) -> None:
+        result = self.resolver._get_extracted_crate_root(
+            "/cache/source",
+            ["other-root/Cargo.toml", "dd-rust-license-tool-1.0.6/src/main.rs"],
+            "dd-rust-license-tool",
+            "1.0.6",
+        )
+
+        assert result == "/cache/source/dd-rust-license-tool-1.0.6"
+
     def test_extracted_root_returns_none_for_multiple_top_level_members(self) -> None:
         result = self.resolver._get_extracted_crate_root(
             "/cache/source",
             ["one/Cargo.toml", "two/Cargo.toml"],
+            "dd-rust-license-tool",
+            "1.0.6",
+        )
+
+        assert result is None
+
+    def test_extracted_root_returns_none_for_empty_member_list(self) -> None:
+        result = self.resolver._get_extracted_crate_root(
+            "/cache/source",
+            [],
             "dd-rust-license-tool",
             "1.0.6",
         )

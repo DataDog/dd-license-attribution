@@ -1575,6 +1575,40 @@ def test_extract_ref_with_commit_hash(output_from_command_mock: Mock) -> None:
 @patch(
     "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
 )
+def test_extract_ref_returns_first_matching_ref_prefix(
+    output_from_command_mock: Mock,
+) -> None:
+    from dd_license_attribution.artifact_management.source_code_manager import (
+        extract_ref,
+    )
+
+    output_from_command_mock.side_effect = [
+        "",
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/feature/slash\n",
+    ]
+
+    result = extract_ref("feature/slash/path", "https://github.com/owner/repo")
+
+    assert result == "feature/slash"
+    output_from_command_mock.assert_has_calls(
+        [
+            call(["git", "ls-remote", "https://github.com/owner/repo", "feature"]),
+            call(
+                [
+                    "git",
+                    "ls-remote",
+                    "https://github.com/owner/repo",
+                    "feature/slash",
+                ]
+            ),
+        ]
+    )
+    assert output_from_command_mock.call_count == 2
+
+
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
 def test_extract_ref_with_invalid_hash_returns_empty(
     output_from_command_mock: Mock,
 ) -> None:
@@ -1596,6 +1630,13 @@ def test_extract_ref_with_invalid_hash_returns_empty(
     result = extract_ref(ref, url)
 
     assert result == ""
+    output_from_command_mock.assert_has_calls(
+        [
+            call(["git", "ls-remote", url, "invalid_ref"]),
+            call(["git", "ls-remote", url, "invalid_ref/path"]),
+            call(["git", "ls-remote", url]),
+        ]
+    )
     assert output_from_command_mock.call_count == 3
 
 
@@ -1628,6 +1669,7 @@ def test_discover_default_branch_with_exception(
     )
 
 
+@pytest.mark.parametrize("status", [404, 500])
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
 @patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
@@ -1635,6 +1677,7 @@ def test_get_code_returns_none_when_api_url_is_none(
     path_exists_mock: Mock,
     list_dir_mock: Mock,
     git_url_parse_mock: Mock,
+    status: int,
 ) -> None:
     """Test get_code returns None when canonical URL resolution returns None for api_url."""
     # Configure mocks
@@ -1669,7 +1712,7 @@ def test_get_code_returns_none_when_api_url_is_none(
     # Mock GitHub client to return 404
     github_client_mock = Mock()
     repo_mock = Mock()
-    repo_mock.get.return_value = (404, {"message": "Not Found"})
+    repo_mock.get.return_value = (status, {"message": "API error"})
     owner_mock = Mock()
     owner_mock.__getitem__ = Mock(return_value=repo_mock)
     repos_mock = Mock()
@@ -1684,8 +1727,12 @@ def test_get_code_returns_none_when_api_url_is_none(
     # Should return None because api_url is None (GitHub API returned 404)
     assert code_ref is None
     assert git_url_parse_mock.call_count == 2
+    repo_mock.get.assert_called_once_with()
+    path_exists_mock.assert_called_once_with("cache_dir")
+    list_dir_mock.assert_called_once_with("cache_dir")
 
 
+@pytest.mark.parametrize("auth_status", [401, 403])
 @patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
 @patch(
     "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
@@ -1705,6 +1752,7 @@ def test_get_code_falls_back_to_clone_when_github_api_auth_fails(
     run_command_mock: Mock,
     output_from_command_mock: Mock,
     create_dirs_mock: Mock,
+    auth_status: int,
 ) -> None:
     get_datetime_now_mock.return_value = datetime.fromisoformat(
         "2022-01-01T00:00:00+00:00"
@@ -1728,7 +1776,7 @@ def test_get_code_falls_back_to_clone_when_github_api_auth_fails(
     run_command_mock.return_value = 0
 
     repo_mock = Mock()
-    repo_mock.get.return_value = (401, {"message": "Bad credentials"})
+    repo_mock.get.return_value = (auth_status, {"message": "Bad credentials"})
     owner_mock = Mock()
     owner_mock.__getitem__ = Mock(return_value=repo_mock)
     repos_mock = Mock()

@@ -68,7 +68,12 @@ filterwarnings = [
 [tool.mutmut]
 paths_to_mutate = ["src/"]
 tests_dir = ["tests/unit/"]
-do_not_mutate = ["src/dd_license_attribution/cli/*", "src/dd_license_attribution/adaptors/*", "src/dd_license_attribution/config/*"]
+do_not_mutate = [
+    "src/dd_license_attribution/cli/*",
+    "src/dd_license_attribution/adaptors/*",
+    "src/dd_license_attribution/config/*",
+    "src/dd_license_attribution/artifact_management/source_code_manager.py",
+]
 mutate_only_covered_lines = false
 pytest_add_cli_args = ["--timeout=30", "--ignore=tests/unit/test_clean_spdx_id_command.py", "--ignore=tests/unit/test_generate_sbom_csv_command.py", "--ignore=tests/unit/test_generate_overrides_command.py"]
 

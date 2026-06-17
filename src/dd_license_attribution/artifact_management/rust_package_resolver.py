@@ -54,7 +54,7 @@ class RustPackageResolver:
     def resolve_package(self, rust_package_spec: str) -> str | None:
         """Resolve a Rust crate spec into a local directory with Cargo.lock."""
         name, version = self._parse_rust_spec(rust_package_spec)
-        logger.info("Resolving Rust crate: %s@%s", name, version)
+        logger.info("Resolving Rust crate: %s@%s", name, version)  # pragma: no mutate
 
         sanitized_name = re.sub(r"[^a-zA-Z0-9_-]", "_", name)
         resolve_dir = path_join(self.working_dir, sanitized_name)
@@ -78,7 +78,7 @@ class RustPackageResolver:
             create_dirs(src_dir)
             write_file(main_rs_path, "fn main() {}\n")
         except OSError as e:
-            logger.error(
+            logger.error(  # pragma: no mutate
                 "Failed to write synthetic Cargo project for %s: %s",
                 rust_package_spec,
                 e,
@@ -91,19 +91,21 @@ class RustPackageResolver:
                 cwd=resolve_dir,
             )
             if exit_code != 0:
-                logger.error(
+                logger.error(  # pragma: no mutate
                     "cargo generate-lockfile failed for %s: %s",
                     rust_package_spec,
                     format_command_output(output, error_output),
                 )
                 return None
         except OSError as e:
-            logger.error("Failed to resolve Rust crate %s: %s", rust_package_spec, e)
+            logger.error(  # pragma: no mutate
+                "Failed to resolve Rust crate %s: %s", rust_package_spec, e
+            )
             return None
 
         cargo_lock_path = path_join(resolve_dir, "Cargo.lock")
         if not path_exists(cargo_lock_path):
-            logger.error(
+            logger.error(  # pragma: no mutate
                 "cargo generate-lockfile did not create Cargo.lock in %s",
                 resolve_dir,
             )
@@ -115,14 +117,14 @@ class RustPackageResolver:
                 cwd=resolve_dir,
             )
             if exit_code != 0:
-                logger.error(
+                logger.error(  # pragma: no mutate
                     "cargo metadata failed for %s: %s",
                     rust_package_spec,
                     format_command_output(output, error_output),
                 )
                 return None
         except OSError as e:
-            logger.error(
+            logger.error(  # pragma: no mutate
                 "Failed to inspect resolved Rust crate %s: %s",
                 rust_package_spec,
                 e,
@@ -134,7 +136,7 @@ class RustPackageResolver:
             return None
 
         if metadata_contains_crate:
-            logger.info(
+            logger.info(  # pragma: no mutate
                 "Successfully resolved Rust crate %s to %s",
                 rust_package_spec,
                 resolve_dir,
@@ -142,7 +144,7 @@ class RustPackageResolver:
             return resolve_dir
 
         if not self._metadata_reports_missing_lib_target(error_output, name):
-            logger.error(
+            logger.error(  # pragma: no mutate
                 "cargo metadata did not include Rust crate %s and did not report "
                 "a missing lib target: %s",
                 rust_package_spec,
@@ -150,7 +152,7 @@ class RustPackageResolver:
             )
             return None
 
-        logger.info(
+        logger.info(  # pragma: no mutate
             "Rust crate %s has no lib target; falling back to crates.io source",
             rust_package_spec,
         )
@@ -167,16 +169,22 @@ class RustPackageResolver:
         try:
             metadata: Any = json.loads(metadata_output)
         except json.JSONDecodeError as e:
-            logger.error("Failed to parse cargo metadata output: %s", e)
+            logger.error(  # pragma: no mutate
+                "Failed to parse cargo metadata output: %s", e
+            )
             return None
 
         if not isinstance(metadata, dict):
-            logger.error("cargo metadata output was not a JSON object")
+            logger.error(  # pragma: no mutate
+                "cargo metadata output was not a JSON object"
+            )
             return None
 
         packages = metadata.get("packages")
         if not isinstance(packages, list):
-            logger.error("cargo metadata output did not contain a packages list")
+            logger.error(  # pragma: no mutate
+                "cargo metadata output did not contain a packages list"
+            )
             return None
 
         for package in packages:
@@ -207,7 +215,7 @@ class RustPackageResolver:
             crate_name,
         )
         if resolved_version is None:
-            logger.error(
+            logger.error(  # pragma: no mutate
                 "Could not find resolved version for Rust crate %s in %s",
                 rust_package_spec,
                 cargo_lock_path,
@@ -225,7 +233,7 @@ class RustPackageResolver:
             )
             extracted_members = extract_tar_gz(archive_content, source_parent_dir)
         except (OSError, ValueError) as e:
-            logger.error(
+            logger.error(  # pragma: no mutate
                 "Failed to download or extract Rust crate source for %s: %s",
                 rust_package_spec,
                 e,
@@ -239,7 +247,7 @@ class RustPackageResolver:
             resolved_version,
         )
         if source_root is None:
-            logger.error(
+            logger.error(  # pragma: no mutate
                 "Could not identify extracted source root for Rust crate %s",
                 rust_package_spec,
             )
@@ -247,14 +255,14 @@ class RustPackageResolver:
 
         cargo_toml_path = path_join(source_root, "Cargo.toml")
         if not path_exists(cargo_toml_path):
-            logger.error(
+            logger.error(  # pragma: no mutate
                 "Extracted Rust crate source for %s did not contain Cargo.toml at %s",
                 rust_package_spec,
                 cargo_toml_path,
             )
             return None
 
-        logger.info(
+        logger.info(  # pragma: no mutate
             "Successfully resolved Rust crate %s to published source at %s",
             rust_package_spec,
             source_root,
@@ -267,19 +275,27 @@ class RustPackageResolver:
         try:
             cargo_lock: Any = tomllib.loads(open_file(cargo_lock_path))
         except OSError as e:
-            logger.error("Failed to read Cargo.lock at %s: %s", cargo_lock_path, e)
+            logger.error(  # pragma: no mutate
+                "Failed to read Cargo.lock at %s: %s", cargo_lock_path, e
+            )
             return None
         except tomllib.TOMLDecodeError as e:
-            logger.error("Failed to parse Cargo.lock at %s: %s", cargo_lock_path, e)
+            logger.error(  # pragma: no mutate
+                "Failed to parse Cargo.lock at %s: %s", cargo_lock_path, e
+            )
             return None
 
         if not isinstance(cargo_lock, dict):
-            logger.error("Cargo.lock at %s was not a TOML table", cargo_lock_path)
+            logger.error(  # pragma: no mutate
+                "Cargo.lock at %s was not a TOML table", cargo_lock_path
+            )
             return None
 
         packages = cargo_lock.get("package")
         if not isinstance(packages, list):
-            logger.error("Cargo.lock at %s did not contain packages", cargo_lock_path)
+            logger.error(  # pragma: no mutate
+                "Cargo.lock at %s did not contain packages", cargo_lock_path
+            )
             return None
 
         for package in packages:

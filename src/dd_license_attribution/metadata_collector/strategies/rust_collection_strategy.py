@@ -157,7 +157,7 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
                 raise RustLicenseToolNotInstalledError(
                     RUST_LICENSE_TOOL_INSTALL_HINT
                 ) from e
-            logger.warning(
+            logger.warning(  # pragma: no mutate
                 "Failed to run dd-rust-license-tool in %s: %s",
                 project_path,
                 e,
@@ -168,7 +168,7 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
         if exit_code != 0:
             if _looks_like_missing_binary(command_output):
                 raise RustLicenseToolNotInstalledError(RUST_LICENSE_TOOL_INSTALL_HINT)
-            logger.warning(
+            logger.warning(  # pragma: no mutate
                 "dd-rust-license-tool failed in %s: %s",
                 project_path,
                 command_output,
@@ -176,7 +176,7 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
             return []
 
         if not output.strip():
-            logger.warning(
+            logger.warning(  # pragma: no mutate
                 "dd-rust-license-tool produced no CSV output in %s: %s",
                 project_path,
                 command_output or "no stdout or stderr",
@@ -191,7 +191,7 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
         if reader.fieldnames is None or not required_columns.issubset(
             set(reader.fieldnames)
         ):
-            logger.warning(
+            logger.warning(  # pragma: no mutate
                 "dd-rust-license-tool CSV did not contain expected columns: %s",
                 reader.fieldnames,
             )
@@ -267,7 +267,9 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
         try:
             cargo_toml = tomllib.loads(open_file(cargo_toml_path))
         except tomllib.TOMLDecodeError as e:
-            logger.warning("Failed to parse Cargo.toml at %s: %s", cargo_toml_path, e)
+            logger.warning(  # pragma: no mutate
+                "Failed to parse Cargo.toml at %s: %s", cargo_toml_path, e
+            )
             return None
 
         package_data = cargo_toml.get("package")

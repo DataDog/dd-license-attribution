@@ -24,6 +24,7 @@ from dd_license_attribution.metadata_collector.strategies.rust_collection_strate
     RUST_LICENSE_TOOL_INSTALL_HINT,
     RustLicenseToolNotInstalledError,
     RustMetadataCollectionStrategy,
+    _looks_like_missing_binary,
     ensure_rust_license_tool_installed,
 )
 
@@ -230,7 +231,13 @@ def test_local_project_path_only_transitive_filters_requested_crate(
     assert [metadata.name for metadata in result] == ["anyhow", "blank-origin"]
     assert not any(metadata.name == "serde" for metadata in result)
     source_code_manager.get_code.assert_not_called()
-    mock_run_command.assert_called_once()
+    mock_run_command.assert_called_once_with(
+        [
+            RUST_LICENSE_TOOL_COMMAND,
+            "dump",
+        ],
+        cwd="/tmp/rust-resolve/serde",
+    )
     mock_path_exists.assert_not_called()
     mock_open_file.assert_not_called()
 
@@ -450,6 +457,21 @@ def test_ensure_rust_license_tool_installed_raises_when_binary_is_missing(
     mock_run_command.assert_called_once_with([RUST_LICENSE_TOOL_COMMAND, "--version"])
 
 
+def test_ensure_rust_license_tool_installed_raises_for_os_error(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_run_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.run_command_with_check",
+        side_effect=OSError("permission denied"),
+    )
+
+    with pytest.raises(RustLicenseToolNotInstalledError) as exc_info:
+        ensure_rust_license_tool_installed()
+
+    assert str(exc_info.value) == RUST_LICENSE_TOOL_INSTALL_HINT
+    mock_run_command.assert_called_once_with([RUST_LICENSE_TOOL_COMMAND, "--version"])
+
+
 def test_ensure_rust_license_tool_installed_raises_when_version_check_fails(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -518,9 +540,39 @@ def test_nonzero_missing_binary_output_raises_typed_error(
     with pytest.raises(RustLicenseToolNotInstalledError):
         strategy.augment_metadata([])
 
-    mock_run_command.assert_called_once()
+    mock_run_command.assert_called_once_with(
+        [
+            RUST_LICENSE_TOOL_COMMAND,
+            "dump",
+        ],
+        cwd="/tmp/rust-resolve/serde",
+    )
     mock_path_exists.assert_not_called()
     mock_open_file.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "error_text",
+    [
+        "dd-rust-license-tool: command not found",
+        "No such file or directory: dd-rust-license-tool",
+        "could not execute dd-rust-license-tool",
+    ],
+)
+def test_missing_binary_detection_matches_supported_errors(error_text: str) -> None:
+    assert _looks_like_missing_binary(error_text)
+
+
+@pytest.mark.parametrize(
+    "error_text",
+    [
+        "cargo: command not found",
+        "dd-rust-license-tool returned an invalid CSV",
+        "permission denied",
+    ],
+)
+def test_missing_binary_detection_rejects_unrelated_errors(error_text: str) -> None:
+    assert not _looks_like_missing_binary(error_text)
 
 
 def test_invalid_csv_keeps_non_seed_metadata(
@@ -561,7 +613,13 @@ def test_invalid_csv_keeps_non_seed_metadata(
     )
 
     assert result == [preserved_metadata]
-    mock_run_command.assert_called_once()
+    mock_run_command.assert_called_once_with(
+        [
+            RUST_LICENSE_TOOL_COMMAND,
+            "dump",
+        ],
+        cwd="/tmp/rust-resolve/serde",
+    )
     mock_path_exists.assert_not_called()
     mock_open_file.assert_not_called()
 
@@ -660,7 +718,13 @@ def test_os_error_that_looks_like_missing_binary_raises_typed_error(
     with pytest.raises(RustLicenseToolNotInstalledError):
         strategy.augment_metadata([])
 
-    mock_run_command.assert_called_once()
+    mock_run_command.assert_called_once_with(
+        [
+            RUST_LICENSE_TOOL_COMMAND,
+            "dump",
+        ],
+        cwd="/tmp/rust-resolve/serde",
+    )
     mock_path_exists.assert_not_called()
     mock_open_file.assert_not_called()
 
@@ -703,7 +767,13 @@ def test_non_missing_os_error_returns_non_seed_metadata(
     )
 
     assert result == [preserved_metadata]
-    mock_run_command.assert_called_once()
+    mock_run_command.assert_called_once_with(
+        [
+            RUST_LICENSE_TOOL_COMMAND,
+            "dump",
+        ],
+        cwd="/tmp/rust-resolve/serde",
+    )
     mock_path_exists.assert_not_called()
     mock_open_file.assert_not_called()
 
@@ -746,9 +816,62 @@ def test_nonzero_tool_failure_returns_non_seed_metadata(
     )
 
     assert result == [preserved_metadata]
-    mock_run_command.assert_called_once()
+    mock_run_command.assert_called_once_with(
+        [
+            RUST_LICENSE_TOOL_COMMAND,
+            "dump",
+        ],
+        cwd="/tmp/rust-resolve/serde",
+    )
     mock_path_exists.assert_not_called()
     mock_open_file.assert_not_called()
+
+
+def test_parse_csv_defaults_missing_cells_to_empty_strings() -> None:
+    source_code_manager = _mock_source_code_manager()
+    strategy = RustMetadataCollectionStrategy(
+        "root-crate",
+        source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/rust-resolve/serde",
+    )
+
+    rows = strategy._parse_csv(
+        "Component,Origin,License,Copyright\n"
+        "serde,https://github.com/serde-rs/serde,,\n"
+        ",,MIT,\n"
+    )
+
+    assert rows == [
+        {
+            "Component": "serde",
+            "Origin": "https://github.com/serde-rs/serde",
+            "License": "",
+            "Copyright": "",
+        },
+        {
+            "Component": "",
+            "Origin": "",
+            "License": "MIT",
+            "Copyright": "",
+        },
+    ]
+    source_code_manager.get_canonical_urls.assert_not_called()
+
+
+def test_parse_crate_name_preserves_version_suffix_after_first_at() -> None:
+    source_code_manager = _mock_source_code_manager()
+    strategy = RustMetadataCollectionStrategy(
+        "root-crate",
+        source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/rust-resolve/serde",
+    )
+
+    result = strategy._parse_crate_name("crate@1.0@metadata")
+
+    assert result == "crate"
+    source_code_manager.get_canonical_urls.assert_not_called()
 
 
 def test_ingest_updates_existing_metadata_when_fields_are_missing() -> None:
