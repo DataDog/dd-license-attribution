@@ -20,6 +20,7 @@ DDLA_USER_AGENT = (
 )
 DOWNLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
+MAX_EXTRACTED_ARCHIVE_BYTES = 100 * 1024 * 1024
 
 
 def _merge_env(extra: dict[str, str] | None) -> dict[str, str] | None:
@@ -154,7 +155,14 @@ def _is_safe_tar_member(member: tarfile.TarInfo, destination: str) -> bool:
     )
 
 
-def extract_tar_gz(archive_content: bytes, destination: str) -> list[str]:
+def extract_tar_gz(
+    archive_content: bytes,
+    destination: str,
+    max_extracted_bytes: int = MAX_EXTRACTED_ARCHIVE_BYTES,
+) -> list[str]:
+    if max_extracted_bytes <= 0:
+        raise ValueError("max_extracted_bytes must be greater than zero")
+
     with tarfile.open(fileobj=io.BytesIO(archive_content), mode="r:gz") as archive:
         members = archive.getmembers()
         unsafe_members = [
@@ -164,6 +172,20 @@ def extract_tar_gz(archive_content: bytes, destination: str) -> list[str]:
         ]
         if unsafe_members:
             raise ValueError(f"Unsafe archive path: {unsafe_members[0]}")
+
+        extracted_bytes = 0
+        for member in members:
+            if member.isfile() and member.size > max_extracted_bytes:
+                raise ValueError(
+                    f"Archive member {member.name} exceeds maximum extracted size "
+                    f"of {max_extracted_bytes} bytes"
+                )
+            extracted_bytes += member.size
+            if extracted_bytes > max_extracted_bytes:
+                raise ValueError(
+                    "Archive exceeds maximum extracted size "
+                    f"of {max_extracted_bytes} bytes"
+                )
 
         archive.extractall(destination, members=members)
         return [member.name for member in members]

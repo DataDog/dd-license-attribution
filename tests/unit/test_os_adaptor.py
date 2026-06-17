@@ -44,6 +44,16 @@ def _tar_gz_with_member(member: tarfile.TarInfo) -> bytes:
     return archive_bytes.getvalue()
 
 
+def _tar_gz_with_files(files: dict[str, bytes]) -> bytes:
+    archive_bytes = io.BytesIO()
+    with tarfile.open(fileobj=archive_bytes, mode="w:gz") as archive:
+        for name, content in files.items():
+            member = tarfile.TarInfo(name)
+            member.size = len(content)
+            archive.addfile(member, io.BytesIO(content))
+    return archive_bytes.getvalue()
+
+
 def test_download_url_streams_response_and_closes(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -156,3 +166,39 @@ def test_extract_tar_gz_rejects_special_members(member_type: bytes) -> None:
 
     with pytest.raises(ValueError, match="Unsafe archive path: crate/special"):
         extract_tar_gz(archive_content, "/destination")
+
+
+def test_extract_tar_gz_rejects_file_over_extracted_size_limit() -> None:
+    archive_content = _tar_gz_with_files({"crate/large.txt": b"x" * 21})
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Archive member crate/large.txt exceeds maximum extracted size "
+            "of 20 bytes"
+        ),
+    ):
+        extract_tar_gz(
+            archive_content,
+            "/destination",
+            max_extracted_bytes=20,
+        )
+
+
+def test_extract_tar_gz_rejects_total_extracted_size_over_limit() -> None:
+    archive_content = _tar_gz_with_files(
+        {
+            "crate/one.txt": b"x" * 10,
+            "crate/two.txt": b"y" * 11,
+        }
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Archive exceeds maximum extracted size of 20 bytes",
+    ):
+        extract_tar_gz(
+            archive_content,
+            "/destination",
+            max_extracted_bytes=20,
+        )
