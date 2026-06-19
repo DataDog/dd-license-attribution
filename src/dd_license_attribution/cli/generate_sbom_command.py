@@ -45,7 +45,10 @@ from dd_license_attribution.artifact_management.source_code_manager import (
     UnauthorizedRepository,
 )
 from dd_license_attribution.config import JsonConfigParser
-from dd_license_attribution.metadata_collector import MetadataCollector
+from dd_license_attribution.metadata_collector import (
+    MetadataCollector,
+    TwoPhaseMetadataCollector,
+)
 from dd_license_attribution.metadata_collector.license_checker import LicenseChecker
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
@@ -288,6 +291,14 @@ def generate_sbom(
         typer.Option(
             "--no-scancode-strategy",
             help="Skip the ScanCodeToolkit collection strategy.",
+            rich_help_panel="Scanning Options",
+        ),
+    ] = False,
+    experimental_strategy: Annotated[
+        bool,
+        typer.Option(
+            "--experimental-strategy",
+            help="Enable experimental two-phase dependency discovery. Finders run in a fixpoint loop; enrichers run once on the stable set. Not yet stable.",
             rich_help_panel="Scanning Options",
         ),
     ] = False,
@@ -691,23 +702,50 @@ def generate_sbom(
         if override_spec:
             try:
                 override_rules = JsonConfigParser.load_override_configs(override_spec)
-                # interleave the override rules between all the elements of
-                # strategies this is done to make sure that the override rules
-                # are applied to all dependencies as soon as they are added to
-                # the closure and prevent failures of fetching non available data
                 override_strategy = OverrideCollectionStrategy(override_rules)
-                for i in range(len(strategies) - 1, -1, -1):
-                    strategies.insert(i, override_strategy)
             except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
                 logger.error(str(e))
                 sys.exit(1)
 
-        # Add cleanup strategy at the very end after all other strategies
-        # including overrides
-        if enabled_strategies["CleanupCopyrightMetadataStrategy"]:
-            strategies.append(CleanupCopyrightMetadataStrategy())
-
-        metadata_collector = MetadataCollector(strategies)
+        if experimental_strategy:
+            # Two-phase path: finders run in a fixpoint loop, enrichers run once.
+            # Override interleaving is handled internally by TwoPhaseMetadataCollector.
+            # Existing strategies are placed by role convention until per-ecosystem
+            # experimental strategy classes (DependencyFinderStrategy /
+            # MetadataEnricherStrategy subclasses) replace them.
+            _FINDER_STRATEGY_NAMES = {
+                "GitHubSbomMetadataCollectionStrategy",
+                "GoPkgMetadataCollectionStrategy",
+                "PypiMetadataCollectionStrategy",
+                "NpmMetadataCollectionStrategy",
+            }
+            finders = [
+                s for s in strategies if s.__class__.__name__ in _FINDER_STRATEGY_NAMES
+            ]
+            enrichers = [
+                s
+                for s in strategies
+                if s.__class__.__name__ not in _FINDER_STRATEGY_NAMES
+            ]
+            if enabled_strategies["CleanupCopyrightMetadataStrategy"]:
+                enrichers.append(CleanupCopyrightMetadataStrategy())
+            metadata_collector: MetadataCollector | TwoPhaseMetadataCollector = (
+                TwoPhaseMetadataCollector(
+                    finders=finders,
+                    enrichers=enrichers,
+                    override_strategy=override_strategy,
+                )
+            )
+        else:
+            # Existing linear cascade path.
+            if override_strategy is not None:
+                # interleave overrides before every strategy so they fire as
+                # soon as dependencies are added to the closure
+                for i in range(len(strategies) - 1, -1, -1):
+                    strategies.insert(i, override_strategy)
+            if enabled_strategies["CleanupCopyrightMetadataStrategy"]:
+                strategies.append(CleanupCopyrightMetadataStrategy())
+            metadata_collector = MetadataCollector(strategies)
         try:
             metadata = metadata_collector.collect_metadata(package)
         except (NonAccessibleRepository, UnauthorizedRepository) as e:
