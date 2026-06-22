@@ -14,21 +14,21 @@ from dd_license_attribution.cli.main_cli import app
 runner = CliRunner()
 
 
-@patch("dd_license_attribution.cli.generate_sbom_command.TwoPhaseMetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
-def test_experimental_strategy_uses_two_phase_collector(
+def test_experimental_strategy_uses_three_phase_collector(
     mock_csv: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_metadata_collector: Mock,
-    mock_two_phase_collector: Mock,
+    mock_three_phase_collector: Mock,
 ) -> None:
-    mock_two_phase_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
         "https://github.com/org/repo",
         None,
@@ -47,11 +47,11 @@ def test_experimental_strategy_uses_two_phase_collector(
     )
 
     assert result.exit_code == 0, result.output
-    mock_two_phase_collector.assert_called_once()
+    mock_three_phase_collector.assert_called_once()
     mock_metadata_collector.assert_not_called()
 
 
-@patch("dd_license_attribution.cli.generate_sbom_command.TwoPhaseMetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
@@ -63,9 +63,9 @@ def test_experimental_github_repo_puts_github_sbom_in_pre_finders_not_finders(
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_metadata_collector: Mock,
-    mock_two_phase_collector: Mock,
+    mock_three_phase_collector: Mock,
 ) -> None:
-    mock_two_phase_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
         "https://github.com/org/repo",
         None,
@@ -84,14 +84,14 @@ def test_experimental_github_repo_puts_github_sbom_in_pre_finders_not_finders(
     )
 
     assert result.exit_code == 0, result.output
-    _, kwargs = mock_two_phase_collector.call_args
+    _, kwargs = mock_three_phase_collector.call_args
     pre_finder_classes = [f.__class__.__name__ for f in kwargs["pre_finders"]]
     finder_classes = [f.__class__.__name__ for f in kwargs["finders"]]
     assert "GitHubSbomMetadataCollectionStrategy" in pre_finder_classes
     assert "GitHubSbomMetadataCollectionStrategy" not in finder_classes
 
 
-@patch("dd_license_attribution.cli.generate_sbom_command.TwoPhaseMetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
@@ -103,7 +103,7 @@ def test_without_experimental_strategy_uses_metadata_collector(
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_metadata_collector: Mock,
-    mock_two_phase_collector: Mock,
+    mock_three_phase_collector: Mock,
 ) -> None:
     mock_metadata_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
@@ -120,10 +120,10 @@ def test_without_experimental_strategy_uses_metadata_collector(
 
     assert result.exit_code == 0, result.output
     mock_metadata_collector.assert_called_once()
-    mock_two_phase_collector.assert_not_called()
+    mock_three_phase_collector.assert_not_called()
 
 
-@patch("dd_license_attribution.cli.generate_sbom_command.TwoPhaseMetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
@@ -135,9 +135,9 @@ def test_experimental_strategy_no_scancode_excludes_it_from_enrichers(
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_metadata_collector: Mock,
-    mock_two_phase_collector: Mock,
+    mock_three_phase_collector: Mock,
 ) -> None:
-    mock_two_phase_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
         "https://github.com/org/repo",
         None,
@@ -157,13 +157,13 @@ def test_experimental_strategy_no_scancode_excludes_it_from_enrichers(
     )
 
     assert result.exit_code == 0, result.output
-    _, kwargs = mock_two_phase_collector.call_args
+    _, kwargs = mock_three_phase_collector.call_args
     enricher_classes = [e.__class__.__name__ for e in kwargs["enrichers"]]
     assert "ScanCodeToolkitMetadataCollectionStrategy" not in enricher_classes
 
 
 @patch("dd_license_attribution.cli.generate_sbom_command.PypiPackageResolver")
-@patch("dd_license_attribution.cli.generate_sbom_command.TwoPhaseMetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
@@ -175,10 +175,10 @@ def test_experimental_ecosystem_python_puts_pypi_in_finders(
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_metadata_collector: Mock,
-    mock_two_phase_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_pypi_resolver: Mock,
 ) -> None:
-    mock_two_phase_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
         "pypi:requests",
         None,
@@ -200,8 +200,8 @@ def test_experimental_ecosystem_python_puts_pypi_in_finders(
     )
 
     assert result.exit_code == 0, result.output
-    mock_two_phase_collector.assert_called_once()
-    _, kwargs = mock_two_phase_collector.call_args
+    mock_three_phase_collector.assert_called_once()
+    _, kwargs = mock_three_phase_collector.call_args
     finder_classes = [f.__class__.__name__ for f in kwargs["finders"]]
     assert "PypiMetadataCollectionStrategy" in finder_classes
     assert "GoPkgMetadataCollectionStrategy" not in finder_classes
@@ -210,7 +210,7 @@ def test_experimental_ecosystem_python_puts_pypi_in_finders(
 
 
 @patch("dd_license_attribution.cli.generate_sbom_command.GoPackageResolver")
-@patch("dd_license_attribution.cli.generate_sbom_command.TwoPhaseMetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
@@ -222,10 +222,10 @@ def test_experimental_ecosystem_go_puts_gopkg_in_finders(
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_metadata_collector: Mock,
-    mock_two_phase_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_go_resolver: Mock,
 ) -> None:
-    mock_two_phase_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
         "go:github.com/foo/bar",
         None,
@@ -247,8 +247,8 @@ def test_experimental_ecosystem_go_puts_gopkg_in_finders(
     )
 
     assert result.exit_code == 0, result.output
-    mock_two_phase_collector.assert_called_once()
-    _, kwargs = mock_two_phase_collector.call_args
+    mock_three_phase_collector.assert_called_once()
+    _, kwargs = mock_three_phase_collector.call_args
     finder_classes = [f.__class__.__name__ for f in kwargs["finders"]]
     assert "GoPkgMetadataCollectionStrategy" in finder_classes
     assert "PypiMetadataCollectionStrategy" not in finder_classes
@@ -257,7 +257,7 @@ def test_experimental_ecosystem_go_puts_gopkg_in_finders(
 
 
 @patch("dd_license_attribution.cli.generate_sbom_command.NpmPackageResolver")
-@patch("dd_license_attribution.cli.generate_sbom_command.TwoPhaseMetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
@@ -269,10 +269,10 @@ def test_experimental_ecosystem_npm_puts_npm_in_finders(
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_metadata_collector: Mock,
-    mock_two_phase_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_npm_resolver: Mock,
 ) -> None:
-    mock_two_phase_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
         "npm:lodash",
         None,
@@ -294,8 +294,8 @@ def test_experimental_ecosystem_npm_puts_npm_in_finders(
     )
 
     assert result.exit_code == 0, result.output
-    mock_two_phase_collector.assert_called_once()
-    _, kwargs = mock_two_phase_collector.call_args
+    mock_three_phase_collector.assert_called_once()
+    _, kwargs = mock_three_phase_collector.call_args
     finder_classes = [f.__class__.__name__ for f in kwargs["finders"]]
     assert "NpmMetadataCollectionStrategy" in finder_classes
     assert "PypiMetadataCollectionStrategy" not in finder_classes
@@ -304,7 +304,7 @@ def test_experimental_ecosystem_npm_puts_npm_in_finders(
 
 
 @patch("dd_license_attribution.cli.generate_sbom_command.PypiPackageResolver")
-@patch("dd_license_attribution.cli.generate_sbom_command.TwoPhaseMetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
@@ -316,10 +316,10 @@ def test_experimental_ecosystem_python_no_pypi_strategy_yields_empty_finders(
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_metadata_collector: Mock,
-    mock_two_phase_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_pypi_resolver: Mock,
 ) -> None:
-    mock_two_phase_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
         "pypi:requests",
         None,
@@ -342,8 +342,8 @@ def test_experimental_ecosystem_python_no_pypi_strategy_yields_empty_finders(
     )
 
     assert result.exit_code == 0, result.output
-    mock_two_phase_collector.assert_called_once()
-    _, kwargs = mock_two_phase_collector.call_args
+    mock_three_phase_collector.assert_called_once()
+    _, kwargs = mock_three_phase_collector.call_args
     finder_classes = [f.__class__.__name__ for f in kwargs["finders"]]
     assert finder_classes == []
 

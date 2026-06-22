@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 _FINDER_LOOP_MAX_ITERATIONS: int = 5
 
 
-class TwoPhaseMetadataCollector:
-    """Three-phase collector for the experimental strategy pipeline.
+class ThreePhaseMetadataCollector:
+    """Three-phase (pre-find / find / enrich) collector for the experimental strategy pipeline.
 
     Phase 0 runs pre_finders once on the root seed — for strategies that already
     perform full transitive closure themselves (e.g. GitHub SBOM) and must not be

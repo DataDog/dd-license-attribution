@@ -47,7 +47,7 @@ from dd_license_attribution.artifact_management.source_code_manager import (
 from dd_license_attribution.config import JsonConfigParser
 from dd_license_attribution.metadata_collector import (
     MetadataCollector,
-    TwoPhaseMetadataCollector,
+    ThreePhaseMetadataCollector,
 )
 from dd_license_attribution.metadata_collector.license_checker import LicenseChecker
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
@@ -298,7 +298,7 @@ def generate_sbom(
         bool,
         typer.Option(
             "--experimental-strategy",
-            help="Enable experimental two-phase dependency discovery. Finders run in a fixpoint loop; enrichers run once on the stable set. Not yet stable.",
+            help="Enable experimental three-phase dependency discovery (pre-find / find / enrich). Pre-finders run once on the root; finders run in a fixpoint loop; enrichers run once on the stable set. Not yet stable.",
             rich_help_panel="Scanning Options",
         ),
     ] = False,
@@ -713,7 +713,7 @@ def generate_sbom(
             #                 transitive closure, e.g. GitHub SBOM; must not iterate)
             #   finders     — fixpoint loop (ecosystem finders, one level per call)
             #   enrichers   — run once on the complete dep set
-            # Override interleaving is handled internally by TwoPhaseMetadataCollector.
+            # Override interleaving is handled internally by ThreePhaseMetadataCollector.
             _PRE_FINDER_STRATEGY_NAMES = {
                 "GitHubSbomMetadataCollectionStrategy",
             }
@@ -738,8 +738,8 @@ def generate_sbom(
             ]
             if enabled_strategies["CleanupCopyrightMetadataStrategy"]:
                 enrichers.append(CleanupCopyrightMetadataStrategy())
-            metadata_collector: MetadataCollector | TwoPhaseMetadataCollector = (
-                TwoPhaseMetadataCollector(
+            metadata_collector: MetadataCollector | ThreePhaseMetadataCollector = (
+                ThreePhaseMetadataCollector(
                     pre_finders=pre_finders,
                     finders=finders,
                     enrichers=enrichers,

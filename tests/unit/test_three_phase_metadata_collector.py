@@ -18,8 +18,8 @@ from dd_license_attribution.metadata_collector.strategies.abstract_collection_st
 from dd_license_attribution.metadata_collector.strategies.override_strategy import (
     OverrideCollectionStrategy,
 )
-from dd_license_attribution.metadata_collector.two_phase_metadata_collector import (
-    TwoPhaseMetadataCollector,
+from dd_license_attribution.metadata_collector.three_phase_metadata_collector import (
+    ThreePhaseMetadataCollector,
 )
 
 _SEED = Metadata(
@@ -50,20 +50,20 @@ _DEP_WITH_LICENSE = Metadata(
 )
 
 
-class TestTwoPhaseMetadataCollectorNoStrategies:
+class TestThreePhaseMetadataCollectorNoStrategies:
     def test_no_finders_no_enrichers_returns_seed(self) -> None:
-        collector = TwoPhaseMetadataCollector(finders=[], enrichers=[])
+        collector = ThreePhaseMetadataCollector(finders=[], enrichers=[])
         result = collector.collect_metadata("https://pkg")
         assert result == [_SEED]
 
     def test_seed_strips_https_prefix_from_name(self) -> None:
-        collector = TwoPhaseMetadataCollector(finders=[], enrichers=[])
+        collector = ThreePhaseMetadataCollector(finders=[], enrichers=[])
         result = collector.collect_metadata("https://github.com/owner/repo")
         assert result[0].name == "github.com/owner/repo"
         assert result[0].origin == "https://github.com/owner/repo"
 
 
-class TestTwoPhaseMetadataCollectorFinderPhase:
+class TestThreePhaseMetadataCollectorFinderPhase:
     def test_finder_receives_seed_on_first_call_and_its_output_is_used(
         self, mocker: pytest_mock.MockFixture
     ) -> None:
@@ -75,7 +75,7 @@ class TestTwoPhaseMetadataCollectorFinderPhase:
             [_SEED, _DEP],  # iteration 2: stabilises
         ]
 
-        collector = TwoPhaseMetadataCollector(finders=[finder], enrichers=[])
+        collector = ThreePhaseMetadataCollector(finders=[finder], enrichers=[])
         result = collector.collect_metadata("https://pkg")
 
         assert finder.augment_metadata.call_args_list[0].args[0] == [_SEED]
@@ -96,7 +96,7 @@ class TestTwoPhaseMetadataCollectorFinderPhase:
         finder = mocker.Mock(spec=DependencyFinderStrategy)
         finder.augment_metadata.side_effect = add_dep_once
 
-        collector = TwoPhaseMetadataCollector(finders=[finder], enrichers=[])
+        collector = ThreePhaseMetadataCollector(finders=[finder], enrichers=[])
         collector.collect_metadata("https://pkg")
 
         assert finder.augment_metadata.call_count == 2
@@ -116,7 +116,7 @@ class TestTwoPhaseMetadataCollectorFinderPhase:
         finder = mocker.Mock(spec=DependencyFinderStrategy)
         finder.augment_metadata.side_effect = add_dep_once
 
-        collector = TwoPhaseMetadataCollector(finders=[finder], enrichers=[])
+        collector = ThreePhaseMetadataCollector(finders=[finder], enrichers=[])
         collector.collect_metadata("https://pkg")
 
         assert finder.augment_metadata.call_count == 2
@@ -139,7 +139,7 @@ class TestTwoPhaseMetadataCollectorFinderPhase:
         enricher = mocker.Mock(spec=MetadataEnricherStrategy)
         enricher.augment_metadata.return_value = [_SEED, _DEP_WITH_LICENSE]
 
-        collector = TwoPhaseMetadataCollector(finders=[finder], enrichers=[enricher])
+        collector = ThreePhaseMetadataCollector(finders=[finder], enrichers=[enricher])
         collector.collect_metadata("https://pkg")
 
         enricher.augment_metadata.assert_called_once_with([_SEED, _DEP])
@@ -170,7 +170,7 @@ class TestTwoPhaseMetadataCollectorFinderPhase:
         enricher = mocker.Mock(spec=MetadataEnricherStrategy)
         enricher.augment_metadata.side_effect = lambda m: m
 
-        collector = TwoPhaseMetadataCollector(
+        collector = ThreePhaseMetadataCollector(
             finders=[finder], enrichers=[enricher], max_finder_iterations=3
         )
 
@@ -190,7 +190,7 @@ class TestTwoPhaseMetadataCollectorFinderPhase:
         finder_b = mocker.Mock(spec=DependencyFinderStrategy)
         finder_b.augment_metadata.side_effect = lambda m: m
 
-        collector = TwoPhaseMetadataCollector(
+        collector = ThreePhaseMetadataCollector(
             finders=[finder_a, finder_b], enrichers=[]
         )
         collector.collect_metadata("https://pkg")
@@ -199,7 +199,7 @@ class TestTwoPhaseMetadataCollectorFinderPhase:
         finder_b.augment_metadata.assert_called_once()
 
 
-class TestTwoPhaseMetadataCollectorEnricherPhase:
+class TestThreePhaseMetadataCollectorEnricherPhase:
     def test_enricher_runs_after_finders(self, mocker: pytest_mock.MockFixture) -> None:
         call_order: list[str] = []
 
@@ -217,7 +217,7 @@ class TestTwoPhaseMetadataCollectorEnricherPhase:
         enricher = mocker.Mock(spec=MetadataEnricherStrategy)
         enricher.augment_metadata.side_effect = track_enricher
 
-        collector = TwoPhaseMetadataCollector(finders=[finder], enrichers=[enricher])
+        collector = ThreePhaseMetadataCollector(finders=[finder], enrichers=[enricher])
         collector.collect_metadata("https://pkg")
 
         assert call_order == ["finder", "enricher"]
@@ -241,7 +241,7 @@ class TestTwoPhaseMetadataCollectorEnricherPhase:
         enricher_b = mocker.Mock(spec=MetadataEnricherStrategy)
         enricher_b.augment_metadata.side_effect = track_b
 
-        collector = TwoPhaseMetadataCollector(
+        collector = ThreePhaseMetadataCollector(
             finders=[], enrichers=[enricher_a, enricher_b]
         )
         collector.collect_metadata("https://pkg")
@@ -257,7 +257,7 @@ class TestTwoPhaseMetadataCollectorEnricherPhase:
         enricher_b = mocker.Mock(spec=MetadataEnricherStrategy)
         enricher_b.augment_metadata.return_value = [_DEP_WITH_LICENSE]
 
-        collector = TwoPhaseMetadataCollector(
+        collector = ThreePhaseMetadataCollector(
             finders=[], enrichers=[enricher_a, enricher_b]
         )
         collector.collect_metadata("https://pkg")
@@ -265,7 +265,7 @@ class TestTwoPhaseMetadataCollectorEnricherPhase:
         enricher_b.augment_metadata.assert_called_once_with([_DEP_WITH_LICENSE])
 
 
-class TestTwoPhaseMetadataCollectorOverride:
+class TestThreePhaseMetadataCollectorOverride:
     def test_override_runs_after_all_finders_in_each_iteration(
         self, mocker: pytest_mock.MockFixture
     ) -> None:
@@ -288,7 +288,7 @@ class TestTwoPhaseMetadataCollectorOverride:
         override = mocker.Mock(spec=OverrideCollectionStrategy)
         override.augment_metadata.side_effect = track_override
 
-        collector = TwoPhaseMetadataCollector(
+        collector = ThreePhaseMetadataCollector(
             finders=[finder], enrichers=[], override_strategy=override
         )
         collector.collect_metadata("https://pkg")
@@ -316,7 +316,7 @@ class TestTwoPhaseMetadataCollectorOverride:
         override = mocker.Mock(spec=OverrideCollectionStrategy)
         override.augment_metadata.side_effect = track_override
 
-        collector = TwoPhaseMetadataCollector(
+        collector = ThreePhaseMetadataCollector(
             finders=[], enrichers=[enricher], override_strategy=override
         )
         collector.collect_metadata("https://pkg")
@@ -349,7 +349,7 @@ class TestTwoPhaseMetadataCollectorOverride:
         override = mocker.Mock(spec=OverrideCollectionStrategy)
         override.augment_metadata.side_effect = track_override
 
-        collector = TwoPhaseMetadataCollector(
+        collector = ThreePhaseMetadataCollector(
             finders=[finder], enrichers=[enricher], override_strategy=override
         )
         collector.collect_metadata("https://pkg")
@@ -365,14 +365,14 @@ class TestTwoPhaseMetadataCollectorOverride:
         enricher = mocker.Mock(spec=MetadataEnricherStrategy)
         enricher.augment_metadata.side_effect = lambda m: m
 
-        collector = TwoPhaseMetadataCollector(
+        collector = ThreePhaseMetadataCollector(
             finders=[finder], enrichers=[enricher], override_strategy=None
         )
         result = collector.collect_metadata("https://pkg")
         assert result == [_SEED]
 
 
-class TestTwoPhaseMetadataCollectorPreFinders:
+class TestThreePhaseMetadataCollectorPreFinders:
     def test_pre_finder_runs_once_before_loop_finder(
         self, mocker: pytest_mock.MockFixture
     ) -> None:
@@ -392,7 +392,7 @@ class TestTwoPhaseMetadataCollectorPreFinders:
         finder = mocker.Mock(spec=DependencyFinderStrategy)
         finder.augment_metadata.side_effect = track_finder
 
-        collector = TwoPhaseMetadataCollector(
+        collector = ThreePhaseMetadataCollector(
             pre_finders=[pre_finder], finders=[finder], enrichers=[]
         )
         collector.collect_metadata("https://pkg")
@@ -420,7 +420,7 @@ class TestTwoPhaseMetadataCollectorPreFinders:
         finder = mocker.Mock(spec=DependencyFinderStrategy)
         finder.augment_metadata.side_effect = add_dep_once
 
-        collector = TwoPhaseMetadataCollector(
+        collector = ThreePhaseMetadataCollector(
             pre_finders=[pre_finder], finders=[finder], enrichers=[]
         )
         collector.collect_metadata("https://pkg")
@@ -438,7 +438,7 @@ class TestTwoPhaseMetadataCollectorPreFinders:
         finder = mocker.Mock(spec=DependencyFinderStrategy)
         finder.augment_metadata.side_effect = lambda m: m
 
-        collector = TwoPhaseMetadataCollector(
+        collector = ThreePhaseMetadataCollector(
             pre_finders=[pre_finder], finders=[finder], enrichers=[]
         )
         collector.collect_metadata("https://pkg")
@@ -452,7 +452,7 @@ class TestTwoPhaseMetadataCollectorPreFinders:
         finder = mocker.Mock(spec=DependencyFinderStrategy)
         finder.augment_metadata.side_effect = lambda m: m
 
-        collector = TwoPhaseMetadataCollector(
+        collector = ThreePhaseMetadataCollector(
             pre_finders=[], finders=[finder], enrichers=[]
         )
         result = collector.collect_metadata("https://pkg")
@@ -486,7 +486,7 @@ class TestTwoPhaseMetadataCollectorPreFinders:
         override = mocker.Mock(spec=OverrideCollectionStrategy)
         override.augment_metadata.side_effect = track_override
 
-        collector = TwoPhaseMetadataCollector(
+        collector = ThreePhaseMetadataCollector(
             pre_finders=[pre_finder],
             finders=[finder],
             enrichers=[],
@@ -530,7 +530,7 @@ class TestTwoPhaseMetadataCollectorPreFinders:
         override = mocker.Mock(spec=OverrideCollectionStrategy)
         override.augment_metadata.side_effect = track_override
 
-        collector = TwoPhaseMetadataCollector(
+        collector = ThreePhaseMetadataCollector(
             pre_finders=[pre_finder],
             finders=[finder],
             enrichers=[enricher],
