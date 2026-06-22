@@ -370,3 +370,179 @@ class TestTwoPhaseMetadataCollectorOverride:
         )
         result = collector.collect_metadata("https://pkg")
         assert result == [_SEED]
+
+
+class TestTwoPhaseMetadataCollectorPreFinders:
+    def test_pre_finder_runs_once_before_loop_finder(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        call_order: list[str] = []
+
+        def track_pre(m: list[Metadata]) -> list[Metadata]:
+            call_order.append("pre")
+            return m
+
+        def track_finder(m: list[Metadata]) -> list[Metadata]:
+            call_order.append("finder")
+            return m
+
+        pre_finder = mocker.Mock(spec=DependencyFinderStrategy)
+        pre_finder.augment_metadata.side_effect = track_pre
+
+        finder = mocker.Mock(spec=DependencyFinderStrategy)
+        finder.augment_metadata.side_effect = track_finder
+
+        collector = TwoPhaseMetadataCollector(
+            pre_finders=[pre_finder], finders=[finder], enrichers=[]
+        )
+        collector.collect_metadata("https://pkg")
+
+        assert call_order[0] == "pre"
+        assert "finder" in call_order
+        assert call_order.index("pre") < call_order.index("finder")
+
+    def test_pre_finder_called_exactly_once_even_when_loop_iterates(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        # pre_finder must NOT be called again in later fixpoint iterations
+        call_count = 0
+
+        def add_dep_once(metadata: list[Metadata]) -> list[Metadata]:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                return [*metadata, _DEP]
+            return metadata
+
+        pre_finder = mocker.Mock(spec=DependencyFinderStrategy)
+        pre_finder.augment_metadata.side_effect = lambda m: m
+
+        finder = mocker.Mock(spec=DependencyFinderStrategy)
+        finder.augment_metadata.side_effect = add_dep_once
+
+        collector = TwoPhaseMetadataCollector(
+            pre_finders=[pre_finder], finders=[finder], enrichers=[]
+        )
+        collector.collect_metadata("https://pkg")
+
+        # finder triggers two iterations; pre_finder must still be called only once
+        assert pre_finder.augment_metadata.call_count == 1
+        assert finder.augment_metadata.call_count == 2
+
+    def test_pre_finder_output_is_visible_to_loop_finders(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        pre_finder = mocker.Mock(spec=DependencyFinderStrategy)
+        pre_finder.augment_metadata.return_value = [_SEED, _DEP]
+
+        finder = mocker.Mock(spec=DependencyFinderStrategy)
+        finder.augment_metadata.side_effect = lambda m: m
+
+        collector = TwoPhaseMetadataCollector(
+            pre_finders=[pre_finder], finders=[finder], enrichers=[]
+        )
+        collector.collect_metadata("https://pkg")
+
+        # The first call to the loop finder must include the dep the pre_finder added
+        assert _DEP in finder.augment_metadata.call_args_list[0].args[0]
+
+    def test_no_pre_finders_behaves_identically_to_omitting_parameter(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        finder = mocker.Mock(spec=DependencyFinderStrategy)
+        finder.augment_metadata.side_effect = lambda m: m
+
+        collector = TwoPhaseMetadataCollector(
+            pre_finders=[], finders=[finder], enrichers=[]
+        )
+        result = collector.collect_metadata("https://pkg")
+
+        assert result == [_SEED]
+        finder.augment_metadata.assert_called_once()
+
+    def test_override_runs_after_pre_finders_before_loop(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        call_order: list[str] = []
+
+        def track_pre(m: list[Metadata]) -> list[Metadata]:
+            call_order.append("pre")
+            return m
+
+        def track_finder(m: list[Metadata]) -> list[Metadata]:
+            call_order.append("finder")
+            return m
+
+        def track_override(m: list[Metadata]) -> list[Metadata]:
+            call_order.append("override")
+            return m
+
+        pre_finder = mocker.Mock(spec=DependencyFinderStrategy)
+        pre_finder.augment_metadata.side_effect = track_pre
+
+        finder = mocker.Mock(spec=DependencyFinderStrategy)
+        finder.augment_metadata.side_effect = track_finder
+
+        override = mocker.Mock(spec=OverrideCollectionStrategy)
+        override.augment_metadata.side_effect = track_override
+
+        collector = TwoPhaseMetadataCollector(
+            pre_finders=[pre_finder],
+            finders=[finder],
+            enrichers=[],
+            override_strategy=override,
+        )
+        collector.collect_metadata("https://pkg")
+
+        # pre runs, then override corrects it, then the fixpoint loop starts
+        assert call_order == ["pre", "override", "finder", "override"]
+
+    def test_full_phase_order_with_pre_finders(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        call_order: list[str] = []
+
+        def track_pre(m: list[Metadata]) -> list[Metadata]:
+            call_order.append("pre")
+            return m
+
+        def track_finder(m: list[Metadata]) -> list[Metadata]:
+            call_order.append("finder")
+            return m
+
+        def track_enricher(m: list[Metadata]) -> list[Metadata]:
+            call_order.append("enricher")
+            return m
+
+        def track_override(m: list[Metadata]) -> list[Metadata]:
+            call_order.append("override")
+            return m
+
+        pre_finder = mocker.Mock(spec=DependencyFinderStrategy)
+        pre_finder.augment_metadata.side_effect = track_pre
+
+        finder = mocker.Mock(spec=DependencyFinderStrategy)
+        finder.augment_metadata.side_effect = track_finder
+
+        enricher = mocker.Mock(spec=MetadataEnricherStrategy)
+        enricher.augment_metadata.side_effect = track_enricher
+
+        override = mocker.Mock(spec=OverrideCollectionStrategy)
+        override.augment_metadata.side_effect = track_override
+
+        collector = TwoPhaseMetadataCollector(
+            pre_finders=[pre_finder],
+            finders=[finder],
+            enrichers=[enricher],
+            override_strategy=override,
+        )
+        collector.collect_metadata("https://pkg")
+
+        assert call_order == [
+            "pre",
+            "override",
+            "finder",
+            "override",
+            "enricher",
+            "override",
+        ]

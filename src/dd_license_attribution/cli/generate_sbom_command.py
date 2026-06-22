@@ -708,29 +708,39 @@ def generate_sbom(
                 sys.exit(1)
 
         if experimental_strategy:
-            # Two-phase path: finders run in a fixpoint loop, enrichers run once.
+            # Three-phase path:
+            #   pre_finders — run once on the root (strategies that already do full
+            #                 transitive closure, e.g. GitHub SBOM; must not iterate)
+            #   finders     — fixpoint loop (ecosystem finders, one level per call)
+            #   enrichers   — run once on the complete dep set
             # Override interleaving is handled internally by TwoPhaseMetadataCollector.
-            # Existing strategies are placed by role convention until per-ecosystem
-            # experimental strategy classes (DependencyFinderStrategy /
-            # MetadataEnricherStrategy subclasses) replace them.
-            _FINDER_STRATEGY_NAMES = {
+            _PRE_FINDER_STRATEGY_NAMES = {
                 "GitHubSbomMetadataCollectionStrategy",
+            }
+            _FINDER_STRATEGY_NAMES = {
                 "GoPkgMetadataCollectionStrategy",
                 "PypiMetadataCollectionStrategy",
                 "NpmMetadataCollectionStrategy",
             }
+            pre_finders = [
+                s
+                for s in strategies
+                if s.__class__.__name__ in _PRE_FINDER_STRATEGY_NAMES
+            ]
             finders = [
                 s for s in strategies if s.__class__.__name__ in _FINDER_STRATEGY_NAMES
             ]
             enrichers = [
                 s
                 for s in strategies
-                if s.__class__.__name__ not in _FINDER_STRATEGY_NAMES
+                if s.__class__.__name__
+                not in _PRE_FINDER_STRATEGY_NAMES | _FINDER_STRATEGY_NAMES
             ]
             if enabled_strategies["CleanupCopyrightMetadataStrategy"]:
                 enrichers.append(CleanupCopyrightMetadataStrategy())
             metadata_collector: MetadataCollector | TwoPhaseMetadataCollector = (
                 TwoPhaseMetadataCollector(
+                    pre_finders=pre_finders,
                     finders=finders,
                     enrichers=enrichers,
                     override_strategy=override_strategy,

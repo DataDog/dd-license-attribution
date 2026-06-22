@@ -57,6 +57,46 @@ def test_experimental_strategy_uses_two_phase_collector(
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+def test_experimental_github_repo_puts_github_sbom_in_pre_finders_not_finders(
+    mock_csv: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_metadata_collector: Mock,
+    mock_two_phase_collector: Mock,
+) -> None:
+    mock_two_phase_collector.return_value.collect_metadata.return_value = []
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        None,
+    )
+    mock_csv.return_value.write.return_value = ""
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo",
+            "--no-gh-auth",
+            "--experimental-strategy",
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 0, result.output
+    _, kwargs = mock_two_phase_collector.call_args
+    pre_finder_classes = [f.__class__.__name__ for f in kwargs["pre_finders"]]
+    finder_classes = [f.__class__.__name__ for f in kwargs["finders"]]
+    assert "GitHubSbomMetadataCollectionStrategy" in pre_finder_classes
+    assert "GitHubSbomMetadataCollectionStrategy" not in finder_classes
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.TwoPhaseMetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
 def test_without_experimental_strategy_uses_metadata_collector(
     mock_csv: Mock,
     mock_python_env_manager: Mock,

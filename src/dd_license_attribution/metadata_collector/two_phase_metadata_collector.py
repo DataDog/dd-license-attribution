@@ -21,31 +21,32 @@ _FINDER_LOOP_MAX_ITERATIONS: int = 5
 
 
 class TwoPhaseMetadataCollector:
-    """Two-phase collector for the experimental strategy pipeline.
+    """Three-phase collector for the experimental strategy pipeline.
+
+    Phase 0 runs pre_finders once on the root seed — for strategies that already
+    perform full transitive closure themselves (e.g. GitHub SBOM) and must not be
+    re-invoked on every discovered dependency.
 
     Phase 1 runs all finders in a fixpoint loop until the dependency set
-    stabilises (or the iteration threshold is reached).  Phase 2 runs all
-    enrichers once on the complete, stable dependency set.
+    stabilises (or the iteration threshold is reached) — for strategies that
+    discover one level of deps at a time and benefit from iteration.
 
-    The split between finders and enrichers is by convention: finders should
-    only add new Metadata entries; enrichers should only update existing ones.
-    Once per-ecosystem experimental strategy classes exist (subclassing
-    DependencyFinderStrategy / MetadataEnricherStrategy), static typing will
-    enforce this contract.  Until then, existing MetadataCollectionStrategy
-    subclasses may be placed in either list.
+    Phase 2 runs all enrichers once on the complete, stable dependency set.
 
-    Override runs once after all finders per iteration (prevents add/remove
-    oscillation) and once after each enricher (corrects enricher-introduced
-    data).
+    Override runs once after Phase 0, once after all finders per Phase 1 iteration
+    (prevents add/remove oscillation), and once after each enricher in Phase 2
+    (corrects enricher-introduced data).
     """
 
     def __init__(
         self,
         finders: list[MetadataCollectionStrategy],
         enrichers: list[MetadataCollectionStrategy],
+        pre_finders: list[MetadataCollectionStrategy] | None = None,
         override_strategy: OverrideCollectionStrategy | None = None,
         max_finder_iterations: int = _FINDER_LOOP_MAX_ITERATIONS,
     ) -> None:
+        self.pre_finders = pre_finders or []
         self.finders = finders
         self.enrichers = enrichers
         self.override_strategy = override_strategy
@@ -62,6 +63,16 @@ class TwoPhaseMetadataCollector:
                 copyright=[],
             )
         ]
+
+        # Phase 0: run pre_finders once on the root seed only.
+        # Used for strategies that already perform full transitive closure (e.g.
+        # GitHub SBOM) — re-running them on each discovered dep causes an
+        # explosion into unrelated dep trees.
+        if self.pre_finders:
+            for pre_finder in self.pre_finders:
+                metadata = pre_finder.augment_metadata(metadata)
+            if self.override_strategy is not None:
+                metadata = self.override_strategy.augment_metadata(metadata)
 
         # Phase 1: run all finders in a fixpoint loop.
         # Override runs once per iteration AFTER all finders — applying removals
