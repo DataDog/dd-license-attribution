@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 - New `--experimental-strategy` flag for `generate-sbom`. When enabled, dependency discovery and metadata extraction run in three phases: pre-finders run once on the root package (e.g. GitHub SBOM, which already returns a full transitive closure); finders run in a fixpoint loop (up to 5 iterations) until the dependency set stabilises; enrichers run once on the complete set. When combined with `--ecosystem`, only the ecosystem-relevant finder is enabled by default; `--no-*` flags still override these defaults. This resolves cases where transitive dependencies discovered by one finder were not explored by other finders.
+- New `markdown` value for `generate-sbom --format` to emit Markdown license compliance reports.
+- New repeatable `generate-sbom --format` support with `--output-dir` to emit CSV, Markdown, and SPDX report files in one run.
 - New `generate-sbom` subcommand with a `--format` option supporting CSV output by default and SPDX 2.3 JSON output via `--format spdx`.
 - `generate-sbom-csv` now emits a WARNING for each package whose license value is not a properly written SPDX expression composed entirely of OSI-approved identifiers. Using a non-OSI-approved license may be acceptable depending on your project's requirements. The warning message includes a reference to `generate-overrides` (interactive) and `clean-spdx-id` (AI-assisted) as remediation options.
 - Add `--ecosystem go` support for direct Go package/module dependency analysis (e.g., `ddla generate-sbom-csv --ecosystem go github.com/stretchr/testify@v1.9.0`)
@@ -19,6 +21,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - New `clean-spdx-id` CLI command to convert long license descriptions to valid SPDX license expressions using LLMs (OpenAI, Anthropic), including support for composite licenses (e.g., "MIT OR Apache-2.0")
 
 ### Changed
+- Markdown `generate-sbom` reports now show the root package version explicitly, exclude the root package from the dependency table, and include root license and copyright in the summary.
 - PyPI collection strategy now performs case-insensitive key matching for project_urls dictionary to better handle different key capitalizations from PyPI metadata
 
 ### Deprecated
