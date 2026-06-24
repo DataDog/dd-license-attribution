@@ -542,6 +542,54 @@ def test_generate_sbom_rejects_multiple_formats_without_output_dir() -> None:
     assert "Multiple --format values require --output-dir." in result.stderr
 
 
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_generate_sbom_deduplicates_repeated_stdout_format(
+    mock_metadata_collector: Mock,
+    mock_csv_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        None,
+    )
+    mock_csv_reporting_writter.return_value.write.return_value = "csv-output"
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo",
+            "--no-gh-auth",
+            "--format",
+            "csv",
+            "--format",
+            "csv",
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout == "csv-output"
+    mock_github.assert_called_once_with()
+    mock_source_code_manager.assert_called_once_with(
+        ANY, mock_github.return_value, 86400, None
+    )
+    mock_python_env_manager.assert_called_once_with(ANY, 86400)
+    mock_metadata_collector.assert_called_once_with(ANY)
+    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+        "https://github.com/org/repo"
+    )
+    mock_csv_reporting_writter.assert_called_once_with()
+    mock_csv_reporting_writter.return_value.write.assert_called_once_with([])
+
+
 @patch("dd_license_attribution.cli.generate_sbom_command.write_file")
 @patch("dd_license_attribution.cli.generate_sbom_command.create_dirs")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
@@ -578,7 +626,11 @@ def test_generate_sbom_writes_multiple_output_formats_to_directory(
             "--format",
             "markdown",
             "--format",
+            "markdown",
+            "--format",
             "spdx",
+            "--format",
+            "csv",
             "--output-dir",
             "/tmp/ddla-out",
             *_SKIP_DEPENDENCY_STRATEGIES,

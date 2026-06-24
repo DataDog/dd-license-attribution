@@ -470,7 +470,7 @@ def generate_sbom(
         )
         output_formats = ["csv"]
 
-    requested_output_formats = output_formats or ["csv"]
+    requested_output_formats = list(dict.fromkeys(output_formats or ["csv"]))
 
     supported_output_formats = {"csv", "spdx", "markdown"}
     for requested_output_format in requested_output_formats:
