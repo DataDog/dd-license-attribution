@@ -381,7 +381,7 @@ def test_generate_sbom_defaults_to_csv(
     result = runner.invoke(
         app,
         ["generate-sbom", "https://github.com/org/repo", "--no-gh-auth"],
-        env={"GITHUB_TOKEN": ""},
+        env={"GITHUB_TOKEN": "stale-token"},
     )
 
     assert result.exit_code == 0

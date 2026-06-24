@@ -500,7 +500,7 @@ def generate_sbom(
         if skip_scancode:
             enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"] = False
 
-        if not github_token:
+        if no_gh_auth or not github_token:
             github_client = GitHub()
         else:
             github_client = GitHub(token=github_token)
