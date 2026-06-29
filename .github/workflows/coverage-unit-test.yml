@@ -54,6 +54,7 @@ jobs:
           languages: python
           api_key: ${{ steps.dd-sts.outputs.api_key }}
           site: datadoghq.com
+          code_coverage: "true"
 
       - name: Run contract tests
         env:
