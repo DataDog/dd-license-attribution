@@ -5,6 +5,7 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2026-present Datadog, Inc.
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,6 +18,12 @@ from dd_license_attribution.report_generator.writters.abstract_reporting_writter
 from dd_license_attribution.report_generator.writters.metadata_combiner import (
     CombinedMetadata,
     combine_metadata,
+)
+
+_PYPI_SPEC_PATTERN = re.compile(
+    r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)"
+    r"(?:\[[A-Za-z0-9._,\-\s]+\])?"
+    r"\s*(?:(==|!=|<=|>=|~=|<|>)\s*([^,;\s]+).*)?$"
 )
 
 
@@ -53,7 +60,7 @@ class MarkdownReportingWritter(ReportingWritter):
             "",
             "| Field | Value |",
             "| --- | --- |",
-            f"| Package | {_markdown_cell(f'`{root_package.name}`')} |",
+            f"| Package | {_markdown_code_cell(root_package.name)} |",
             f"| Version | {_markdown_cell(root_package.version)} |",
             f"| Ecosystem | {_markdown_cell(self.ecosystem or 'N/A')} |",
             f"| Date | {self.created_at().strftime('%Y-%m-%d')} |",
@@ -87,8 +94,10 @@ class MarkdownReportingWritter(ReportingWritter):
         if default_name is None:
             default_name = "sbom"
 
-        package_name, package_version = _split_package_spec(default_name)
-        root_row = _find_root_row(rows, package_name, package_version)
+        package_name, package_version = _split_package_spec(
+            default_name, self.ecosystem
+        )
+        root_row = _find_root_row(rows, package_name, package_version, self.ecosystem)
 
         if root_row is not None:
             return _RootPackage(
@@ -111,23 +120,50 @@ class MarkdownReportingWritter(ReportingWritter):
 def _markdown_cell(value: str | None) -> str:
     if value is None:
         return ""
-    return value.replace("|", "\\|")
+    return value.replace("|", "\\|").replace("_", "\\_")
+
+
+def _markdown_code_cell(value: str | None) -> str:
+    if value is None:
+        return ""
+    escaped_value = value.replace("|", "\\|")
+    return f"`{escaped_value}`"
 
 
 def _find_root_row(
-    rows: list[CombinedMetadata], package_name: str, package_version: str | None
+    rows: list[CombinedMetadata],
+    package_name: str,
+    package_version: str | None,
+    ecosystem: str | None = None,
 ) -> CombinedMetadata | None:
     for row in rows:
-        if row.component == package_name and (
+        if _package_name_matches(row.component, package_name, ecosystem) and (
             package_version is None or row.version == package_version
         ):
             return row
     return None
 
 
-def _split_package_spec(value: str) -> tuple[str, str | None]:
+def _package_name_matches(
+    row_component: str | None, package_name: str, ecosystem: str | None
+) -> bool:
+    if row_component is None:
+        return False
+    if ecosystem == "pypi":
+        return _normalize_pypi_name(row_component) == _normalize_pypi_name(package_name)
+    return row_component == package_name
+
+
+def _split_package_spec(
+    value: str, ecosystem: str | None = None
+) -> tuple[str, str | None]:
     if value.startswith("git@") or "://" in value:
         return value, None
+
+    if ecosystem == "pypi":
+        pypi_package_spec = _split_pypi_package_spec(value)
+        if pypi_package_spec is not None:
+            return pypi_package_spec
 
     if value.startswith("@"):
         version_separator = value.rfind("@", 1)
@@ -142,3 +178,20 @@ def _split_package_spec(value: str) -> tuple[str, str | None]:
     if not name or not version:
         return value, None
     return name, version
+
+
+def _split_pypi_package_spec(value: str) -> tuple[str, str | None] | None:
+    match = _PYPI_SPEC_PATTERN.match(value)
+    if match is None:
+        return None
+
+    name = match.group(1)
+    operator = match.group(2)
+    version = match.group(3)
+    if operator == "==" and version:
+        return name, version
+    return name, None
+
+
+def _normalize_pypi_name(value: str) -> str:
+    return re.sub(r"[-_.]+", "-", value).lower()

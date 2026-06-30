@@ -86,6 +86,78 @@ def test_markdown_reporting_writter_writes_combined_metadata_table() -> None:
     assert markdown == expected
 
 
+def test_markdown_reporting_writter_escapes_underscores_in_dependency_cells() -> None:
+    metadata = [
+        Metadata(
+            name="root_project",
+            version="1.0.0",
+            origin="https://github.com/example/root_project",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["Copyright root"],
+        ),
+        Metadata(
+            name="dep_alpha",
+            version="1.0.0",
+            origin="https://github.com/example/dep_alpha",
+            local_src_path=None,
+            license=["MIT_License"],
+            copyright=["Copyright dep_alpha"],
+        ),
+    ]
+    markdown_report_writter = MarkdownReportingWritter(
+        document_name="root_project@1.0.0",
+        created_at=lambda: datetime(2026, 6, 24, 12, 30, 0),
+    )
+
+    markdown = markdown_report_writter.write(metadata)
+
+    assert "| Package | `root_project` |" in markdown
+    assert (
+        "| dep\\_alpha | https://github.com/example/dep\\_alpha | "
+        "['MIT\\_License'] | ['Copyright dep\\_alpha'] |"
+    ) in markdown
+
+
+def test_markdown_reporting_writter_matches_pypi_exact_version_spec_root() -> None:
+    metadata = [
+        Metadata(
+            name="requests",
+            version="2.31.0",
+            origin="https://github.com/psf/requests",
+            local_src_path=None,
+            license=["Apache-2.0"],
+            copyright=["Python Software Foundation"],
+        ),
+        Metadata(
+            name="urllib3",
+            version="2.2.0",
+            origin="https://github.com/urllib3/urllib3",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["urllib3 contributors"],
+        ),
+    ]
+    markdown_report_writter = MarkdownReportingWritter(
+        document_name="Requests==2.31.0",
+        ecosystem="pypi",
+        created_at=lambda: datetime(2026, 6, 24, 12, 30, 0),
+    )
+
+    markdown = markdown_report_writter.write(metadata)
+
+    assert markdown.startswith("# License Compliance Report: requests\n")
+    assert "| Package | `requests` |" in markdown
+    assert "| Version | 2.31.0 |" in markdown
+    assert "| Dependencies | 1 |" in markdown
+    assert "| License | ['Apache-2.0'] |" in markdown
+    assert "| requests | https://github.com/psf/requests |" not in markdown
+    assert (
+        "| urllib3 | https://github.com/urllib3/urllib3 | "
+        "['MIT'] | ['urllib3 contributors'] |"
+    ) in markdown
+
+
 def test_markdown_reporting_writter_uses_defaults_for_empty_metadata() -> None:
     markdown_report_writter = MarkdownReportingWritter(
         created_at=lambda: datetime(2026, 6, 24, 12, 30, 0),
