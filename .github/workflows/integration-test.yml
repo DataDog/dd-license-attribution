@@ -172,6 +172,32 @@ jobs:
             go-pinned-output.txt
           if-no-files-found: ignore
 
+      - name: Run dd-license-attribution with --experimental-strategy against a GitHub repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dd-license-attribution generate-sbom --experimental-strategy https://github.com/DataDog/apigentools > experimental-github-output.txt
+          head -1 experimental-github-output.txt | grep -iq "component.*origin.*license.*copyright"
+          line_count=$(wc -l < experimental-github-output.txt)
+          if [ "$line_count" -lt 6 ]; then
+            echo "Error: Expected at least 5 dependencies, got $((line_count - 1))"
+            exit 1
+          fi
+          echo "Experimental GitHub repo test passed: $((line_count - 1)) dependencies found"
+
+      - name: Run dd-license-attribution with --experimental-strategy and --ecosystem python
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dd-license-attribution generate-sbom --experimental-strategy --ecosystem python apigentools > experimental-pypi-output.txt
+          head -1 experimental-pypi-output.txt | grep -iq "component.*origin.*license.*copyright"
+          line_count=$(wc -l < experimental-pypi-output.txt)
+          if [ "$line_count" -lt 4 ]; then
+            echo "Error: Expected at least 3 dependencies, got $((line_count - 1))"
+            exit 1
+          fi
+          echo "Experimental ecosystem python test passed: $((line_count - 1)) dependencies found"
+
       - name: Test generate-overrides command with clean CSV
         run: |
           dd-license-attribution generate-overrides LICENSE-3rdparty.csv -o test-overrides.json

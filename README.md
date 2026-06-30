@@ -112,6 +112,27 @@ The following optional parameters are available for `generate-sbom`:
 - `--no-npm-strategy`: Skips the strategy that collects dependencies from NPM.
 - `--no-scancode-strategy`: Skips the strategy that gets licenses and copyright attribution using ScanCode Toolkit.
 
+##### Experimental Three-Phase Collection
+- `--experimental-strategy`: Enables a three-phase collection pipeline that separates dependency discovery from metadata extraction.
+
+  **Phase 0 — Pre-finders (once)**: Strategies that already perform full transitive closure run once on the root package only. For example, `GitHubSbomMetadataCollectionStrategy` queries GitHub's dependency graph API which already returns all transitive deps — re-running it on each discovered dependency would fetch unrelated dep trees.
+
+  **Phase 1 — Finder fixpoint loop**: Ecosystem finders (PyPI, GoPkg, npm) run repeatedly (up to 5 iterations) until the dependency set stops growing. This ensures transitive dependencies discovered by one finder are seen by other finders in subsequent iterations.
+
+  **Phase 2 — Enricher cascade**: Once the dependency set is stable, all metadata-enricher strategies run once to extract license and copyright information.
+
+  **Ecosystem-aware defaults**: When `--experimental-strategy` is combined with `--ecosystem`, only the ecosystem-relevant finder is enabled by default. For example, `--experimental-strategy --ecosystem python` enables only the PyPI finder. All `--no-*` flags still apply and override these defaults.
+
+  ```bash
+  # Three-phase collection for a Python package — only PyPI finder runs in Phase 1
+  dd-license-attribution generate-sbom --experimental-strategy --ecosystem python requests
+
+  # Allow --no-* flags to further restrict strategies
+  dd-license-attribution generate-sbom --experimental-strategy --ecosystem python --no-scancode-strategy requests
+  ```
+
+  > **Note**: This flag gates experimental behavior that is not yet stable. The strategy classification (pre-finder vs. finder vs. enricher) may change as the feature matures.
+
 #### Output Options
 - `--format <csv|spdx>`: Selects the SBOM output format. Defaults to `csv`; `spdx` emits SPDX 2.3 JSON.
 
