@@ -119,6 +119,12 @@ def _report_output_base(package: str) -> str:
     return "sbom"
 
 
+def _canonical_ecosystem(ecosystem: str | None) -> str | None:
+    if ecosystem == "python":
+        return "pypi"
+    return ecosystem
+
+
 def _build_writer(
     output_format: str, package: str, ecosystem: str | None
 ) -> ReportingWritter:
@@ -487,6 +493,7 @@ def generate_sbom(
         raise typer.BadParameter(
             f"Unsupported ecosystem: '{ecosystem}'. Supported ecosystems: {', '.join(supported_ecosystems)}."
         )
+    ecosystem = _canonical_ecosystem(ecosystem)
 
     if not only_root_project and not only_transitive_dependencies:
         project_scope = ProjectScope.ALL
@@ -656,7 +663,7 @@ def generate_sbom(
                         github_client, source_code_manager
                     )
                 )
-        elif ecosystem in ("python", "pypi"):
+        elif ecosystem == "pypi":
             # PyPI package mode: resolve the PyPI package and build pypi-specific pipeline
             pypi_temp_dir = cleanup_stack.enter_context(tempfile.TemporaryDirectory())
             pypi_resolver = PypiPackageResolver(pypi_temp_dir)

@@ -522,6 +522,62 @@ def test_generate_sbom_supports_markdown_format_stdout(
     )
 
 
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PypiPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MarkdownReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_generate_sbom_canonicalizes_python_ecosystem_for_markdown_writer(
+    mock_metadata_collector: Mock,
+    mock_markdown_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_pypi_resolver: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    mock_pypi_resolver.return_value.resolve_package.return_value = (
+        "/tmp/pypi_resolve/requests"
+    )
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_markdown_reporting_writter.return_value.write.return_value = "markdown-output"
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "requests==2.31.0",
+            "--ecosystem",
+            "python",
+            "--no-gh-auth",
+            "--format",
+            "markdown",
+            "--no-scancode-strategy",
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout == "markdown-output"
+    mock_github.assert_called_once_with()
+    mock_source_code_manager.assert_called_once_with(
+        ANY, mock_github.return_value, 86400, None
+    )
+    mock_pypi_resolver.assert_called_once_with(ANY)
+    mock_pypi_resolver.return_value.resolve_package.assert_called_once_with(
+        "requests==2.31.0"
+    )
+    mock_python_env_manager.assert_called_once_with(ANY, 86400)
+    mock_metadata_collector.assert_called_once_with(ANY)
+    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+        "requests==2.31.0"
+    )
+    mock_markdown_reporting_writter.assert_called_once_with(
+        document_name="requests==2.31.0", ecosystem="pypi"
+    )
+    mock_markdown_reporting_writter.return_value.write.assert_called_once_with([])
+
+
 def test_generate_sbom_rejects_multiple_formats_without_output_dir() -> None:
     result = runner.invoke(
         app,
