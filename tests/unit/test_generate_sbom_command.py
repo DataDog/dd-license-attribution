@@ -10,8 +10,17 @@ from unittest.mock import ANY, Mock, call, patch
 from typer.testing import CliRunner
 
 from dd_license_attribution.cli.main_cli import app
+from dd_license_attribution.metadata_collector.metadata import Metadata
 
 runner = CliRunner()
+
+_SKIP_DEPENDENCY_STRATEGIES = [
+    "--no-pypi-strategy",
+    "--no-gopkg-strategy",
+    "--no-github-sbom-strategy",
+    "--no-npm-strategy",
+    "--no-scancode-strategy",
+]
 
 
 @patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
@@ -381,7 +390,7 @@ def test_generate_sbom_defaults_to_csv(
     result = runner.invoke(
         app,
         ["generate-sbom", "https://github.com/org/repo", "--no-gh-auth"],
-        env={"GITHUB_TOKEN": ""},
+        env={"GITHUB_TOKEN": "stale-token"},
     )
 
     assert result.exit_code == 0
@@ -463,6 +472,248 @@ def test_generate_sbom_supports_spdx_format(
     )
     mock_spdx_reporting_writter.return_value.write.assert_called_once_with([])
     mock_csv_reporting_writter.assert_not_called()
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_generate_sbom_supports_markdown_format_stdout(
+    mock_metadata_collector: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = [
+        Metadata(
+            name="repo",
+            version="1.0.0",
+            origin="https://github.com/org/repo",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["Copyright org"],
+        )
+    ]
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo",
+            "--no-gh-auth",
+            "--format",
+            "markdown",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout.startswith("# License Compliance Report: github.com/org/repo")
+    assert "## Third-Party Dependencies" in result.stdout
+    mock_github.assert_called_once_with()
+    mock_source_code_manager.assert_called_once_with(
+        ANY, mock_github.return_value, 86400, None
+    )
+    mock_python_env_manager.assert_called_once_with(ANY, 86400)
+    mock_metadata_collector.assert_called_once_with(ANY)
+    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+        "https://github.com/org/repo"
+    )
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PypiPackageResolver")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MarkdownReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_generate_sbom_canonicalizes_python_ecosystem_for_markdown_writer(
+    mock_metadata_collector: Mock,
+    mock_markdown_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_pypi_resolver: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    mock_pypi_resolver.return_value.resolve_package.return_value = (
+        "/tmp/pypi_resolve/requests"
+    )
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_markdown_reporting_writter.return_value.write.return_value = "markdown-output"
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "requests==2.31.0",
+            "--ecosystem",
+            "python",
+            "--no-gh-auth",
+            "--format",
+            "markdown",
+            "--no-scancode-strategy",
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout == "markdown-output"
+    mock_github.assert_called_once_with()
+    mock_source_code_manager.assert_called_once_with(
+        ANY, mock_github.return_value, 86400, None
+    )
+    mock_pypi_resolver.assert_called_once_with(ANY)
+    mock_pypi_resolver.return_value.resolve_package.assert_called_once_with(
+        "requests==2.31.0"
+    )
+    mock_python_env_manager.assert_called_once_with(ANY, 86400)
+    mock_metadata_collector.assert_called_once_with(ANY)
+    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+        "requests==2.31.0"
+    )
+    mock_markdown_reporting_writter.assert_called_once_with(
+        document_name="requests==2.31.0", ecosystem="pypi"
+    )
+    mock_markdown_reporting_writter.return_value.write.assert_called_once_with([])
+
+
+def test_generate_sbom_rejects_multiple_formats_without_output_dir() -> None:
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo",
+            "--no-gh-auth",
+            "--format",
+            "csv",
+            "--format",
+            "markdown",
+        ],
+        color=False,
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code != 0
+    assert "Multiple --format values require --output-dir." in result.stderr
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_generate_sbom_deduplicates_repeated_stdout_format(
+    mock_metadata_collector: Mock,
+    mock_csv_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        None,
+    )
+    mock_csv_reporting_writter.return_value.write.return_value = "csv-output"
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo",
+            "--no-gh-auth",
+            "--format",
+            "csv",
+            "--format",
+            "csv",
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout == "csv-output"
+    mock_github.assert_called_once_with()
+    mock_source_code_manager.assert_called_once_with(
+        ANY, mock_github.return_value, 86400, None
+    )
+    mock_python_env_manager.assert_called_once_with(ANY, 86400)
+    mock_metadata_collector.assert_called_once_with(ANY)
+    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+        "https://github.com/org/repo"
+    )
+    mock_csv_reporting_writter.assert_called_once_with()
+    mock_csv_reporting_writter.return_value.write.assert_called_once_with([])
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.write_file")
+@patch("dd_license_attribution.cli.generate_sbom_command.create_dirs")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_generate_sbom_writes_multiple_output_formats_to_directory(
+    mock_metadata_collector: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_create_dirs: Mock,
+    mock_write_file: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = [
+        Metadata(
+            name="repo",
+            version="1.0.0",
+            origin="https://github.com/org/repo",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["Copyright org"],
+        )
+    ]
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "git@github.com:org/repo",
+            "--no-gh-auth",
+            "--format",
+            "csv",
+            "--format",
+            "markdown",
+            "--format",
+            "markdown",
+            "--format",
+            "spdx",
+            "--format",
+            "csv",
+            "--output-dir",
+            "/tmp/ddla-out",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout == ""
+    mock_github.assert_called_once_with()
+    mock_source_code_manager.assert_called_once_with(
+        ANY, mock_github.return_value, 86400, None
+    )
+    mock_python_env_manager.assert_called_once_with(ANY, 86400)
+    mock_metadata_collector.assert_called_once_with(ANY)
+    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+        "git@github.com:org/repo"
+    )
+    mock_create_dirs.assert_called_once_with("/tmp/ddla-out")
+    mock_write_file.assert_has_calls(
+        [
+            call("/tmp/ddla-out/git@github.com_org_repo.csv", ANY),
+            call("/tmp/ddla-out/git@github.com_org_repo.md", ANY),
+            call("/tmp/ddla-out/git@github.com_org_repo.json", ANY),
+        ]
+    )
+    assert len(mock_write_file.call_args_list) == 3
 
 
 def test_generate_sbom_rejects_unknown_format() -> None:
