@@ -1,0 +1,352 @@
+name: "Validate LICENSE-3rdparty.csv"
+description: >-
+  Generate a third-party license SBOM for a repository (or package) with
+  dd-license-attribution and validate that it matches a committed
+  LICENSE-3rdparty.csv file. Fails the job when the committed file is out of
+  date.
+author: "Datadog, Inc."
+branding:
+  icon: "check-circle"
+  color: "purple"
+
+inputs:
+  repository:
+    description: >-
+      The GitHub repository to analyze, as `owner/name` (the action always
+      assumes github.com as the host). Defaults to the repository the workflow
+      is running in. Ignored when `ecosystem` is set.
+    required: false
+    default: "${{ github.repository }}"
+  ecosystem:
+    description: >-
+      Value for the `--ecosystem` flag. When set, `package` is analyzed as a
+      package name in this ecosystem instead of the `repository`. One of: npm,
+      python, pypi, go. Leave empty to analyze a GitHub repository.
+    required: false
+    default: ""
+  package:
+    description: >-
+      The package name to analyze. Only used (and required) when `ecosystem`
+      is set; ignored otherwise.
+    required: false
+    default: ""
+  csv-path:
+    description: >-
+      Path (relative to the workspace) of the committed LICENSE-3rdparty.csv
+      file to validate against. The repository must already be checked out.
+    required: false
+    default: "LICENSE-3rdparty.csv"
+  override-spec:
+    description: >-
+      Value for the `--override-spec` flag: a file with a JSON array of
+      override rules. Leave empty to disable overrides.
+    required: false
+    default: ""
+  compare:
+    description: >-
+      When 'true' (default), the generated SBOM must match `csv-path` exactly
+      or the action fails, printing a unified diff. When 'false', only
+      structural validation is performed (the output must be a non-empty CSV
+      with the expected header) — useful on secondary runtimes where the
+      dependency closure legitimately differs.
+    required: false
+    default: "true"
+  github-sbom-strategy:
+    description: >-
+      Set to 'false' to pass --no-github-sbom-strategy. Note: this strategy
+      reads GitHub's dependency graph for the repository (its default/base
+      branch), which is not affected by the branch-under-test mirror. When
+      validating dependency changes on a PR, consider setting this to 'false'
+      so discovery is driven by the source-based strategies instead.
+    required: false
+    default: "true"
+  gopkg-strategy:
+    description: "Set to 'false' to pass --no-gopkg-strategy."
+    required: false
+    default: "true"
+  pypi-strategy:
+    description: "Set to 'false' to pass --no-pypi-strategy."
+    required: false
+    default: "true"
+  npm-strategy:
+    description: "Set to 'false' to pass --no-npm-strategy."
+    required: false
+    default: "true"
+  scancode-strategy:
+    description: "Set to 'false' to pass --no-scancode-strategy."
+    required: false
+    default: "true"
+  experimental-strategy:
+    description: "Set to 'true' to pass --experimental-strategy."
+    required: false
+    default: "false"
+  deep-scanning:
+    description: "Set to 'true' to pass --deep-scanning."
+    required: false
+    default: "false"
+  default-branch:
+    description: >-
+      The default branch of `repository`, used as the source ref when the
+      action maps the mirror onto the branch under test (the PR head branch,
+      the merge-queue branch, or the pushed branch). Only relevant in
+      repository mode.
+    required: false
+    default: "main"
+  use-mirrors:
+    description: >-
+      Path (in the checked-out workspace) to a JSON file of mirror
+      specifications for callers with special needs. Its entries are merged
+      ahead of the mirror the action builds automatically, so they take
+      precedence for any overlapping original_url (the tool uses the first
+      matching entry) while the auto-built, token-authenticated entry for the
+      repository remains as a fallback. In ecosystem mode (no auto-built
+      mirror), it is passed through verbatim to `--use-mirrors`. Leave empty
+      to rely solely on the auto-built mirror.
+    required: false
+    default: ""
+  github-token:
+    description: >-
+      GitHub token used both for API calls and, embedded in the generated
+      mirror URL, for cloning the repository under test. Providing a token is
+      required to analyze private repositories. Defaults to the workflow token.
+    required: false
+    default: "${{ github.token }}"
+  python-version:
+    description: "Python version to set up and run dd-license-attribution with."
+    required: false
+    default: "3.14"
+  go-version:
+    description: >-
+      Go version to set up (only when the GoPkg strategy is enabled). Required
+      for analyzing Go dependencies.
+    required: false
+    default: "1.23"
+
+outputs:
+  sbom-path:
+    description: "Absolute path to the generated SBOM file."
+    value: ${{ steps.validate.outputs.sbom-path }}
+  matches:
+    description: >-
+      'true' when the generated SBOM matched `csv-path`. Only meaningful when
+      `compare` is 'true'.
+    value: ${{ steps.validate.outputs.matches }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: "pip"
+
+    - name: Set up Go
+      if: ${{ inputs.gopkg-strategy != 'false' }}
+      uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+      with:
+        go-version: ${{ inputs.go-version }}
+
+    - name: Install dd-license-attribution
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install "${GITHUB_ACTION_PATH}"
+
+    - name: Generate and validate SBOM
+      id: validate
+      shell: bash
+      env:
+        # Used by dd-license-attribution for GitHub API calls, and embedded in
+        # the generated mirror URL for cloning (including private repos).
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        REPOSITORY: ${{ inputs.repository }}
+        ECOSYSTEM: ${{ inputs.ecosystem }}
+        PACKAGE: ${{ inputs.package }}
+        CSV_PATH: ${{ inputs.csv-path }}
+        OVERRIDE_SPEC: ${{ inputs.override-spec }}
+        COMPARE: ${{ inputs.compare }}
+        GITHUB_SBOM_STRATEGY: ${{ inputs.github-sbom-strategy }}
+        GOPKG_STRATEGY: ${{ inputs.gopkg-strategy }}
+        PYPI_STRATEGY: ${{ inputs.pypi-strategy }}
+        NPM_STRATEGY: ${{ inputs.npm-strategy }}
+        SCANCODE_STRATEGY: ${{ inputs.scancode-strategy }}
+        EXPERIMENTAL_STRATEGY: ${{ inputs.experimental-strategy }}
+        DEEP_SCANNING: ${{ inputs.deep-scanning }}
+        DEFAULT_BRANCH: ${{ inputs.default-branch }}
+        USE_MIRRORS: ${{ inputs.use-mirrors }}
+        # Event context used to point the mirror at the branch under test.
+        SELF_REPOSITORY: ${{ github.repository }}
+        EVENT_NAME: ${{ github.event_name }}
+        HEAD_REF: ${{ github.head_ref || '' }}
+        PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || '' }}
+        MERGE_GROUP_REF: ${{ github.event.merge_group.head_ref || '' }}
+        REF_NAME: ${{ github.ref_name || '' }}
+      run: |
+        set -euo pipefail
+
+        # Register the token as a secret so it is redacted from the logs, even
+        # if the tool or a git subprocess echoes a URL that embeds it.
+        if [ -n "${GITHUB_TOKEN}" ]; then
+          echo "::add-mask::${GITHUB_TOKEN}"
+        fi
+
+        output_file="${RUNNER_TEMP}/ddla-sbom-output.csv"
+        echo "sbom-path=${output_file}" >> "${GITHUB_OUTPUT}"
+
+        args=(generate-sbom --format csv)
+
+        [ "${GITHUB_SBOM_STRATEGY}" = "false" ] && args+=(--no-github-sbom-strategy)
+        [ "${GOPKG_STRATEGY}" = "false" ] && args+=(--no-gopkg-strategy)
+        [ "${PYPI_STRATEGY}" = "false" ] && args+=(--no-pypi-strategy)
+        [ "${NPM_STRATEGY}" = "false" ] && args+=(--no-npm-strategy)
+        [ "${SCANCODE_STRATEGY}" = "false" ] && args+=(--no-scancode-strategy)
+        [ "${EXPERIMENTAL_STRATEGY}" = "true" ] && args+=(--experimental-strategy)
+        [ "${DEEP_SCANNING}" = "true" ] && args+=(--deep-scanning)
+
+        if [ -n "${OVERRIDE_SPEC}" ]; then
+          args+=(--override-spec "${OVERRIDE_SPEC}")
+        fi
+
+        if [ -n "${ECOSYSTEM}" ]; then
+          # Ecosystem mode: analyze a package by name; no repository mirror.
+          if [ -z "${PACKAGE}" ]; then
+            echo "::error::'package' is required when 'ecosystem' is set."
+            exit 1
+          fi
+          args+=(--ecosystem "${ECOSYSTEM}")
+          target="${PACKAGE}"
+          # No repository mirror is built in ecosystem mode; a caller-supplied
+          # mirror file, if any, is passed through verbatim.
+          if [ -n "${USE_MIRRORS}" ]; then
+            args+=(--use-mirrors "${USE_MIRRORS}")
+          fi
+        else
+          # Repository mode: analyze a GitHub repository by owner/name.
+          target="https://github.com/${REPOSITORY}"
+
+          # Build a token-authenticated mirror so the repository can be cloned
+          # (required for private repositories) and, when we are validating the
+          # repository the workflow runs in, so the correct branch under test is
+          # scanned rather than the default branch. When the caller supplies
+          # their own mirror file (use-mirrors), its entries are merged ahead of
+          # the auto-built entry so they take precedence for any overlapping
+          # original_url (the tool uses the first matching entry). The file may
+          # contain a credential, so it is written with restrictive
+          # permissions, removed on exit, and never uploaded as an artifact.
+          mirror_file="${RUNNER_TEMP}/ddla-mirrors.json"
+          trap 'rm -f "${mirror_file}"' EXIT
+          (
+            umask 077
+            REPOSITORY="${REPOSITORY}" \
+            SELF_REPOSITORY="${SELF_REPOSITORY}" \
+            DEFAULT_BRANCH="${DEFAULT_BRANCH}" \
+            MIRROR_TOKEN="${GITHUB_TOKEN}" \
+            EVENT_NAME="${EVENT_NAME}" \
+            HEAD_REF="${HEAD_REF}" \
+            PR_HEAD_REPO="${PR_HEAD_REPO}" \
+            MERGE_GROUP_REF="${MERGE_GROUP_REF}" \
+            REF_NAME="${REF_NAME}" \
+            USER_MIRRORS_FILE="${USE_MIRRORS}" \
+            python3 - > "${mirror_file}" <<'PY'
+        import json
+        import os
+        import sys
+
+        repository = os.environ["REPOSITORY"]
+        self_repository = os.environ.get("SELF_REPOSITORY", "")
+        default_branch = os.environ.get("DEFAULT_BRANCH") or "main"
+        token = os.environ.get("MIRROR_TOKEN", "")
+        event = os.environ.get("EVENT_NAME", "")
+        head_ref = os.environ.get("HEAD_REF", "")
+        pr_head_repo = os.environ.get("PR_HEAD_REPO", "")
+        merge_group_ref = os.environ.get("MERGE_GROUP_REF", "")
+        ref_name = os.environ.get("REF_NAME", "")
+
+
+        def clone_url(repo: str) -> str:
+            if token:
+                return f"https://git:{token}@github.com/{repo}"
+            return f"https://github.com/{repo}"
+
+
+        is_self = repository == self_repository
+        target_repo = repository
+        target_ref = ""
+
+        if is_self and event == "pull_request" and pr_head_repo and head_ref:
+            # Scan the PR head branch, cloning from the (possibly forked) head repo.
+            target_repo = pr_head_repo
+            target_ref = head_ref
+        elif is_self and event == "merge_group" and merge_group_ref:
+            target_ref = merge_group_ref.removeprefix("refs/heads/")
+        elif is_self and ref_name and ref_name != default_branch:
+            # A push (or other event) on a non-default branch.
+            target_ref = ref_name
+
+        spec = {
+            "original_url": f"https://github.com/{repository}",
+            "mirror_url": clone_url(target_repo),
+        }
+        if target_ref:
+            spec["ref_mapping"] = {f"branch:{default_branch}": f"branch:{target_ref}"}
+
+        # Caller-supplied mirror entries take precedence: they are placed first,
+        # and the auto-built entry is appended as a fallback for the primary
+        # repository. The tool uses the first entry matching a given
+        # original_url, so an external entry for the primary repository
+        # overrides the auto-built one.
+        entries = []
+        user_mirrors_file = os.environ.get("USER_MIRRORS_FILE", "")
+        if user_mirrors_file:
+            with open(user_mirrors_file, encoding="utf-8") as handle:
+                user_entries = json.load(handle)
+            if not isinstance(user_entries, list):
+                print(
+                    f"use-mirrors file '{user_mirrors_file}' must contain a JSON array",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1)
+            entries.extend(user_entries)
+        entries.append(spec)
+
+        json.dump(entries, sys.stdout)
+        PY
+          )
+          args+=(--use-mirrors "${mirror_file}")
+        fi
+
+        args+=("${target}")
+
+        echo "Running: dd-license-attribution ${args[*]}"
+        dd-license-attribution "${args[@]}" > "${output_file}"
+
+        if [ ! -f "${CSV_PATH}" ]; then
+          echo "::error::Comparison file not found: ${CSV_PATH}. Make sure the repository is checked out and csv-path is correct."
+          exit 1
+        fi
+
+        if [ "${COMPARE}" = "true" ]; then
+          if cmp -s "${CSV_PATH}" "${output_file}"; then
+            echo "matches=true" >> "${GITHUB_OUTPUT}"
+            echo "${CSV_PATH} is up to date."
+          else
+            echo "matches=false" >> "${GITHUB_OUTPUT}"
+            echo "::error::${CSV_PATH} is out of date. Regenerate it with dd-license-attribution and commit the result."
+            echo "Diff (committed vs. freshly generated):"
+            diff -u --color=always "${CSV_PATH}" "${output_file}" || true
+            exit 1
+          fi
+        else
+          echo "matches=" >> "${GITHUB_OUTPUT}"
+          if ! head -1 "${output_file}" | grep -iq "component.*origin.*license.*copyright"; then
+            echo "::error::Generated SBOM is missing the expected CSV header."
+            exit 1
+          fi
+          line_count=$(wc -l < "${output_file}")
+          if [ "${line_count}" -lt 2 ]; then
+            echo "::error::Generated SBOM contains no dependencies (line count: ${line_count})."
+            exit 1
+          fi
+          echo "Structural validation passed: $((line_count - 1)) dependencies (exact comparison skipped)."
+        fi

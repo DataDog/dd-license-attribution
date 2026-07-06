@@ -50,44 +50,58 @@ jobs:
         run: |
           dd-license-attribution generate-sbom-csv --only-root-project https://github.com/DataDog/stratus-red-team
 
-      - name: Run the dd-license-attribution script against the dd-license-attribution repository with overrides
+      # Exercise the reusable action against this repository. `repository`
+      # defaults to github.repository, and the action builds its own
+      # token-authenticated mirror pointing at the branch under test (the PR
+      # head branch on PRs), so no mirror needs to be prepared here. Exact
+      # comparison only happens on the primary development version (3.14);
+      # dependency closures differ across Python versions (e.g. setuptools
+      # appears on 3.11 but not 3.14), so other versions only get structural
+      # validation.
+      - name: Validate LICENSE-3rdparty.csv
+        id: validate-license
+        uses: ./
+        with:
+          override-spec: .ddla-overrides
+          compare: ${{ matrix.python-version == '3.14' }}
+          python-version: ${{ matrix.python-version }}
+          go-version: "1.23"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # The SPDX test below runs the CLI directly (not through the action), so
+      # it still needs a mirror to scan the PR branch on pull_request events.
+      - name: Prepare mirror configuration for the SPDX test
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT_NAME: ${{ github.event_name }}
           HEAD_REF: ${{ github.head_ref || '' }}
           PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name || '' }}
-          PYTHON_VERSION: ${{ matrix.python-version }}
         run: |
-          # For PRs: Use mirror configuration to test against the PR branch
-          # For main: Test against main branch directly (no mirror needed)
           if [ "${EVENT_NAME}" = "pull_request" ]; then
-            BRANCH_NAME="${HEAD_REF}"
-            # Use head repo so fork PRs clone the branch from the fork, not upstream
-            MIRROR_URL="https://github.com/${PR_HEAD_REPO}"
-            echo "Testing PR branch: ${BRANCH_NAME}"
-            echo "[{\"original_url\": \"https://github.com/DataDog/dd-license-attribution\", \"mirror_url\": \"${MIRROR_URL}\", \"ref_mapping\": {\"branch:main\": \"branch:${BRANCH_NAME}\"}}]" > mirrors.json
-            dd-license-attribution generate-sbom --override-spec=.ddla-overrides --use-mirrors=mirrors.json https://github.com/DataDog/dd-license-attribution > ddla-output.txt
+            echo "Testing PR branch: ${HEAD_REF}"
+            # Build the JSON with Python so that untrusted, PR-controlled values
+            # (branch name, head repo) are properly escaped rather than
+            # interpolated into a shell-quoted string.
+            # Use head repo so fork PRs clone the branch from the fork, not upstream.
+            HEAD_REF="${HEAD_REF}" PR_HEAD_REPO="${PR_HEAD_REPO}" python3 - <<'PY' > mirrors.json
+          import json
+          import os
+
+          print(
+              json.dumps(
+                  [
+                      {
+                          "original_url": "https://github.com/DataDog/dd-license-attribution",
+                          "mirror_url": f"https://github.com/{os.environ['PR_HEAD_REPO']}",
+                          "ref_mapping": {
+                              "branch:main": f"branch:{os.environ['HEAD_REF']}"
+                          },
+                      }
+                  ]
+              )
+          )
+          PY
           else
             echo "Testing main branch"
-            dd-license-attribution generate-sbom --override-spec=.ddla-overrides https://github.com/DataDog/dd-license-attribution > ddla-output.txt
-          fi
-
-          # Only compare CSV output on the primary development version (3.14).
-          # Dependency closures differ across Python versions (e.g., setuptools
-          # appears on 3.11 but not 3.14), so exact comparison only works on one.
-          if [ "${PYTHON_VERSION}" = "3.14" ]; then
-            if ! cmp -s LICENSE-3rdparty.csv ddla-output.txt; then
-              echo "Error: LICENSE-3rdparty.csv differs from ddla-output.txt"
-              echo "Diff between files:"
-              diff -u --color LICENSE-3rdparty.csv ddla-output.txt || true
-              echo "Uploading ddla-output.txt as an artifact..."
-              exit 1
-            fi
-          else
-            # On other versions, just validate the output is non-empty CSV with expected header
-            head -1 ddla-output.txt | grep -iq "component.*origin.*license.*copyright"
-            line_count=$(wc -l < ddla-output.txt)
-            echo "CSV comparison skipped on Python ${PYTHON_VERSION} (closure may differ). Output has $((line_count - 1)) dependencies."
           fi
 
       - name: Run the dd-license-attribution script with SPDX output
@@ -128,7 +142,7 @@ jobs:
         with:
           name: ddla-output-${{ matrix.python-version }}
           path: |
-            ddla-output.txt
+            ${{ steps.validate-license.outputs.sbom-path }}
             ddla-spdx-output.json
           if-no-files-found: ignore
 

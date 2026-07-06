@@ -447,6 +447,113 @@ export OPENAI_API_KEY=your_key
 dd-license-attribution clean-spdx-id LICENSE-3rdparty.csv LICENSE-cleaned.csv
 ```
 
+## GitHub Action: Validate `LICENSE-3rdparty.csv`
+
+This repository doubles as a reusable composite GitHub Action that regenerates a
+third-party license SBOM and validates it against a committed
+`LICENSE-3rdparty.csv` file. Use it in CI to fail a build whenever the committed
+file drifts from what `dd-license-attribution` would produce.
+
+The action sets up its own Python (and, when the GoPkg strategy is enabled, Go)
+toolchain and installs the exact version of `dd-license-attribution` shipped with
+the `@ref` you pin, so no additional setup steps are required. Your repository
+must be checked out so the action can read the committed `LICENSE-3rdparty.csv`.
+
+The action always assumes github.com as the host and takes the target as an
+`owner/name` `repository` (defaulting to the repository the workflow runs in).
+It builds its own mirror configuration internally, embedding `github-token` so
+the repository can be cloned — this is what makes **private repositories** work —
+and, when validating the repository the workflow runs in, points that mirror at
+the branch actually under test (the PR head branch, the merge-queue branch, or
+the pushed branch) rather than the default branch. Because the mirror embeds a
+credential, provide a token with read access to the target repository.
+
+> **Branch-under-test caveat.** The mirror only redirects the strategies that
+> clone source code. The GitHub SBOM strategy (`github-sbom-strategy`, enabled
+> by default) instead reads GitHub's dependency graph for the repository, which
+> reflects its default/base branch — not the branch under test. If a pull
+> request changes dependencies and you want that change validated, disable it
+> with `github-sbom-strategy: false` so discovery is driven by the source-based
+> strategies (this is what the reference workflow does). The action also
+> registers `github-token` as a masked secret so it is redacted from the job
+> logs.
+
+### Basic usage
+
+```yaml
+jobs:
+  validate-licenses:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+      - uses: DataDog/dd-license-attribution@v1
+        with:
+          # `repository` defaults to the current repository (owner/name).
+          override-spec: .ddla-overrides
+          # `github-token` defaults to ${{ github.token }}; provide a token
+          # with read access when validating a private repository.
+```
+
+### Inputs
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `repository` | `${{ github.repository }}` | GitHub repository to analyze, as `owner/name`. Ignored when `ecosystem` is set. |
+| `ecosystem` | _(empty)_ | Value for `--ecosystem` (`npm`, `python`, `pypi`, or `go`). When set, `package` is analyzed instead of `repository` (and no mirror is built). |
+| `package` | _(empty)_ | Package name to analyze. Only used (and required) when `ecosystem` is set. |
+| `csv-path` | `LICENSE-3rdparty.csv` | Path (in the checked-out workspace) of the committed file to validate against. |
+| `override-spec` | _(empty)_ | Value for `--override-spec` (a JSON file of override rules). |
+| `compare` | `true` | When `true`, the generated SBOM must match `csv-path` exactly (a unified diff is printed on mismatch). When `false`, only structural validation (non-empty CSV with the expected header) is performed. |
+| `github-sbom-strategy` | `true` | Set to `false` to pass `--no-github-sbom-strategy`. |
+| `gopkg-strategy` | `true` | Set to `false` to pass `--no-gopkg-strategy`. Also gates whether Go is set up. |
+| `pypi-strategy` | `true` | Set to `false` to pass `--no-pypi-strategy`. |
+| `npm-strategy` | `true` | Set to `false` to pass `--no-npm-strategy`. |
+| `scancode-strategy` | `true` | Set to `false` to pass `--no-scancode-strategy`. |
+| `experimental-strategy` | `false` | Set to `true` to pass `--experimental-strategy`. |
+| `deep-scanning` | `false` | Set to `true` to pass `--deep-scanning`. |
+| `default-branch` | `main` | Default branch of `repository`, used as the source ref when the mirror is mapped onto the branch under test. |
+| `use-mirrors` | _(empty)_ | Path (in the workspace) to a JSON file of mirror specifications. Its entries are merged *ahead* of the auto-built mirror, so they take precedence for any overlapping `original_url` while the auto-built token-authenticated entry remains a fallback. In ecosystem mode it is passed verbatim to `--use-mirrors`. |
+| `github-token` | `${{ github.token }}` | Token used for GitHub API calls and, embedded in the mirror URL, for cloning the repository. Required for private repositories. |
+| `python-version` | `3.14` | Python version to set up and run the tool with. |
+| `go-version` | `1.23` | Go version to set up (only when `gopkg-strategy` is enabled). |
+
+### Outputs
+
+| Output | Description |
+| --- | --- |
+| `sbom-path` | Absolute path to the generated SBOM file (useful for uploading as an artifact on failure). |
+| `matches` | `true` when the generated SBOM matched `csv-path`. Only meaningful when `compare` is `true`. |
+
+### Controlling strategies
+
+Each collection strategy has a boolean input that defaults to enabled. Set one to
+`false` to skip it:
+
+```yaml
+      - uses: DataDog/dd-license-attribution@v1
+        with:
+          pypi-strategy: false
+          scancode-strategy: false
+```
+
+### Supplying custom mirrors
+
+For special needs — for example mirroring a dependency's repository, or pointing
+the target repository at an internal host — commit a mirror-specification JSON
+file and pass its path via `use-mirrors`. Your entries are merged *ahead* of the
+mirror the action builds automatically, so they win for any repository they
+name, while the auto-built token-authenticated mirror still covers the primary
+repository as a fallback:
+
+```yaml
+      - uses: actions/checkout@v5
+      - uses: DataDog/dd-license-attribution@v1
+        with:
+          use-mirrors: .github/ddla-mirrors.json
+```
+
 ### Development and Contributing
 
 For instructions on how to develop or contribute to the project, read our [CONTRIBUTING.md guidelines](./CONTRIBUTING.md).
