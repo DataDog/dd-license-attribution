@@ -456,8 +456,10 @@ file drifts from what `dd-license-attribution` would produce.
 
 The action sets up its own Python (and, when the GoPkg strategy is enabled, Go)
 toolchain and installs the exact version of `dd-license-attribution` shipped with
-the `@ref` you pin, so no additional setup steps are required. Your repository
-must be checked out so the action can read the committed `LICENSE-3rdparty.csv`.
+the `@ref` you pin, so no additional setup steps are required. If your workflow
+already provides Python and/or Go, opt out of the redundant internal setup by
+passing `python-version: false` and/or `go-version: false`. Your repository must
+be checked out so the action can read the committed `LICENSE-3rdparty.csv`.
 
 The action always assumes github.com as the host and takes the target as an
 `owner/name` `repository` (defaulting to the repository the workflow runs in).
@@ -516,8 +518,8 @@ jobs:
 | `default-branch` | `main` | Default branch of `repository`, used as the source ref when the mirror is mapped onto the branch under test. |
 | `use-mirrors` | _(empty)_ | Path (in the workspace) to a JSON file of mirror specifications. Its entries are merged *ahead* of the auto-built mirror, so they take precedence for any overlapping `original_url` while the auto-built token-authenticated entry remains a fallback. In ecosystem mode it is passed verbatim to `--use-mirrors`. |
 | `github-token` | `${{ github.token }}` | Token used for GitHub API calls and, embedded in the mirror URL, for cloning the repository. Required for private repositories. |
-| `python-version` | `3.14` | Python version to set up and run the tool with. |
-| `go-version` | `1.23` | Go version to set up (only when `gopkg-strategy` is enabled). |
+| `python-version` | `3.14` | Python version to set up and run the tool with. Set to `false` to skip the internal Python setup and use the `python` already on `PATH`. |
+| `go-version` | `1.23` | Go version to set up (only when `gopkg-strategy` is enabled). Set to `false` to skip the internal Go setup and use the calling workflow's Go toolchain. |
 
 ### Outputs
 

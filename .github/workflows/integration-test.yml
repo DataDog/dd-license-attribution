@@ -64,8 +64,11 @@ jobs:
         with:
           override-spec: .ddla-overrides
           compare: ${{ matrix.python-version == '3.14' }}
-          python-version: ${{ matrix.python-version }}
-          go-version: "1.23"
+          # This job already sets up Python and Go (and installs the tool), so
+          # the action's own toolchain setup is redundant here and would fight
+          # the matrix Python version; opt out of both by passing false.
+          python-version: false
+          go-version: false
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # The SPDX test below runs the CLI directly (not through the action), so

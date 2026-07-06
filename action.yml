@@ -112,13 +112,17 @@ inputs:
     required: false
     default: "${{ github.token }}"
   python-version:
-    description: "Python version to set up and run dd-license-attribution with."
+    description: >-
+      Python version to set up and run dd-license-attribution with. Set to
+      'false' to skip the internal Python setup entirely and use the `python`
+      already on PATH (e.g. when the calling workflow has set it up).
     required: false
     default: "3.14"
   go-version:
     description: >-
       Go version to set up (only when the GoPkg strategy is enabled). Required
-      for analyzing Go dependencies.
+      for analyzing Go dependencies. Set to 'false' to skip the internal Go
+      setup entirely and use the calling workflow's Go toolchain.
     required: false
     default: "1.23"
 
@@ -136,13 +140,14 @@ runs:
   using: "composite"
   steps:
     - name: Set up Python
+      if: ${{ inputs.python-version != 'false' }}
       uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
       with:
         python-version: ${{ inputs.python-version }}
         cache: "pip"
 
     - name: Set up Go
-      if: ${{ inputs.gopkg-strategy != 'false' }}
+      if: ${{ inputs.go-version != 'false' && inputs.gopkg-strategy != 'false' }}
       uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
       with:
         go-version: ${{ inputs.go-version }}
