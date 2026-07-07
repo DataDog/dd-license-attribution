@@ -478,9 +478,8 @@ credential, provide a token with read access to the target repository.
 > reflects its default/base branch — not the branch under test. If a pull
 > request changes dependencies and you want that change validated, disable it
 > with `github-sbom-strategy: false` so discovery is driven by the source-based
-> strategies (this is what the reference workflow does). The action also
-> registers `github-token` as a masked secret so it is redacted from the job
-> logs.
+> strategies. The action also registers `github-token` as a masked secret so it
+> is redacted from the job logs.
 
 ### Basic usage
 
