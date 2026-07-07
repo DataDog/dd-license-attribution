@@ -489,8 +489,10 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v5
-      - uses: DataDog/dd-license-attribution@v1
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # Pin to the full commit SHA of the release you want; `<sha>` is a
+      # placeholder — see the repository's tags/releases.
+      - uses: DataDog/dd-license-attribution@<sha>
         with:
           # `repository` defaults to the current repository (owner/name).
           override-spec: .ddla-overrides
@@ -534,7 +536,9 @@ Each collection strategy has a boolean input that defaults to enabled. Set one t
 `false` to skip it:
 
 ```yaml
-      - uses: DataDog/dd-license-attribution@v1
+      # Pin to the full commit SHA of the release you want; `<sha>` is a
+      # placeholder — see the repository's tags/releases.
+      - uses: DataDog/dd-license-attribution@<sha>
         with:
           pypi-strategy: false
           scancode-strategy: false
@@ -550,8 +554,10 @@ name, while the auto-built token-authenticated mirror still covers the primary
 repository as a fallback:
 
 ```yaml
-      - uses: actions/checkout@v5
-      - uses: DataDog/dd-license-attribution@v1
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      # Pin to the full commit SHA of the release you want; `<sha>` is a
+      # placeholder — see the repository's tags/releases.
+      - uses: DataDog/dd-license-attribution@<sha>
         with:
           use-mirrors: .github/ddla-mirrors.json
 ```
