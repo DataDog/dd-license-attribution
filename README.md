@@ -515,7 +515,7 @@ jobs:
 | `scancode-strategy` | `true` | Set to `false` to pass `--no-scancode-strategy`. |
 | `experimental-strategy` | `false` | Set to `true` to pass `--experimental-strategy`. |
 | `deep-scanning` | `false` | Set to `true` to pass `--deep-scanning`. |
-| `default-branch` | `main` | Default branch of `repository`, used as the source ref when the mirror is mapped onto the branch under test. |
+| `default-branch` | `${{ github.event.repository.default_branch }}` | Default branch of `repository`, used as the source ref when the mirror is mapped onto the branch under test. Defaults to the default branch of the repository the workflow runs in. |
 | `use-mirrors` | _(empty)_ | Path (in the workspace) to a JSON file of mirror specifications. Its entries are merged *ahead* of the auto-built mirror, so they take precedence for any overlapping `original_url` while the auto-built token-authenticated entry remains a fallback. In ecosystem mode it is passed verbatim to `--use-mirrors`. |
 | `github-token` | `${{ github.token }}` | Token used for GitHub API calls and, embedded in the mirror URL, for cloning the repository. Required for private repositories. |
 | `python-version` | `3.14` | Python version to set up and run the tool with. Set to `false` to skip the internal Python setup and use the `python` already on `PATH`. |

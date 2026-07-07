@@ -88,10 +88,12 @@ inputs:
     description: >-
       The default branch of `repository`, used as the source ref when the
       action maps the mirror onto the branch under test (the PR head branch,
-      the merge-queue branch, or the pushed branch). Only relevant in
-      repository mode.
+      the merge-queue branch, or the pushed branch). Only relevant when
+      validating the repository the workflow runs in. Defaults to that
+      repository's actual default branch (from the event payload); override
+      only if the event context does not expose it.
     required: false
-    default: "main"
+    default: "${{ github.event.repository.default_branch }}"
   use-mirrors:
     description: >-
       Path (in the checked-out workspace) to a JSON file of mirror
