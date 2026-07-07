@@ -14,7 +14,12 @@ inputs:
     description: >-
       The GitHub repository to analyze, as `owner/name` (the action always
       assumes github.com as the host). Defaults to the repository the workflow
-      is running in. Ignored when `ecosystem` is set.
+      is running in. Ignored when `ecosystem` is set. Use GitHub's canonical
+      `owner/name` casing: the auto-built mirror is keyed on this value, and
+      the tool matches mirrors case-sensitively against the repository's
+      canonical URL, so mismatched casing silently disables the mirror (and
+      thus private-repo cloning and branch-under-test mapping). The default
+      (`github.repository`) is already canonical.
     required: false
     default: "${{ github.repository }}"
   ecosystem:

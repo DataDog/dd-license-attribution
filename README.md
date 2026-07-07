@@ -224,6 +224,8 @@ Example mirror configuration file:
 
 Note: Currently, only branch-to-branch mapping is supported. The mirror URLs must also be GitHub repositories.
 
+Note: `original_url` is matched **case-sensitively against the repository's canonical URL**. Before applying mirrors, the tool resolves each scan target to its canonical GitHub `owner/name` (following renames/redirects and using the casing GitHub records for the owner and repository). An `original_url` whose casing differs from that canonical form will never match, so the mirror is silently ignored. Copy the `owner/name` exactly as GitHub displays it.
+
 #### Override Configuration
 
 Sometimes `dd-license-attribution` may not detect all dependencies correctly, or the detected license information may be inaccurate. For these cases, you can provide an override configuration file to:
@@ -504,7 +506,7 @@ jobs:
 
 | Input | Default | Description |
 | --- | --- | --- |
-| `repository` | `${{ github.repository }}` | GitHub repository to analyze, as `owner/name`. Ignored when `ecosystem` is set. |
+| `repository` | `${{ github.repository }}` | GitHub repository to analyze, as `owner/name`. Ignored when `ecosystem` is set. Use GitHub's canonical `owner/name` casing — the auto-built mirror is matched case-sensitively against the canonical URL, so mismatched casing silently disables it. The default is already canonical. |
 | `ecosystem` | _(empty)_ | Value for `--ecosystem` (`npm`, `python`, `pypi`, or `go`). When set, `package` is analyzed instead of `repository` (and no mirror is built). |
 | `package` | _(empty)_ | Package name to analyze. Only used (and required) when `ecosystem` is set. |
 | `csv-path` | `LICENSE-3rdparty.csv` | Path (in the checked-out workspace) of the committed file to validate against. |
@@ -551,7 +553,10 @@ the target repository at an internal host — commit a mirror-specification JSON
 file and pass its path via `use-mirrors`. Your entries are merged *ahead* of the
 mirror the action builds automatically, so they win for any repository they
 name, while the auto-built token-authenticated mirror still covers the primary
-repository as a fallback:
+repository as a fallback. Each `original_url` must use GitHub's canonical
+`owner/name` casing: the tool resolves scan targets to their canonical URL and
+matches mirror entries case-sensitively, so a mismatched-casing entry is
+silently ignored.
 
 ```yaml
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
