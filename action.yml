@@ -255,7 +255,7 @@ runs:
             MERGE_GROUP_REF="${MERGE_GROUP_REF}" \
             REF_NAME="${REF_NAME}" \
             USER_MIRRORS_FILE="${USE_MIRRORS}" \
-            python3 - > "${mirror_file}" <<'PY'
+            python - > "${mirror_file}" <<'PY'
         import json
         import os
         import sys
