@@ -657,6 +657,7 @@ def test_ecosystem_rust_builds_correct_strategy_pipeline(
     strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
 
     assert "RustMetadataCollectionStrategy" in strategy_classes
+    assert "RustCratesIoMetadataCollectionStrategy" in strategy_classes
     assert "ScanCodeToolkitMetadataCollectionStrategy" in strategy_classes
     assert "GitHubRepositoryMetadataCollectionStrategy" in strategy_classes
     assert "CleanupCopyrightMetadataStrategy" in strategy_classes
@@ -747,6 +748,12 @@ def test_ecosystem_rust_passes_local_project_path_to_strategy(
         if s.__class__.__name__ == "RustMetadataCollectionStrategy"
     )
     assert rust_strategy.local_project_path == "/tmp/rust_resolve/serde"
+    crates_io_strategy = next(
+        s
+        for s in strategies
+        if s.__class__.__name__ == "RustCratesIoMetadataCollectionStrategy"
+    )
+    assert crates_io_strategy.local_project_path == "/tmp/rust_resolve/serde"
     mock_ensure_rust_license_tool_installed.assert_called_once_with()
 
 
@@ -790,6 +797,16 @@ def test_ecosystem_rust_binary_fallback_passes_source_path_to_strategy(
     )
     assert (
         rust_strategy.local_project_path
+        == "/tmp/rust_resolve/dd-rust-license-tool/crate-source/"
+        "dd-rust-license-tool-1.0.6"
+    )
+    crates_io_strategy = next(
+        s
+        for s in strategies
+        if s.__class__.__name__ == "RustCratesIoMetadataCollectionStrategy"
+    )
+    assert (
+        crates_io_strategy.local_project_path
         == "/tmp/rust_resolve/dd-rust-license-tool/crate-source/"
         "dd-rust-license-tool-1.0.6"
     )

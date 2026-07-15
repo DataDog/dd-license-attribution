@@ -17,6 +17,8 @@ from dd_license_attribution.adaptors.os import (
     DOWNLOAD_CHUNK_SIZE_BYTES,
     download_url,
     extract_tar_gz,
+    normalize_path,
+    read_tar_gz_text_file,
 )
 
 
@@ -202,3 +204,46 @@ def test_extract_tar_gz_rejects_total_extracted_size_over_limit() -> None:
             "/destination",
             max_extracted_bytes=20,
         )
+
+
+def test_read_tar_gz_text_file_reads_matching_member() -> None:
+    archive_content = _tar_gz_with_files(
+        {
+            "crate/README.md": b"readme",
+            "crate/Cargo.toml": b'[package]\nname = "crate"\n',
+        }
+    )
+
+    result = read_tar_gz_text_file(archive_content, "/Cargo.toml")
+
+    assert result == '[package]\nname = "crate"\n'
+
+
+def test_read_tar_gz_text_file_returns_none_without_matching_member() -> None:
+    archive_content = _tar_gz_with_files({"crate/README.md": b"readme"})
+
+    result = read_tar_gz_text_file(archive_content, "/Cargo.toml")
+
+    assert result is None
+
+
+def test_read_tar_gz_text_file_rejects_oversized_member() -> None:
+    archive_content = _tar_gz_with_files({"crate/Cargo.toml": b"x" * 21})
+
+    with pytest.raises(ValueError, match="exceeds maximum size of 20 bytes"):
+        read_tar_gz_text_file(
+            archive_content,
+            "/Cargo.toml",
+            max_bytes=20,
+        )
+
+
+def test_read_tar_gz_text_file_rejects_invalid_size_limit() -> None:
+    with pytest.raises(ValueError, match="max_bytes must be greater than zero"):
+        read_tar_gz_text_file(b"archive", "/Cargo.toml", max_bytes=0)
+
+
+def test_normalize_path_collapses_relative_segments() -> None:
+    assert normalize_path("/project/patches/helper/../helper/.") == (
+        "/project/patches/helper"
+    )

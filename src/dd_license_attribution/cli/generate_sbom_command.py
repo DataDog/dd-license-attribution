@@ -80,6 +80,9 @@ from dd_license_attribution.metadata_collector.strategies.rust_collection_strate
     RustMetadataCollectionStrategy,
     ensure_rust_license_tool_installed,
 )
+from dd_license_attribution.metadata_collector.strategies.rust_crates_io_collection_strategy import (
+    RustCratesIoMetadataCollectionStrategy,
+)
 from dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
     ScanCodeToolkitMetadataCollectionStrategy,
 )
@@ -589,6 +592,13 @@ def generate_sbom(
                         local_project_path=local_project_path,
                     )
                 )
+                strategies.append(
+                    RustCratesIoMetadataCollectionStrategy(
+                        package,
+                        source_code_manager,
+                        local_project_path=local_project_path,
+                    )
+                )
 
             if enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"]:
                 if deep_scanning:
@@ -734,6 +744,12 @@ def generate_sbom(
                 strategies.append(
                     RustMetadataCollectionStrategy(
                         package, source_code_manager, project_scope
+                    )
+                )
+                strategies.append(
+                    RustCratesIoMetadataCollectionStrategy(
+                        package,
+                        source_code_manager,
                     )
                 )
 

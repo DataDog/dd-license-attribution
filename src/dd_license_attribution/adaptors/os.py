@@ -191,6 +191,30 @@ def extract_tar_gz(
         return [member.name for member in members]
 
 
+def read_tar_gz_text_file(
+    archive_content: bytes,
+    member_suffix: str,
+    max_bytes: int = MAX_EXTRACTED_ARCHIVE_BYTES,
+) -> str | None:
+    if max_bytes <= 0:
+        raise ValueError("max_bytes must be greater than zero")
+
+    with tarfile.open(fileobj=io.BytesIO(archive_content), mode="r:gz") as archive:
+        for member in archive.getmembers():
+            if not member.isfile() or not member.name.endswith(member_suffix):
+                continue
+            if member.size > max_bytes:
+                raise ValueError(
+                    f"Archive member {member.name} exceeds maximum size "
+                    f"of {max_bytes} bytes"
+                )
+            extracted_file = archive.extractfile(member)
+            if extracted_file is None:
+                return None
+            return extracted_file.read().decode("utf-8")
+    return None
+
+
 def is_dir(path: str) -> bool:
     return os.path.isdir(path)
 
@@ -225,3 +249,7 @@ def format_command_output(output: str, error_output: str) -> str:
 
 def path_join(path: str, *paths: str) -> str:
     return os.path.join(path, *paths)
+
+
+def normalize_path(path: str) -> str:
+    return os.path.normpath(path)
