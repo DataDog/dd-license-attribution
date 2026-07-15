@@ -9,15 +9,21 @@ import json
 import logging
 import tomllib
 from typing import Any
-from unittest.mock import call
+from unittest.mock import Mock, call
 
 import pytest_mock
 from pytest import LogCaptureFixture
 
+from dd_license_attribution.artifact_management.artifact_manager import (
+    SourceCodeReference,
+)
 from dd_license_attribution.artifact_management.rust_package_resolver import (
     CRATES_IO_USER_AGENT,
     SYNTHETIC_PACKAGE_NAME,
     RustPackageResolver,
+)
+from dd_license_attribution.artifact_management.source_code_manager import (
+    NonAccessibleRepository,
 )
 
 
@@ -118,6 +124,23 @@ class TestResolvePackage:
                 "",
             )
 
+        resolved_crate_name = "serde"
+        try:
+            metadata_packages = json.loads(metadata_return[1])["packages"]
+            resolved_crate_name = next(
+                package["name"]
+                for package in metadata_packages
+                if isinstance(package, dict)
+                and package.get("name") != SYNTHETIC_PACKAGE_NAME
+            )
+        except (json.JSONDecodeError, KeyError, StopIteration, TypeError):
+            pass
+        if not cargo_lock_content:
+            cargo_lock_content = self._cargo_lock_with_package(
+                resolved_crate_name,
+                "1.0.0",
+            )
+
         mock_create_dirs = mocker.patch(
             "dd_license_attribution.artifact_management.rust_package_resolver.create_dirs"
         )
@@ -150,7 +173,7 @@ class TestResolvePackage:
             return_value=(
                 extracted_members
                 if extracted_members is not None
-                else ["serde-1.0.0/Cargo.toml"]
+                else [f"{resolved_crate_name}-1.0.0/Cargo.toml"]
             ),
         )
         mocker.patch(
@@ -183,11 +206,15 @@ class TestResolvePackage:
 
         result = self.resolver.resolve_package("serde@1.0")
 
-        assert result == "/cache/serde"
+        assert result == "/cache/serde/crate-source/serde-1.0.0"
         mock_create_dirs.assert_has_calls(
-            [call("/cache/serde"), call("/cache/serde/src")]
+            [
+                call("/cache/serde"),
+                call("/cache/serde/src"),
+                call("/cache/serde/crate-source"),
+            ]
         )
-        assert mock_create_dirs.call_count == 2
+        assert mock_create_dirs.call_count == 3
 
         assert mock_write_file.call_count == 2
         cargo_toml_path, cargo_toml_content = mock_write_file.call_args_list[0][0]
@@ -210,10 +237,373 @@ class TestResolvePackage:
             ]
         )
         assert mock_run_command.call_count == 2
-        mock_path_exists.assert_called_once_with("/cache/serde/Cargo.lock")
-        mock_open_file.assert_not_called()
-        mock_download_url.assert_not_called()
-        mock_extract_tar_gz.assert_not_called()
+        mock_path_exists.assert_has_calls(
+            [
+                call("/cache/serde/Cargo.lock"),
+                call("/cache/serde/crate-source/serde-1.0.0/Cargo.toml"),
+            ]
+        )
+        assert mock_path_exists.call_count == 2
+        mock_open_file.assert_called_once_with("/cache/serde/Cargo.lock")
+        mock_download_url.assert_called_once_with(
+            "https://crates.io/api/v1/crates/serde/1.0.0/download",
+            user_agent=CRATES_IO_USER_AGENT,
+        )
+        mock_extract_tar_gz.assert_called_once_with(
+            b"crate archive",
+            "/cache/serde/crate-source",
+        )
+
+    def test_repository_license_tool_config_is_copied_to_published_crate(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        source_code_manager = Mock()
+        source_code_manager.get_code.return_value = SourceCodeReference(
+            repo_url="https://github.com/DataDog/datadog-api-client-rust",
+            branch="master",
+            local_root_path="/cache/repositories/datadog-api-client-rust",
+            local_full_path="/cache/repositories/datadog-api-client-rust",
+        )
+        resolver = RustPackageResolver("/cache", source_code_manager)
+        metadata_output = json.dumps(
+            {
+                "packages": [
+                    {
+                        "name": "datadog-api-client",
+                        "repository": (
+                            "https://github.com/DataDog/datadog-api-client-rust"
+                        ),
+                    }
+                ]
+            }
+        )
+        config_content = (
+            "[overrides]\n"
+            '"openssl-macros" = '
+            '{ origin = "https://github.com/sfackler/rust-openssl" }\n'
+        )
+        cargo_lock_content = self._cargo_lock_with_package(
+            "datadog-api-client",
+            "1.0.0",
+        )
+        (
+            mock_create_dirs,
+            mock_write_file,
+            mock_run_command,
+            mock_path_exists,
+            mock_open_file,
+            mock_download_url,
+            mock_extract_tar_gz,
+        ) = self._setup_mocks(
+            mocker,
+            metadata_return=(0, metadata_output, ""),
+            path_exists_return=[True, True, True],
+            cargo_lock_content=cargo_lock_content,
+        )
+        mock_open_file.side_effect = [cargo_lock_content, config_content]
+
+        result = resolver.resolve_package("datadog-api-client")
+
+        assert (
+            result == "/cache/datadog-api-client/crate-source/datadog-api-client-1.0.0"
+        )
+        source_code_manager.get_code.assert_called_once_with(
+            "https://github.com/DataDog/datadog-api-client-rust"
+        )
+        mock_create_dirs.assert_has_calls(
+            [
+                call("/cache/datadog-api-client"),
+                call("/cache/datadog-api-client/src"),
+                call("/cache/datadog-api-client/crate-source"),
+            ]
+        )
+        assert mock_create_dirs.call_count == 3
+        cargo_toml_content = mock_write_file.call_args_list[0].args[1]
+        mock_write_file.assert_has_calls(
+            [
+                call(
+                    "/cache/datadog-api-client/Cargo.toml",
+                    cargo_toml_content,
+                ),
+                call("/cache/datadog-api-client/src/main.rs", "fn main() {}\n"),
+                call(
+                    "/cache/datadog-api-client/crate-source/"
+                    "datadog-api-client-1.0.0/license-tool.toml",
+                    config_content,
+                ),
+            ]
+        )
+        assert mock_write_file.call_count == 3
+        mock_run_command.assert_has_calls(
+            [
+                call(
+                    ["cargo", "generate-lockfile"],
+                    cwd="/cache/datadog-api-client",
+                ),
+                call(
+                    ["cargo", "metadata", "--format-version", "1"],
+                    cwd="/cache/datadog-api-client",
+                ),
+            ]
+        )
+        assert mock_run_command.call_count == 2
+        mock_path_exists.assert_has_calls(
+            [
+                call("/cache/datadog-api-client/Cargo.lock"),
+                call(
+                    "/cache/datadog-api-client/crate-source/"
+                    "datadog-api-client-1.0.0/Cargo.toml"
+                ),
+                call(
+                    "/cache/repositories/datadog-api-client-rust/" "license-tool.toml"
+                ),
+            ]
+        )
+        assert mock_path_exists.call_count == 3
+        mock_open_file.assert_has_calls(
+            [
+                call("/cache/datadog-api-client/Cargo.lock"),
+                call(
+                    "/cache/repositories/datadog-api-client-rust/" "license-tool.toml"
+                ),
+            ]
+        )
+        assert mock_open_file.call_count == 2
+        mock_download_url.assert_called_once_with(
+            "https://crates.io/api/v1/crates/datadog-api-client/1.0.0/download",
+            user_agent=CRATES_IO_USER_AGENT,
+        )
+        mock_extract_tar_gz.assert_called_once_with(
+            b"crate archive",
+            "/cache/datadog-api-client/crate-source",
+        )
+
+    def test_missing_crate_repository_skips_license_tool_config_lookup(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        source_code_manager = Mock()
+        resolver = RustPackageResolver("/cache", source_code_manager)
+        (
+            _,
+            mock_write_file,
+            mock_run_command,
+            mock_path_exists,
+            mock_open_file,
+            mock_download_url,
+            mock_extract_tar_gz,
+        ) = self._setup_mocks(
+            mocker,
+            metadata_return=(
+                0,
+                json.dumps({"packages": [{"name": "serde"}]}),
+                "",
+            ),
+        )
+
+        result = resolver.resolve_package("serde")
+
+        assert result == "/cache/serde/crate-source/serde-1.0.0"
+        source_code_manager.get_code.assert_not_called()
+        assert mock_write_file.call_count == 2
+        assert mock_run_command.call_count == 2
+        assert mock_path_exists.call_count == 2
+        mock_open_file.assert_called_once_with("/cache/serde/Cargo.lock")
+        mock_download_url.assert_called_once()
+        mock_extract_tar_gz.assert_called_once()
+
+    def test_inaccessible_crate_repository_skips_license_tool_config(
+        self, mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture
+    ) -> None:
+        source_code_manager = Mock()
+        source_code_manager.get_code.side_effect = NonAccessibleRepository(
+            "repository unavailable"
+        )
+        resolver = RustPackageResolver("/cache", source_code_manager)
+        metadata_output = json.dumps(
+            {
+                "packages": [
+                    {
+                        "name": "serde",
+                        "repository": "https://github.com/serde-rs/serde",
+                    }
+                ]
+            }
+        )
+        (
+            _,
+            mock_write_file,
+            mock_run_command,
+            mock_path_exists,
+            mock_open_file,
+            mock_download_url,
+            mock_extract_tar_gz,
+        ) = self._setup_mocks(
+            mocker,
+            metadata_return=(0, metadata_output, ""),
+        )
+
+        with caplog.at_level(logging.WARNING):
+            result = resolver.resolve_package("serde")
+
+        assert result == "/cache/serde/crate-source/serde-1.0.0"
+        assert "Could not retrieve repository configuration" in caplog.text
+        source_code_manager.get_code.assert_called_once_with(
+            "https://github.com/serde-rs/serde"
+        )
+        assert mock_write_file.call_count == 2
+        assert mock_run_command.call_count == 2
+        assert mock_path_exists.call_count == 2
+        mock_open_file.assert_called_once_with("/cache/serde/Cargo.lock")
+        mock_download_url.assert_called_once()
+        mock_extract_tar_gz.assert_called_once()
+
+    def test_repository_without_license_tool_config_is_ignored(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        source_code_manager = Mock()
+        source_code_manager.get_code.return_value = SourceCodeReference(
+            repo_url="https://github.com/serde-rs/serde",
+            branch="master",
+            local_root_path="/cache/repositories/serde",
+            local_full_path="/cache/repositories/serde",
+        )
+        resolver = RustPackageResolver("/cache", source_code_manager)
+        metadata_output = json.dumps(
+            {
+                "packages": [
+                    {
+                        "name": "serde",
+                        "repository": "https://github.com/serde-rs/serde",
+                    }
+                ]
+            }
+        )
+        (
+            _,
+            mock_write_file,
+            mock_run_command,
+            mock_path_exists,
+            mock_open_file,
+            mock_download_url,
+            mock_extract_tar_gz,
+        ) = self._setup_mocks(
+            mocker,
+            metadata_return=(0, metadata_output, ""),
+            path_exists_return=[True, True, False],
+        )
+
+        result = resolver.resolve_package("serde")
+
+        assert result == "/cache/serde/crate-source/serde-1.0.0"
+        source_code_manager.get_code.assert_called_once_with(
+            "https://github.com/serde-rs/serde"
+        )
+        assert mock_write_file.call_count == 2
+        assert mock_run_command.call_count == 2
+        mock_path_exists.assert_has_calls(
+            [
+                call("/cache/serde/Cargo.lock"),
+                call("/cache/serde/crate-source/serde-1.0.0/Cargo.toml"),
+                call("/cache/repositories/serde/license-tool.toml"),
+            ]
+        )
+        assert mock_path_exists.call_count == 3
+        mock_open_file.assert_called_once_with("/cache/serde/Cargo.lock")
+        mock_download_url.assert_called_once()
+        mock_extract_tar_gz.assert_called_once()
+
+    def test_license_tool_config_read_failure_does_not_fail_resolution(
+        self, mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture
+    ) -> None:
+        source_code_manager = Mock()
+        source_code_manager.get_code.return_value = SourceCodeReference(
+            repo_url="https://github.com/serde-rs/serde",
+            branch="master",
+            local_root_path="/cache/repositories/serde",
+            local_full_path="/cache/repositories/serde",
+        )
+        resolver = RustPackageResolver("/cache", source_code_manager)
+        metadata_output = json.dumps(
+            {
+                "packages": [
+                    {
+                        "name": "serde",
+                        "repository": "https://github.com/serde-rs/serde",
+                    }
+                ]
+            }
+        )
+        (
+            _,
+            mock_write_file,
+            mock_run_command,
+            mock_path_exists,
+            mock_open_file,
+            mock_download_url,
+            mock_extract_tar_gz,
+        ) = self._setup_mocks(
+            mocker,
+            metadata_return=(0, metadata_output, ""),
+            path_exists_return=[True, True, True],
+        )
+        cargo_lock_content = self._cargo_lock_with_package("serde", "1.0.0")
+        mock_open_file.side_effect = [
+            cargo_lock_content,
+            OSError("permission denied"),
+        ]
+
+        with caplog.at_level(logging.WARNING):
+            result = resolver.resolve_package("serde")
+
+        assert result == "/cache/serde/crate-source/serde-1.0.0"
+        assert "Could not copy license-tool.toml" in caplog.text
+        source_code_manager.get_code.assert_called_once_with(
+            "https://github.com/serde-rs/serde"
+        )
+        assert mock_write_file.call_count == 2
+        assert mock_run_command.call_count == 2
+        assert mock_path_exists.call_count == 3
+        mock_open_file.assert_has_calls(
+            [
+                call("/cache/serde/Cargo.lock"),
+                call("/cache/repositories/serde/license-tool.toml"),
+            ]
+        )
+        assert mock_open_file.call_count == 2
+        mock_download_url.assert_called_once()
+        mock_extract_tar_gz.assert_called_once()
+
+    def test_unavailable_repository_checkout_skips_license_tool_config(self) -> None:
+        source_code_manager = Mock()
+        source_code_manager.get_code.return_value = None
+        resolver = RustPackageResolver("/cache", source_code_manager)
+
+        resolver._copy_license_tool_config(
+            "https://github.com/serde-rs/serde",
+            "serde",
+            "/cache/serde",
+        )
+
+        source_code_manager.get_code.assert_called_once_with(
+            "https://github.com/serde-rs/serde"
+        )
+
+    def test_get_crate_repository_ignores_unrelated_packages(self) -> None:
+        metadata_output = json.dumps(
+            {
+                "packages": [
+                    "invalid-package",
+                    {
+                        "name": "serde-json",
+                        "repository": "https://github.com/serde-rs/json",
+                    },
+                ]
+            }
+        )
+
+        result = self.resolver._get_crate_repository(metadata_output, "serde")
+
+        assert result is None
 
     def test_name_without_version_uses_wildcard_dependency(
         self, mocker: pytest_mock.MockFixture
@@ -252,10 +642,10 @@ class TestResolvePackage:
             ]
         )
         assert mock_run_command.call_count == 2
-        mock_path_exists.assert_called_once_with("/cache/anyhow/Cargo.lock")
-        mock_open_file.assert_not_called()
-        mock_download_url.assert_not_called()
-        mock_extract_tar_gz.assert_not_called()
+        assert mock_path_exists.call_count == 2
+        mock_open_file.assert_called_once_with("/cache/anyhow/Cargo.lock")
+        mock_download_url.assert_called_once()
+        mock_extract_tar_gz.assert_called_once()
 
     def test_package_name_sanitizes_dir_name(
         self, mocker: pytest_mock.MockFixture
@@ -279,11 +669,15 @@ class TestResolvePackage:
 
         result = self.resolver.resolve_package("serde-json@1.0")
 
-        assert result == "/cache/serde-json"
+        assert result == "/cache/serde-json/crate-source/serde-json-1.0.0"
         mock_create_dirs.assert_has_calls(
-            [call("/cache/serde-json"), call("/cache/serde-json/src")]
+            [
+                call("/cache/serde-json"),
+                call("/cache/serde-json/src"),
+                call("/cache/serde-json/crate-source"),
+            ]
         )
-        assert mock_create_dirs.call_count == 2
+        assert mock_create_dirs.call_count == 3
         mock_run_command.assert_has_calls(
             [
                 call(["cargo", "generate-lockfile"], cwd="/cache/serde-json"),
@@ -294,10 +688,10 @@ class TestResolvePackage:
             ]
         )
         assert mock_run_command.call_count == 2
-        mock_path_exists.assert_called_once_with("/cache/serde-json/Cargo.lock")
-        mock_open_file.assert_not_called()
-        mock_download_url.assert_not_called()
-        mock_extract_tar_gz.assert_not_called()
+        assert mock_path_exists.call_count == 2
+        mock_open_file.assert_called_once_with("/cache/serde-json/Cargo.lock")
+        mock_download_url.assert_called_once()
+        mock_extract_tar_gz.assert_called_once()
 
     def test_cargo_failure_returns_none(
         self, mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture

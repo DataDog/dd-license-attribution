@@ -574,7 +574,7 @@ def generate_sbom(
                 sys.exit(1)
 
             rust_temp_dir = cleanup_stack.enter_context(tempfile.TemporaryDirectory())
-            rust_resolver = RustPackageResolver(rust_temp_dir)
+            rust_resolver = RustPackageResolver(rust_temp_dir, source_code_manager)
             local_project_path = rust_resolver.resolve_package(package)
             if local_project_path is None:
                 logger.error("Failed to resolve Rust crate: %s", package)

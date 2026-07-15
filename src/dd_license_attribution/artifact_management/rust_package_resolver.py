@@ -23,10 +23,16 @@ from dd_license_attribution.adaptors.os import (
     run_command_with_check,
     write_file,
 )
+from dd_license_attribution.artifact_management.source_code_manager import (
+    NonAccessibleRepository,
+    SourceCodeManager,
+    UnauthorizedRepository,
+)
 
 logger = logging.getLogger("dd_license_attribution")
 
 SYNTHETIC_PACKAGE_NAME = "ddla-rust-resolve"
+LICENSE_TOOL_CONFIG_NAME = "license-tool.toml"
 CRATES_IO_USER_AGENT = (
     "dd-license-attribution (https://github.com/DataDog/dd-license-attribution)"
 )
@@ -35,8 +41,13 @@ CRATES_IO_USER_AGENT = (
 class RustPackageResolver:
     """Resolves a Rust crate specifier into a local Cargo project directory."""
 
-    def __init__(self, working_dir: str) -> None:
+    def __init__(
+        self,
+        working_dir: str,
+        source_code_manager: SourceCodeManager | None = None,
+    ) -> None:
         self.working_dir = working_dir
+        self.source_code_manager = source_code_manager
 
     def _parse_rust_spec(self, spec: str) -> tuple[str, str]:
         """Parse a Rust crate specifier into (name, version).
@@ -136,12 +147,13 @@ class RustPackageResolver:
             return None
 
         if metadata_contains_crate:
-            logger.info(  # pragma: no mutate
-                "Successfully resolved Rust crate %s to %s",
+            return self._resolve_crate_from_source(
+                name,
                 rust_package_spec,
                 resolve_dir,
+                cargo_lock_path,
+                self._get_crate_repository(output, name),
             )
-            return resolve_dir
 
         if not self._metadata_reports_missing_lib_target(error_output, name):
             logger.error(  # pragma: no mutate
@@ -156,11 +168,12 @@ class RustPackageResolver:
             "Rust crate %s has no lib target; falling back to crates.io source",
             rust_package_spec,
         )
-        return self._resolve_binary_crate_from_source(
+        return self._resolve_crate_from_source(
             name,
             rust_package_spec,
             resolve_dir,
             cargo_lock_path,
+            None,
         )
 
     def _metadata_contains_crate(
@@ -192,6 +205,88 @@ class RustPackageResolver:
                 return True
         return False
 
+    def _copy_license_tool_config(
+        self,
+        repository: str | None,
+        crate_name: str,
+        resolve_dir: str,
+    ) -> None:
+        if self.source_code_manager is None:
+            return
+
+        if repository is None:
+            logger.debug(
+                "Rust crate %s does not declare a repository; no %s to copy",
+                crate_name,
+                LICENSE_TOOL_CONFIG_NAME,
+            )
+            return
+
+        try:
+            source_code_ref = self.source_code_manager.get_code(repository)
+        except (NonAccessibleRepository, UnauthorizedRepository) as e:
+            logger.warning(  # pragma: no mutate
+                "Could not retrieve repository configuration for Rust crate %s: %s",
+                crate_name,
+                e,
+            )
+            return
+
+        if source_code_ref is None:
+            logger.debug(
+                "Could not retrieve repository %s for Rust crate %s",
+                repository,
+                crate_name,
+            )
+            return
+
+        source_config_path = path_join(
+            source_code_ref.local_full_path,
+            LICENSE_TOOL_CONFIG_NAME,
+        )
+        if not path_exists(source_config_path):
+            logger.debug(
+                "Rust crate repository %s does not contain %s",
+                repository,
+                LICENSE_TOOL_CONFIG_NAME,
+            )
+            return
+
+        destination_config_path = path_join(resolve_dir, LICENSE_TOOL_CONFIG_NAME)
+        try:
+            write_file(destination_config_path, open_file(source_config_path))
+        except OSError as e:
+            logger.warning(  # pragma: no mutate
+                "Could not copy %s for Rust crate %s: %s",
+                LICENSE_TOOL_CONFIG_NAME,
+                crate_name,
+                e,
+            )
+            return
+
+        logger.info(  # pragma: no mutate
+            "Using %s from %s for Rust crate %s",
+            LICENSE_TOOL_CONFIG_NAME,
+            repository,
+            crate_name,
+        )
+
+    def _get_crate_repository(
+        self,
+        metadata_output: str,
+        crate_name: str,
+    ) -> str | None:
+        metadata: Any = json.loads(metadata_output)
+        packages = metadata["packages"]
+        for package in packages:
+            if not isinstance(package, dict) or package.get("name") != crate_name:
+                continue
+            repository = package.get("repository")
+            if isinstance(repository, str) and repository:
+                return repository
+            return None
+        return None
+
     def _metadata_reports_missing_lib_target(
         self, error_output: str, crate_name: str
     ) -> bool:
@@ -203,12 +298,13 @@ class RustPackageResolver:
             and "ignoring invalid dependency" in normalized_error
         )
 
-    def _resolve_binary_crate_from_source(
+    def _resolve_crate_from_source(
         self,
         crate_name: str,
         rust_package_spec: str,
         resolve_dir: str,
         cargo_lock_path: str,
+        repository: str | None,
     ) -> str | None:
         resolved_version = self._get_resolved_crate_version(
             cargo_lock_path,
@@ -262,6 +358,7 @@ class RustPackageResolver:
             )
             return None
 
+        self._copy_license_tool_config(repository, crate_name, source_root)
         logger.info(  # pragma: no mutate
             "Successfully resolved Rust crate %s to published source at %s",
             rust_package_spec,

@@ -6,7 +6,7 @@
 # Copyright 2024-present Datadog, Inc.
 
 import os
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 import pytest
 from typer.testing import CliRunner
@@ -666,7 +666,10 @@ def test_ecosystem_rust_builds_correct_strategy_pipeline(
     assert "NpmMetadataCollectionStrategy" not in strategy_classes
     assert "PypiMetadataCollectionStrategy" not in strategy_classes
 
-    mock_rust_resolver.assert_called_once()
+    mock_rust_resolver.assert_called_once_with(
+        ANY,
+        mock_source_code_manager.return_value,
+    )
     mock_rust_resolver.return_value.resolve_package.assert_called_once_with("serde@1.0")
     mock_ensure_rust_license_tool_installed.assert_called_once_with()
 
