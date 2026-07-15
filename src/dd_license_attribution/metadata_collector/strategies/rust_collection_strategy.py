@@ -238,19 +238,21 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
         self, metadata: list[Metadata], new_metadata: Metadata
     ) -> None:
         for existing in metadata:
-            if (
-                existing.name == new_metadata.name
-                and existing.origin == new_metadata.origin
-            ):
-                if not existing.license:
-                    existing.license = new_metadata.license
-                if not existing.copyright:
-                    existing.copyright = new_metadata.copyright
-                if existing.local_src_path is None:
-                    existing.local_src_path = new_metadata.local_src_path
-                if existing.version is None:
-                    existing.version = new_metadata.version
-                return
+            if existing.name != new_metadata.name:
+                continue
+
+            if new_metadata.origin:
+                existing.origin = new_metadata.origin
+            if existing.local_src_path is None:
+                existing.local_src_path = new_metadata.local_src_path
+            if existing.version is None:
+                existing.version = new_metadata.version
+            if not existing.license:
+                existing.license = new_metadata.license
+            if not existing.copyright:
+                existing.copyright = new_metadata.copyright
+            return
+
         metadata.append(new_metadata)
 
     def _get_root_package_names(self, project_path: str) -> set[str]:

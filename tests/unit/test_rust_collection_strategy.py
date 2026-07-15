@@ -158,6 +158,61 @@ def test_local_project_path_ingests_csv_and_filters_seed_entries(
     mock_path_join.assert_not_called()
 
 
+def test_rust_metadata_replaces_fallback_origin_without_duplicating_dependency(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _mock_source_code_manager()
+    mock_path_join, mock_path_exists, mock_open_file, mock_run_command = (
+        _patch_common_io(
+            mocker,
+            "Component,Origin,License,Copyright\n"
+            "base64,https://github.com/marshallpierce/rust-base64,"
+            "MIT OR Apache-2.0,"
+            "Alice Maz <alice@alicemaz.com>; Marshall Pierce <marshall@mpierce.org>\n",
+        )
+    )
+    strategy = RustMetadataCollectionStrategy(
+        "root-crate",
+        source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/rust-resolve/root-crate",
+    )
+    initial_metadata = [
+        Metadata(
+            name="base64",
+            origin="base64",
+            local_src_path=None,
+            license=[],
+            version="0.22.1",
+            copyright=[],
+        )
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert result == [
+        Metadata(
+            name="base64",
+            origin="https://github.com/marshallpierce/rust-base64",
+            local_src_path=None,
+            license=["MIT OR Apache-2.0"],
+            version="0.22.1",
+            copyright=[
+                "Alice Maz <alice@alicemaz.com>; Marshall Pierce <marshall@mpierce.org>"
+            ],
+        )
+    ]
+    source_code_manager.get_canonical_urls.assert_not_called()
+    source_code_manager.get_code.assert_not_called()
+    mock_run_command.assert_called_once_with(
+        [RUST_LICENSE_TOOL_COMMAND, "dump"],
+        cwd="/tmp/rust-resolve/root-crate",
+    )
+    mock_path_exists.assert_not_called()
+    mock_open_file.assert_not_called()
+    mock_path_join.assert_not_called()
+
+
 def test_local_project_path_only_root_project_filters_to_requested_crate(
     mocker: pytest_mock.MockFixture,
 ) -> None:
