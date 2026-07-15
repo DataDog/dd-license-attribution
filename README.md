@@ -16,7 +16,7 @@ Datadog License Attribution Tracker is a tool that collects license and copyrigh
 
 As of today, Datadog License Attribution Tracker supports Go, Python, NodeJS, and Rust projects. You can also pass a Go module path directly using the `--ecosystem go` option, an npm package name using `--ecosystem npm`, a PyPI package using `--ecosystem python` (or `--ecosystem pypi`), or a Rust crate using `--ecosystem rust`.
 
-The tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, the go-pkg list command output, and metadata collected from PyPI and NPM.
+The tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, package-manager output, and metadata collected from PyPI, NPM, Cargo, and crates.io.
 It supports gathering data from various repositories to generate a comprehensive list of third party dependencies.
 
 Runs may take minutes or hours depending on the size of the project dependency tree and the depth of the scanning.
@@ -107,7 +107,7 @@ The following optional parameters are available for `generate-sbom`:
 - `--only-root-project`: Extracts information from the licenses and copyright of the passed package, not its dependencies.
 
 ##### Ecosystem Mode
-- `--ecosystem <name>`: Treat the package argument as a package name in the given ecosystem instead of a GitHub repository URL. Supported ecosystems: `go`, `npm`, `python` (alias: `pypi`), `rust`. Both `python` and `pypi` are equivalent and produce identical output. Example: `--ecosystem go github.com/stretchr/testify@v1.9.0`, `--ecosystem npm express`, `--ecosystem python requests==2.31.0`, `--ecosystem pypi requests==2.31.0`, `--ecosystem rust serde@1.0`. Rust ecosystem mode resolves library crates through Cargo and falls back to the published crates.io source archive for binary-only crates.
+- `--ecosystem <name>`: Treat the package argument as a package name in the given ecosystem instead of a GitHub repository URL. Supported ecosystems: `go`, `npm`, `python` (alias: `pypi`), `rust`. Both `python` and `pypi` are equivalent and produce identical output. Example: `--ecosystem go github.com/stretchr/testify@v1.9.0`, `--ecosystem npm express`, `--ecosystem python requests==2.31.0`, `--ecosystem pypi requests==2.31.0`, `--ecosystem rust serde@1.0`. Rust ecosystem mode uses Cargo to select the exact crate version, then analyzes that version's published crates.io source archive for both library and binary-only crates. A `Cargo.lock` included in the published archive is preserved for reproducible, release-specific attribution.
 
 ##### Strategy Selection
 - `--deep-scanning`: Enables intensive source code analysis using [scancode-toolkit](https://scancode-toolkit.readthedocs.io/en/latest/getting-started/home.html). This will parse license and copyright information from full package source code. Note: This is a resource-intensive task that may take hours or days to process depending on package size.
@@ -369,9 +369,13 @@ dd-license-attribution generate-sbom --ecosystem rust --no-gh-auth serde > LICEN
 # Analyze a specific Rust crate version
 dd-license-attribution generate-sbom --ecosystem rust --no-gh-auth serde@1.0 > LICENSE-3rdparty.csv
 
-# Binary-only crates are also supported through published crates.io source
+# Binary-only crates use the same published-source analysis path
 dd-license-attribution generate-sbom --ecosystem rust --no-gh-auth dd-rust-license-tool > LICENSE-3rdparty.csv
 ```
+
+Direct Rust crate analysis uses a temporary Cargo project only to resolve the requested version. Dependency attribution runs from the exact source archive published on crates.io. If the crate declares a repository, a root `license-tool.toml` from that repository is applied to the published source before running `dd-rust-license-tool`.
+
+For Rust repository scans, `dd-rust-license-tool` remains the primary metadata source. If Cargo or GitHub dependency data contains a confirmed crates.io dependency with missing fields, the tool fills only those gaps from the selected crates.io release and its published manifest. Existing license and copyright information is never overwritten. Some crates publish no author information; in that case, the repository URL is still supplied so the normal source-scanning strategies can continue attribution discovery.
 
 #### Deep Scanning with Caching
 ```bash
