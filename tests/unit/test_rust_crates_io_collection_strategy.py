@@ -559,7 +559,7 @@ def test_locked_crate_is_used_when_manifest_is_missing(
     "metadata_version",
     [None, ">= 1.13.0,< 2.0.0"],
 )
-def test_unparseable_manifest_version_uses_available_crates_io_version(
+def test_unparseable_manifest_version_only_enriches_with_metadata_range(
     mocker: pytest_mock.MockFixture,
     metadata_version: str | None,
 ) -> None:
@@ -604,34 +604,127 @@ def test_unparseable_manifest_version_uses_available_crates_io_version(
 
     result = strategy.augment_metadata([_metadata("regex", metadata_version)])
 
-    assert result == [
-        _metadata(
-            "regex",
-            metadata_version,
-            origin="https://github.com/rust-lang/regex",
-            license=["MIT OR Apache-2.0"],
-            copyright=["The Rust Developers"],
-        )
-    ]
+    if metadata_version is None:
+        assert result == [_metadata("regex", None)]
+    else:
+        assert result == [
+            _metadata(
+                "regex",
+                metadata_version,
+                origin="https://github.com/rust-lang/regex",
+                license=["MIT OR Apache-2.0"],
+                copyright=["The Rust Developers"],
+            )
+        ]
     mock_path_exists.assert_has_calls(
         [call("/project/Cargo.lock"), call("/project/Cargo.toml")]
     )
     assert mock_path_exists.call_count == 2
     mock_open_file.assert_called_once_with("/project/Cargo.toml")
-    mock_download.assert_has_calls(
-        [
-            call(
-                f"{CRATES_IO_API_BASE_URL}/regex",
-                user_agent=CRATES_IO_USER_AGENT,
-            ),
-            call(
-                f"{CRATES_IO_API_BASE_URL}/regex/1.13.0/download",
-                user_agent=CRATES_IO_USER_AGENT,
-            ),
-        ]
+    if metadata_version is None:
+        mock_download.assert_not_called()
+        mock_read_archive.assert_not_called()
+    else:
+        mock_download.assert_has_calls(
+            [
+                call(
+                    f"{CRATES_IO_API_BASE_URL}/regex",
+                    user_agent=CRATES_IO_USER_AGENT,
+                ),
+                call(
+                    f"{CRATES_IO_API_BASE_URL}/regex/1.13.0/download",
+                    user_agent=CRATES_IO_USER_AGENT,
+                ),
+            ]
+        )
+        assert mock_download.call_count == 2
+        mock_read_archive.assert_called_once_with(b"crate archive", "/Cargo.toml")
+
+
+def test_ambiguous_locked_versions_do_not_set_version_or_enrich(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
     )
-    assert mock_download.call_count == 2
-    mock_read_archive.assert_called_once_with(b"crate archive", "/Cargo.toml")
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=[True, False],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        return_value=(
+            '[[package]]\nname = "syn"\nversion = "1.0.109"\n'
+            'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
+            "\n"
+            '[[package]]\nname = "syn"\nversion = "2.0.104"\n'
+            'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
+        ),
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_url"
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "project",
+        source_code_manager,
+        local_project_path="/project",
+    )
+
+    result = strategy.augment_metadata([_metadata("syn", None)])
+
+    assert result == [_metadata("syn", None)]
+    mock_path_exists.assert_has_calls(
+        [call("/project/Cargo.lock"), call("/project/Cargo.toml")]
+    )
+    assert mock_path_exists.call_count == 2
+    mock_open_file.assert_called_once_with("/project/Cargo.lock")
+    mock_download.assert_not_called()
+
+
+def test_manifest_range_without_concrete_version_is_not_enriched_from_default_release(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=[False, True],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        return_value='[dependencies]\nclap = "2"\n',
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_url"
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "project",
+        source_code_manager,
+        local_project_path="/project",
+    )
+
+    result = strategy.augment_metadata([_metadata("clap", None)])
+
+    assert result == [_metadata("clap", None)]
+    mock_path_exists.assert_has_calls(
+        [call("/project/Cargo.lock"), call("/project/Cargo.toml")]
+    )
+    assert mock_path_exists.call_count == 2
+    mock_open_file.assert_called_once_with("/project/Cargo.toml")
+    mock_download.assert_not_called()
 
 
 @pytest.mark.parametrize(

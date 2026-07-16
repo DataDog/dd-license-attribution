@@ -83,6 +83,8 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
             )
             if package.version is None:
                 package.version = requested_version
+            if requested_version is None:
+                continue
             if package.license and package.copyright:
                 continue
 
@@ -269,8 +271,10 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                 exact_versions.append(semver.Version.parse(version))
             except ValueError:
                 continue
-        if exact_versions:
+        if len(exact_versions) == 1:
             return str(max(exact_versions))
+        if len(exact_versions) > 1:
+            return None
 
         preferred_version = self._preferred_crate_version(metadata_version)
         if preferred_version is not None:
@@ -336,21 +340,15 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         self,
         versions: list[object],
         requested_version: str | None,
-        default_version: object,
+        _default_version: object,
     ) -> dict[str, object] | None:
         preferred_version = self._preferred_crate_version(requested_version)
-        if preferred_version is not None:
-            for version in versions:
-                if (
-                    isinstance(version, dict)
-                    and version.get("num") == preferred_version
-                ):
-                    return version
+        if preferred_version is None:
+            return None
 
-        if isinstance(default_version, str):
-            for version in versions:
-                if isinstance(version, dict) and version.get("num") == default_version:
-                    return version
+        for version in versions:
+            if isinstance(version, dict) and version.get("num") == preferred_version:
+                return version
         return None
 
     def _preferred_crate_version(self, requested_version: str | None) -> str | None:
