@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - New `clean-spdx-id` CLI command to convert long license descriptions to valid SPDX license expressions using LLMs (OpenAI, Anthropic), including support for composite licenses (e.g., "MIT OR Apache-2.0")
 
 ### Changed
+- The minimum supported Typer version is now 0.27.0.
 - Markdown `generate-sbom` reports now show the root package version explicitly, exclude the root package from the dependency table, and include root license and copyright in the summary.
 - PyPI collection strategy now performs case-insensitive key matching for project_urls dictionary to better handle different key capitalizations from PyPI metadata
 
