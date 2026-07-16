@@ -262,5 +262,21 @@
         "Konstantine Rybnikov"
       ]
     }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "component": "commoncode"
+    },
+    "replacement": {
+      "name": "commoncode",
+      "origin": "https://github.com/aboutcode-org/scancode-toolkit",
+      "license": [
+        "Apache-2.0"
+      ],
+      "copyright": [
+        "nexB. Inc. and others"
+      ]
+    }
   }
 ]

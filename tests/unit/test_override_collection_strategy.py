@@ -285,6 +285,42 @@ def test_json_to_override_rules_raises_on_invalid_target_field() -> None:
         OverrideCollectionStrategy.json_to_override_rules(bad_json)
 
 
+def test_remove_rule_still_applies_on_second_augment_call() -> None:
+    # Regression: override_rules and unused_rules must NOT share the same list
+    # object. If they do, remove() on unused_rules also removes from override_rules,
+    # so the REMOVE rule silently stops firing on the second call — exactly what
+    # happens in the ThreePhaseMetadataCollector fixpoint loop when a finder
+    # re-adds a dep that an override is supposed to suppress.
+    rules = [
+        OverrideRule(
+            override_type=OverrideType.REMOVE,
+            target={OverrideTargetField.ORIGIN: "example.com"},
+            replacement=None,
+        )
+    ]
+    strategy = OverrideCollectionStrategy(rules)
+
+    dep = Metadata(
+        name="test-package",
+        origin="example.com",
+        version="1.0.0",
+        local_src_path=None,
+        license=[],
+        copyright=[],
+    )
+
+    # First call: dep is removed.
+    result_1 = strategy.augment_metadata([dep])
+    assert len(result_1) == 0
+
+    # Second call (simulates a finder re-adding the dep in the next loop
+    # iteration): dep must still be removed.
+    result_2 = strategy.augment_metadata([dep])
+    assert (
+        len(result_2) == 0
+    ), "REMOVE rule must fire on every augment_metadata call, not just the first"
+
+
 def test_json_to_override_rules_raises_when_non_remove_has_null_replacement() -> None:
     import json
 

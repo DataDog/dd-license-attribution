@@ -22,7 +22,12 @@ import typer
 from agithub.GitHub import GitHub
 
 import dd_license_attribution.config.cli_configs as cli_config
-from dd_license_attribution.adaptors.os import create_dirs, path_exists
+from dd_license_attribution.adaptors.os import (
+    create_dirs,
+    path_exists,
+    path_join,
+    write_file,
+)
 from dd_license_attribution.artifact_management.artifact_manager import (
     validate_cache_dir,
 )
@@ -48,7 +53,10 @@ from dd_license_attribution.artifact_management.source_code_manager import (
     UnauthorizedRepository,
 )
 from dd_license_attribution.config import JsonConfigParser
-from dd_license_attribution.metadata_collector import MetadataCollector
+from dd_license_attribution.metadata_collector import (
+    MetadataCollector,
+    ThreePhaseMetadataCollector,
+)
 from dd_license_attribution.metadata_collector.license_checker import LicenseChecker
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
@@ -93,6 +101,9 @@ from dd_license_attribution.report_generator.writters.abstract_reporting_writter
 from dd_license_attribution.report_generator.writters.csv_reporting_writter import (
     CSVReportingWritter,
 )
+from dd_license_attribution.report_generator.writters.markdown_reporting_writter import (
+    MarkdownReportingWritter,
+)
 from dd_license_attribution.report_generator.writters.spdx_reporting_writter import (
     SPDXReportingWritter,
 )
@@ -100,6 +111,46 @@ from dd_license_attribution.utils.logging import setup_logging
 
 # Get application-specific logger
 logger = logging.getLogger("dd_license_attribution")
+
+_OUTPUT_EXTENSIONS = {"csv": "csv", "spdx": "json", "markdown": "md"}
+_RESERVED_FILENAME_CHARS = '<>:"/\\|?*'
+
+
+def _report_document_name(package: str) -> str:
+    return package.replace("https://", "").replace("http://", "")
+
+
+def _report_output_base(package: str) -> str:
+    base = "".join(
+        "_" if char in _RESERVED_FILENAME_CHARS or ord(char) < 32 else char
+        for char in _report_document_name(package)
+    ).strip(" .")
+    if base:
+        return base
+    return "sbom"
+
+
+def _canonical_ecosystem(ecosystem: str | None) -> str | None:
+    if ecosystem == "python":
+        return "pypi"
+    return ecosystem
+
+
+def _build_writer(
+    output_format: str, package: str, ecosystem: str | None
+) -> ReportingWritter:
+    if output_format == "csv":
+        return CSVReportingWritter()
+
+    document_name = _report_document_name(package)
+    if output_format == "spdx":
+        return SPDXReportingWritter(document_name=document_name)
+    if output_format == "markdown":
+        return MarkdownReportingWritter(
+            document_name=document_name, ecosystem=ecosystem
+        )
+
+    raise ValueError(f"Unsupported output format: {output_format}")
 
 
 def mutually_exclusive_group() -> (
@@ -310,6 +361,14 @@ def generate_sbom(
             rich_help_panel="Scanning Options",
         ),
     ] = False,
+    experimental_strategy: Annotated[
+        bool,
+        typer.Option(
+            "--experimental-strategy",
+            help="Enable experimental three-phase dependency discovery (pre-find / find / enrich). Pre-finders run once on the root; finders run in a fixpoint loop; enrichers run once on the stable set. Not yet stable.",
+            rich_help_panel="Scanning Options",
+        ),
+    ] = False,
     cache_dir: Annotated[
         str | None,
         typer.Option(
@@ -393,14 +452,22 @@ def generate_sbom(
             rich_help_panel="Scanning Options",
         ),
     ] = None,
-    output_format: Annotated[
-        str,
+    output_formats: Annotated[
+        list[str] | None,
         typer.Option(
             "--format",
-            help="Output format. One of: csv, spdx (SPDX 2.3 JSON). Default: csv.",
+            help="Output format(s). Repeatable. One of: csv, spdx, markdown. Default: csv.",
             rich_help_panel="Output Options",
         ),
-    ] = "csv",
+    ] = None,
+    output_dir: Annotated[
+        str | None,
+        typer.Option(
+            "--output-dir",
+            help="Write one file per --format into this directory instead of stdout. Created if missing.",
+            rich_help_panel="Output Options",
+        ),
+    ] = None,
 ) -> None:
     """
     Generate an SBOM report of third party dependencies for a given
@@ -426,19 +493,26 @@ def generate_sbom(
         logger.warning(
             "generate-sbom-csv is deprecated; use generate-sbom --format csv instead."
         )
-        output_format = "csv"
+        output_formats = ["csv"]
 
-    supported_output_formats = {"csv", "spdx"}
-    if output_format not in supported_output_formats:
-        raise typer.BadParameter(
-            f"Unsupported output format: '{output_format}'. Supported formats: {', '.join(sorted(supported_output_formats))}."
-        )
+    requested_output_formats = list(dict.fromkeys(output_formats or ["csv"]))
+
+    supported_output_formats = {"csv", "spdx", "markdown"}
+    for requested_output_format in requested_output_formats:
+        if requested_output_format not in supported_output_formats:
+            raise typer.BadParameter(
+                f"Unsupported output format: '{requested_output_format}'. Supported formats: {', '.join(sorted(supported_output_formats))}."
+            )
+
+    if output_dir is None and len(requested_output_formats) > 1:
+        raise typer.BadParameter("Multiple --format values require --output-dir.")
 
     supported_ecosystems = ["npm", "python", "pypi", "go", "rust"]
     if ecosystem is not None and ecosystem not in supported_ecosystems:
         raise typer.BadParameter(
             f"Unsupported ecosystem: '{ecosystem}'. Supported ecosystems: {', '.join(supported_ecosystems)}."
         )
+    ecosystem = _canonical_ecosystem(ecosystem)
 
     if not only_root_project and not only_transitive_dependencies:
         project_scope = ProjectScope.ALL
@@ -512,7 +586,7 @@ def generate_sbom(
         if skip_scancode:
             enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"] = False
 
-        if not github_token:
+        if no_gh_auth or not github_token:
             github_client = GitHub()
         else:
             github_client = GitHub(token=github_token)
@@ -663,7 +737,7 @@ def generate_sbom(
                         github_client, source_code_manager
                     )
                 )
-        elif ecosystem in ("python", "pypi"):
+        elif ecosystem == "pypi":
             # PyPI package mode: resolve the PyPI package and build pypi-specific pipeline
             pypi_temp_dir = cleanup_stack.enter_context(tempfile.TemporaryDirectory())
             pypi_resolver = PypiPackageResolver(pypi_temp_dir)
@@ -778,23 +852,60 @@ def generate_sbom(
         if override_spec:
             try:
                 override_rules = JsonConfigParser.load_override_configs(override_spec)
-                # interleave the override rules between all the elements of
-                # strategies this is done to make sure that the override rules
-                # are applied to all dependencies as soon as they are added to
-                # the closure and prevent failures of fetching non available data
                 override_strategy = OverrideCollectionStrategy(override_rules)
-                for i in range(len(strategies) - 1, -1, -1):
-                    strategies.insert(i, override_strategy)
             except (FileNotFoundError, json.JSONDecodeError, ValueError) as e:
                 logger.error(str(e))
                 sys.exit(1)
 
-        # Add cleanup strategy at the very end after all other strategies
-        # including overrides
-        if enabled_strategies["CleanupCopyrightMetadataStrategy"]:
-            strategies.append(CleanupCopyrightMetadataStrategy())
-
-        metadata_collector = MetadataCollector(strategies)
+        if experimental_strategy:
+            # Three-phase path:
+            #   pre_finders — run once on the root (strategies that already do full
+            #                 transitive closure, e.g. GitHub SBOM; must not iterate)
+            #   finders     — fixpoint loop (ecosystem finders, one level per call)
+            #   enrichers   — run once on the complete dep set
+            # Override interleaving is handled internally by ThreePhaseMetadataCollector.
+            _PRE_FINDER_STRATEGY_NAMES = {
+                "GitHubSbomMetadataCollectionStrategy",
+            }
+            _FINDER_STRATEGY_NAMES = {
+                "GoPkgMetadataCollectionStrategy",
+                "PypiMetadataCollectionStrategy",
+                "NpmMetadataCollectionStrategy",
+            }
+            pre_finders = [
+                s
+                for s in strategies
+                if s.__class__.__name__ in _PRE_FINDER_STRATEGY_NAMES
+            ]
+            finders = [
+                s for s in strategies if s.__class__.__name__ in _FINDER_STRATEGY_NAMES
+            ]
+            enrichers = [
+                s
+                for s in strategies
+                if s.__class__.__name__
+                not in _PRE_FINDER_STRATEGY_NAMES | _FINDER_STRATEGY_NAMES
+            ]
+            if enabled_strategies["CleanupCopyrightMetadataStrategy"]:
+                enrichers.append(CleanupCopyrightMetadataStrategy())
+            metadata_collector: MetadataCollector | ThreePhaseMetadataCollector = (
+                ThreePhaseMetadataCollector(
+                    pre_finders=pre_finders,
+                    finders=finders,
+                    enrichers=enrichers,
+                    override_strategy=override_strategy,
+                )
+            )
+        else:
+            # Existing linear cascade path.
+            if override_strategy is not None:
+                # interleave overrides before every strategy so they fire as
+                # soon as dependencies are added to the closure
+                for i in range(len(strategies) - 1, -1, -1):
+                    strategies.insert(i, override_strategy)
+            if enabled_strategies["CleanupCopyrightMetadataStrategy"]:
+                strategies.append(CleanupCopyrightMetadataStrategy())
+            metadata_collector = MetadataCollector(strategies)
         try:
             metadata = metadata_collector.collect_metadata(package)
         except (NonAccessibleRepository, UnauthorizedRepository) as e:
@@ -813,15 +924,6 @@ def generate_sbom(
             logger.error(str(e))
             sys.exit(1)
 
-        reporting_writter: ReportingWritter
-        if output_format == "spdx":
-            reporting_writter = SPDXReportingWritter(
-                document_name=package.replace("https://", "").replace("http://", "")
-            )
-        else:
-            reporting_writter = CSVReportingWritter()
-        reporter = ReportGenerator(reporting_writter)
-
         checker = LicenseChecker(
             cli_config.default_config.preset_cautionary_licenses,
             cli_config.default_config.recognized_licenses,
@@ -829,11 +931,33 @@ def generate_sbom(
         checker.check_cautionary_licenses(metadata)
         checker.check_spdx_ids(metadata)
 
-        output = reporter.generate_report(metadata)
+        if output_dir is None:
+            reporting_writter = _build_writer(
+                requested_output_formats[0], package, ecosystem
+            )
+            reporter = ReportGenerator(reporting_writter)
+            output = reporter.generate_report(metadata)
 
-    # Output report to STDOUT for piping/redirection (e.g., ddla generate-sbom URL > output.csv)
-    # This is intentional CLI output, not logging. Do not replace with logger.info()
-    print(output, end="")
+            # Output report to STDOUT for piping/redirection (e.g., ddla generate-sbom URL > output.csv)
+            # This is intentional CLI output, not logging. Do not replace with logger.info()
+            print(output, end="")
+        else:
+            create_dirs(output_dir)
+            report_base = _report_output_base(package)
+            for requested_output_format in requested_output_formats:
+                reporting_writter = _build_writer(
+                    requested_output_format, package, ecosystem
+                )
+                reporter = ReportGenerator(reporting_writter)
+                output = reporter.generate_report(metadata)
+                output_path = path_join(
+                    output_dir,
+                    f"{report_base}.{_OUTPUT_EXTENSIONS[requested_output_format]}",
+                )
+                write_file(output_path, output)
+                logger.info(
+                    "Wrote %s report to %s", requested_output_format, output_path
+                )
     if override_strategy is not None and len(override_strategy.unused_targets()) != 0:
         logger.warning("Not all targets in the override spec file were used.")
         logger.warning(
@@ -845,7 +969,8 @@ def generate_sbom(
 def generate_sbom_csv(**kwargs: Any) -> None:
     if kwargs.get("package") is None:
         raise click.MissingParameter(param=click.Argument(["package"]))
-    kwargs["output_format"] = "csv"
+    kwargs.pop("output_format", None)
+    kwargs["output_formats"] = ["csv"]
     generate_sbom(**kwargs)
 
 
@@ -854,7 +979,7 @@ def _generate_sbom_csv_signature() -> inspect.Signature:
     parameters = [
         _clone_signature_parameter(parameter)
         for parameter in signature.parameters.values()
-        if parameter.name != "output_format"
+        if parameter.name != "output_formats"
     ]
     return signature.replace(parameters=parameters)
 

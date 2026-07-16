@@ -21,7 +21,7 @@
 "charset-normalizer","https://github.com/jawah/charset_normalizer","['MIT']","['TAHRI Ahmed R.']"
 "click","https://github.com/pallets/click","['BSD-3-Clause']","['Pallets']"
 "colorama","https://github.com/tartley/colorama","['BSD-3-Clause']","['Jonathan Hartley']"
-"commoncode","https://github.com/aboutcode-org/commoncode","['Apache-2.0']","['nexB. Inc. and others']"
+"commoncode","https://github.com/aboutcode-org/scancode-toolkit","['Apache-2.0']","['nexB. Inc. and others']"
 "container-inspector","https://github.com/aboutcode-org/container-inspector","['Apache-2.0']","['nexB. Inc. and others']"
 "cryptography","https://github.com/pyca/cryptography","['Apache-2.0 OR BSD-3-Clause']","['The cryptography developers <cryptography-dev@python.org>']"
 "cyseq","https://github.com/aboutcode-org/cyseq","['Apache-2.0']","['nexB. Inc. and others']"

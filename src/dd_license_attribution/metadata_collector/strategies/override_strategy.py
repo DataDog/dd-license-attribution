@@ -52,7 +52,7 @@ class OverrideCollectionStrategy(MetadataCollectionStrategy):
 
     def __init__(self, override_rules: list[OverrideRule]) -> None:
         self.override_rules = override_rules
-        self.unused_rules = override_rules
+        self.unused_rules = list(override_rules)
 
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         # find the matching rules for each metadata
@@ -71,12 +71,12 @@ class OverrideCollectionStrategy(MetadataCollectionStrategy):
                                 "Replacement for add should always be a dictionary."
                             )
                         metadata.append(rule.replacement)
-                        # remove the rule from the unused rules
-                        self.unused_rules.remove(rule)
+                        if rule in self.unused_rules:
+                            self.unused_rules.remove(rule)
                     elif rule.override_type == OverrideType.REMOVE:
                         metadata.remove(meta)
-                        # remove the rule from the unused rules
-                        self.unused_rules.remove(rule)
+                        if rule in self.unused_rules:
+                            self.unused_rules.remove(rule)
                     elif rule.override_type == OverrideType.REPLACE:
                         if rule.replacement is None:
                             raise ValueError(
@@ -84,8 +84,8 @@ class OverrideCollectionStrategy(MetadataCollectionStrategy):
                             )
                         metadata.remove(meta)
                         metadata.append(rule.replacement)
-                        # remove the rule from the unused rules
-                        self.unused_rules.remove(rule)
+                        if rule in self.unused_rules:
+                            self.unused_rules.remove(rule)
         return metadata
 
     def unused_targets(self) -> list[dict[OverrideTargetField, str]]:

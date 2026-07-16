@@ -22,16 +22,16 @@ jobs:
 
     steps:
       - name: Check out the repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: ${{ matrix.python-version }}
           cache: "pip" # caching pip dependencies
 
       - name: Set up Golang
-        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # 6.4.0
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # 6.5.0
         with:
           go-version: "1.23"
 
@@ -177,6 +177,32 @@ jobs:
             go-module-output.txt
             go-pinned-output.txt
           if-no-files-found: ignore
+
+      - name: Run dd-license-attribution with --experimental-strategy against a GitHub repo
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dd-license-attribution generate-sbom --experimental-strategy https://github.com/DataDog/apigentools > experimental-github-output.txt
+          head -1 experimental-github-output.txt | grep -iq "component.*origin.*license.*copyright"
+          line_count=$(wc -l < experimental-github-output.txt)
+          if [ "$line_count" -lt 6 ]; then
+            echo "Error: Expected at least 5 dependencies, got $((line_count - 1))"
+            exit 1
+          fi
+          echo "Experimental GitHub repo test passed: $((line_count - 1)) dependencies found"
+
+      - name: Run dd-license-attribution with --experimental-strategy and --ecosystem python
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dd-license-attribution generate-sbom --experimental-strategy --ecosystem python apigentools > experimental-pypi-output.txt
+          head -1 experimental-pypi-output.txt | grep -iq "component.*origin.*license.*copyright"
+          line_count=$(wc -l < experimental-pypi-output.txt)
+          if [ "$line_count" -lt 4 ]; then
+            echo "Error: Expected at least 3 dependencies, got $((line_count - 1))"
+            exit 1
+          fi
+          echo "Experimental ecosystem python test passed: $((line_count - 1)) dependencies found"
 
       - name: Test generate-overrides command with clean CSV
         run: |

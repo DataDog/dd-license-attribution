@@ -57,7 +57,7 @@ For more advanced usage, see the sections below.
 
 `dd-license-attribution` provides the following commands:
 
-1. **`generate-sbom`** - Generate an SBOM of third-party dependencies as CSV or SPDX 2.3 JSON
+1. **`generate-sbom`** - Generate an SBOM of third-party dependencies as CSV, Markdown, or SPDX 2.3 JSON
 2. **`generate-overrides`** - Interactively generate override configuration files
 3. **`clean-spdx-id`** - Convert long license descriptions to valid SPDX license expressions using AI
 
@@ -96,6 +96,12 @@ dd-license-attribution generate-sbom https://github.com/owner/repo > LICENSE-3rd
 
 # Emit SPDX 2.3 JSON instead of CSV
 dd-license-attribution generate-sbom https://github.com/owner/repo --format spdx > sbom.spdx.json
+
+# Emit a Markdown license compliance report instead of CSV
+dd-license-attribution generate-sbom https://github.com/owner/repo --format markdown > LICENSE-3rdparty.md
+
+# Emit multiple formats from a single metadata collection run
+dd-license-attribution generate-sbom https://github.com/owner/repo --format csv --format markdown --format spdx --output-dir ./reports
 ```
 
 The following optional parameters are available for `generate-sbom`:
@@ -118,8 +124,30 @@ The following optional parameters are available for `generate-sbom`:
 - `--no-rust-strategy`: Skips the strategy that collects dependencies from Cargo projects using dd-rust-license-tool.
 - `--no-scancode-strategy`: Skips the strategy that gets licenses and copyright attribution using ScanCode Toolkit.
 
+##### Experimental Three-Phase Collection
+- `--experimental-strategy`: Enables a three-phase collection pipeline that separates dependency discovery from metadata extraction.
+
+  **Phase 0 — Pre-finders (once)**: Strategies that already perform full transitive closure run once on the root package only. For example, `GitHubSbomMetadataCollectionStrategy` queries GitHub's dependency graph API which already returns all transitive deps — re-running it on each discovered dependency would fetch unrelated dep trees.
+
+  **Phase 1 — Finder fixpoint loop**: Ecosystem finders (PyPI, GoPkg, npm) run repeatedly (up to 5 iterations) until the dependency set stops growing. This ensures transitive dependencies discovered by one finder are seen by other finders in subsequent iterations.
+
+  **Phase 2 — Enricher cascade**: Once the dependency set is stable, all metadata-enricher strategies run once to extract license and copyright information.
+
+  **Ecosystem-aware defaults**: When `--experimental-strategy` is combined with `--ecosystem`, only the ecosystem-relevant finder is enabled by default. For example, `--experimental-strategy --ecosystem python` enables only the PyPI finder. All `--no-*` flags still apply and override these defaults.
+
+  ```bash
+  # Three-phase collection for a Python package — only PyPI finder runs in Phase 1
+  dd-license-attribution generate-sbom --experimental-strategy --ecosystem python requests
+
+  # Allow --no-* flags to further restrict strategies
+  dd-license-attribution generate-sbom --experimental-strategy --ecosystem python --no-scancode-strategy requests
+  ```
+
+  > **Note**: This flag gates experimental behavior that is not yet stable. The strategy classification (pre-finder vs. finder vs. enricher) may change as the feature matures.
+
 #### Output Options
-- `--format <csv|spdx>`: Selects the SBOM output format. Defaults to `csv`; `spdx` emits SPDX 2.3 JSON.
+- `--format <csv|spdx|markdown>`: Selects the SBOM output format. Defaults to `csv`. Repeat this option to request multiple formats in one run, for example `--format csv --format markdown --format spdx`.
+- `--output-dir <path>`: Writes one file per requested format into the directory instead of writing the report to stdout. The directory is created if it does not exist. This option is required when passing multiple `--format` values. Generated file extensions are `.csv` for CSV, `.md` for Markdown, and `.json` for SPDX.
 
 #### Cache Configuration
 
@@ -128,9 +156,15 @@ The following optional parameters are available for `generate-sbom`:
 
 For more details about optional parameters pass `--help` to the command.
 
-#### Output Format
+#### Output Formats
 
-The tool generates a CSV file with the following columns:
+By default, `generate-sbom` writes a CSV report to stdout so it can be redirected to a file:
+
+```bash
+dd-license-attribution generate-sbom https://github.com/owner/repo > LICENSE-3rdparty.csv
+```
+
+CSV reports contain the following columns:
 - `Component`: The name of the dependency
 - `Origin`: The source URL of the dependency
 - `License`: The detected license(s)
@@ -142,6 +176,28 @@ Component,Origin,License,Copyright
 aiohttp,https://github.com/aio-libs/aiohttp,Apache-2.0,"aio-libs"
 requests,https://github.com/psf/requests,Apache-2.0,"Kenneth Reitz"
 ```
+
+Markdown reports can be generated with `--format markdown`:
+
+```bash
+dd-license-attribution generate-sbom https://github.com/owner/repo --format markdown > LICENSE-3rdparty.md
+```
+
+Markdown reports include a root package summary followed by a third-party dependency table. The root package is summarized separately and excluded from the dependency table.
+
+SPDX 2.3 JSON reports can be generated with `--format spdx`:
+
+```bash
+dd-license-attribution generate-sbom https://github.com/owner/repo --format spdx > sbom.spdx.json
+```
+
+To write more than one report format from the same metadata collection run, repeat `--format` and pass `--output-dir`:
+
+```bash
+dd-license-attribution generate-sbom https://github.com/owner/repo --format csv --format markdown --format spdx --output-dir ./reports
+```
+
+For a package such as `https://github.com/owner/repo`, this writes `github.com_owner_repo.csv`, `github.com_owner_repo.md`, and `github.com_owner_repo.json` under `./reports`.
 
 #### Output string configuration
 

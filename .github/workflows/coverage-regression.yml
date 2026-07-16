@@ -20,12 +20,12 @@ jobs:
 
     steps:
       - name: Check out the repository (full history for branch comparison)
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.14"
           cache: "pip"
@@ -38,7 +38,7 @@ jobs:
       - name: Get Datadog credentials
         id: dd-sts
         continue-on-error: true
-        uses: DataDog/dd-sts-action@2e8187910199bd93129520183c093e19aa585c75 # v1.0.0
+        uses: DataDog/dd-sts-action@639d841c72f15e4e77747bd726ef8105ce971da2 # v1.0.5
         with:
           policy: dd-license-attribution-coverage-regression
 
@@ -49,6 +49,7 @@ jobs:
           languages: python
           api_key: ${{ steps.dd-sts.outputs.api_key }}
           site: datadoghq.com
+          code_coverage: "true"
 
       - name: Run coverage on target branch
         env:
