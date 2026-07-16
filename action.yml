@@ -238,6 +238,7 @@ runs:
 
         args=(generate-sbom --format csv)
 
+        [ -z "${GITHUB_TOKEN}" ] && args+=(--no-gh-auth)
         [ "${GITHUB_SBOM_STRATEGY}" = "false" ] && args+=(--no-github-sbom-strategy)
         [ "${GOPKG_STRATEGY}" = "false" ] && args+=(--no-gopkg-strategy)
         [ "${PYPI_STRATEGY}" = "false" ] && args+=(--no-pypi-strategy)
