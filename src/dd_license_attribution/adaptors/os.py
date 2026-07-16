@@ -163,32 +163,35 @@ def extract_tar_gz(
     if max_extracted_bytes <= 0:
         raise ValueError("max_extracted_bytes must be greater than zero")
 
-    with tarfile.open(fileobj=io.BytesIO(archive_content), mode="r:gz") as archive:
-        members = archive.getmembers()
-        unsafe_members = [
-            member.name
-            for member in members
-            if not _is_safe_tar_member(member, destination)
-        ]
-        if unsafe_members:
-            raise ValueError(f"Unsafe archive path: {unsafe_members[0]}")
+    try:
+        with tarfile.open(fileobj=io.BytesIO(archive_content), mode="r:gz") as archive:
+            members = archive.getmembers()
+            unsafe_members = [
+                member.name
+                for member in members
+                if not _is_safe_tar_member(member, destination)
+            ]
+            if unsafe_members:
+                raise ValueError(f"Unsafe archive path: {unsafe_members[0]}")
 
-        extracted_bytes = 0
-        for member in members:
-            if member.isfile() and member.size > max_extracted_bytes:
-                raise ValueError(
-                    f"Archive member {member.name} exceeds maximum extracted size "
-                    f"of {max_extracted_bytes} bytes"
-                )
-            extracted_bytes += member.size
-            if extracted_bytes > max_extracted_bytes:
-                raise ValueError(
-                    "Archive exceeds maximum extracted size "
-                    f"of {max_extracted_bytes} bytes"
-                )
+            extracted_bytes = 0
+            for member in members:
+                if member.isfile() and member.size > max_extracted_bytes:
+                    raise ValueError(
+                        f"Archive member {member.name} exceeds maximum extracted "
+                        f"size of {max_extracted_bytes} bytes"
+                    )
+                extracted_bytes += member.size
+                if extracted_bytes > max_extracted_bytes:
+                    raise ValueError(
+                        "Archive exceeds maximum extracted size "
+                        f"of {max_extracted_bytes} bytes"
+                    )
 
-        archive.extractall(destination, members=members)
-        return [member.name for member in members]
+            archive.extractall(destination, members=members)
+            return [member.name for member in members]
+    except tarfile.TarError as e:
+        raise ValueError(f"Malformed gzip tar archive: {e}") from e
 
 
 def read_tar_gz_text_file(
@@ -199,19 +202,22 @@ def read_tar_gz_text_file(
     if max_bytes <= 0:
         raise ValueError("max_bytes must be greater than zero")
 
-    with tarfile.open(fileobj=io.BytesIO(archive_content), mode="r:gz") as archive:
-        for member in archive.getmembers():
-            if not member.isfile() or not member.name.endswith(member_suffix):
-                continue
-            if member.size > max_bytes:
-                raise ValueError(
-                    f"Archive member {member.name} exceeds maximum size "
-                    f"of {max_bytes} bytes"
-                )
-            extracted_file = archive.extractfile(member)
-            if extracted_file is None:
-                return None
-            return extracted_file.read().decode("utf-8")
+    try:
+        with tarfile.open(fileobj=io.BytesIO(archive_content), mode="r:gz") as archive:
+            for member in archive.getmembers():
+                if not member.isfile() or not member.name.endswith(member_suffix):
+                    continue
+                if member.size > max_bytes:
+                    raise ValueError(
+                        f"Archive member {member.name} exceeds maximum size "
+                        f"of {max_bytes} bytes"
+                    )
+                extracted_file = archive.extractfile(member)
+                if extracted_file is None:
+                    return None
+                return extracted_file.read().decode("utf-8")
+    except tarfile.TarError as e:
+        raise ValueError(f"Malformed gzip tar archive: {e}") from e
     return None
 
 

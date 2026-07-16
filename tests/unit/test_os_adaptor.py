@@ -206,6 +206,11 @@ def test_extract_tar_gz_rejects_total_extracted_size_over_limit() -> None:
         )
 
 
+def test_extract_tar_gz_rejects_malformed_archive() -> None:
+    with pytest.raises(ValueError, match="Malformed gzip tar archive"):
+        extract_tar_gz(b"not a gzip tar archive", "/destination")
+
+
 def test_read_tar_gz_text_file_reads_matching_member() -> None:
     archive_content = _tar_gz_with_files(
         {
@@ -241,6 +246,11 @@ def test_read_tar_gz_text_file_rejects_oversized_member() -> None:
 def test_read_tar_gz_text_file_rejects_invalid_size_limit() -> None:
     with pytest.raises(ValueError, match="max_bytes must be greater than zero"):
         read_tar_gz_text_file(b"archive", "/Cargo.toml", max_bytes=0)
+
+
+def test_read_tar_gz_text_file_rejects_malformed_archive() -> None:
+    with pytest.raises(ValueError, match="Malformed gzip tar archive"):
+        read_tar_gz_text_file(b"not a gzip tar archive", "/Cargo.toml")
 
 
 def test_normalize_path_collapses_relative_segments() -> None:
