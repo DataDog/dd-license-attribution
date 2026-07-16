@@ -38,7 +38,8 @@ inputs:
   csv-path:
     description: >-
       Path (relative to the workspace) of the committed LICENSE-3rdparty.csv
-      file to validate against. The repository must already be checked out.
+      file to validate against. Required only when `compare` is 'true'; in that
+      mode, the repository must already be checked out.
     required: false
     default: "LICENSE-3rdparty.csv"
   override-spec:
@@ -89,6 +90,13 @@ inputs:
     description: "Set to 'true' to pass --deep-scanning."
     required: false
     default: "false"
+  yarn-subdir:
+    description: >-
+      Newline-separated subdirectory paths containing additional yarn.lock
+      files. Each non-empty line is passed as a separate `--yarn-subdir`
+      argument. Paths are relative to the repository root.
+    required: false
+    default: ""
   default-branch:
     description: >-
       The default branch of `repository`, used as the source ref when the
@@ -105,8 +113,8 @@ inputs:
       specifications for callers with special needs. Its entries are merged
       ahead of the mirror the action builds automatically, so they take
       precedence for any overlapping original_url (the tool uses the first
-      matching entry) while the auto-built, token-authenticated entry for the
-      repository remains as a fallback. In ecosystem mode (no auto-built
+      matching entry) while the auto-built entry for the repository remains as
+      a fallback. In ecosystem mode (no auto-built
       mirror), it is passed through verbatim to `--use-mirrors`. Leave empty
       to rely solely on the auto-built mirror.
     required: false
@@ -114,10 +122,12 @@ inputs:
   github-token:
     description: >-
       GitHub token used both for API calls and, embedded in the generated
-      mirror URL, for cloning the repository under test. Providing a token is
-      required to analyze private repositories. Defaults to the workflow token.
+      mirror URL, for cloning the repository under test. Leave empty (the
+      default) for untrusted or public targets because dependency analysis may
+      execute target-controlled code that inherits the action environment.
+      Providing a token with read access is required for private repositories.
     required: false
-    default: "${{ github.token }}"
+    default: ""
   python-version:
     description: >-
       Python version to set up and run dd-license-attribution with. Set to
@@ -204,6 +214,7 @@ runs:
         SCANCODE_STRATEGY: ${{ inputs.scancode-strategy }}
         EXPERIMENTAL_STRATEGY: ${{ inputs.experimental-strategy }}
         DEEP_SCANNING: ${{ inputs.deep-scanning }}
+        YARN_SUBDIRS: ${{ inputs.yarn-subdir }}
         DEFAULT_BRANCH: ${{ inputs.default-branch }}
         USE_MIRRORS: ${{ inputs.use-mirrors }}
         # Event context used to point the mirror at the branch under test.
@@ -234,6 +245,13 @@ runs:
         [ "${SCANCODE_STRATEGY}" = "false" ] && args+=(--no-scancode-strategy)
         [ "${EXPERIMENTAL_STRATEGY}" = "true" ] && args+=(--experimental-strategy)
         [ "${DEEP_SCANNING}" = "true" ] && args+=(--deep-scanning)
+
+        while IFS= read -r yarn_subdir; do
+          yarn_subdir="${yarn_subdir%$'\r'}"
+          if [ -n "${yarn_subdir}" ]; then
+            args+=(--yarn-subdir "${yarn_subdir}")
+          fi
+        done <<< "${YARN_SUBDIRS}"
 
         if [ -n "${OVERRIDE_SPEC}" ]; then
           args+=(--override-spec "${OVERRIDE_SPEC}")
@@ -354,12 +372,12 @@ runs:
         echo "Running: dd-license-attribution ${args[*]}"
         dd-license-attribution "${args[@]}" > "${output_file}"
 
-        if [ ! -f "${CSV_PATH}" ]; then
-          echo "::error::Comparison file not found: ${CSV_PATH}. Make sure the repository is checked out and csv-path is correct."
-          exit 1
-        fi
-
         if [ "${COMPARE}" = "true" ]; then
+          if [ ! -f "${CSV_PATH}" ]; then
+            echo "::error::Comparison file not found: ${CSV_PATH}. Make sure the repository is checked out and csv-path is correct."
+            exit 1
+          fi
+
           if cmp -s "${CSV_PATH}" "${output_file}"; then
             echo "matches=true" >> "${GITHUB_OUTPUT}"
             echo "${CSV_PATH} is up to date."

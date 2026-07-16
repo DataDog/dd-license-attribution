@@ -462,18 +462,30 @@ Yarn Classic. It installs the exact version of `dd-license-attribution` shipped
 with the `@ref` you pin, so no additional setup steps are required. If your
 workflow already provides any of these toolchains, opt out of the corresponding
 internal setup by passing `python-version: false`, `go-version: false`, or
-`node-version: false`. Your repository must be checked out so the action can
-read the committed `LICENSE-3rdparty.csv`.
+`node-version: false`. When `compare` is enabled, your repository must be
+checked out so the action can read the committed `LICENSE-3rdparty.csv`.
 
 The action always assumes github.com as the host and takes the target as an
 `owner/name` `repository` (defaulting to the repository the workflow runs in).
-It builds its own mirror configuration internally, embedding `github-token` so
-the repository can be cloned — this is what makes **private repositories** work —
-and, when validating the repository the workflow runs in, points that mirror at
-the branch actually under test (the PR head branch for `pull_request` events,
-the merge-queue branch, or the pushed branch) rather than the default branch.
-Because the mirror embeds a credential, provide a token with read access to the
-target repository.
+It builds its own mirror configuration internally and, when validating the
+repository the workflow runs in, points that mirror at the branch actually
+under test (the PR head branch for `pull_request` events, the merge-queue
+branch, or the pushed branch) rather than the default branch. When a
+`github-token` is provided, the action embeds it in the mirror so **private
+repositories** can be cloned.
+
+> **Authentication security caveat.** The action does not provide a GitHub token
+> by default. Source-based dependency discovery may execute code controlled by
+> the repository or package being scanned, and child processes may inherit the
+> action environment. Leave `github-token` empty for public or untrusted targets.
+> For a private repository, provide a read-only token only when you trust the
+> target code that will be analyzed.
+
+> **Checkout credential caveat.** `actions/checkout` persists its authentication
+> header in the workspace's Git configuration by default. Git commands run by
+> the scanner can inherit that header instead of using the action's mirror
+> credentials. Set `persist-credentials: false` on the checkout step, as shown
+> below, so the action's authentication behavior remains explicit.
 
 > **`pull_request_target` security caveat.** The action intentionally does not
 > map `pull_request_target` events to the PR head. Those workflows run in the
@@ -502,14 +514,11 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       # Pin to the full commit SHA of the release you want; `<sha>` is a
       # placeholder — see the repository's tags/releases.
       - uses: DataDog/dd-license-attribution@<sha>
-        with:
-          # `repository` defaults to the current repository (owner/name).
-          override-spec: .ddla-overrides
-          # `github-token` defaults to ${{ github.token }}; provide a token
-          # with read access when validating a private repository.
 ```
 
 ### Inputs
@@ -519,7 +528,7 @@ jobs:
 | `repository` | `${{ github.repository }}` | GitHub repository to analyze, as `owner/name`. Ignored when `ecosystem` is set. Use GitHub's canonical `owner/name` casing — the auto-built mirror is matched case-sensitively against the canonical URL, so mismatched casing silently disables it. The default is already canonical. |
 | `ecosystem` | _(empty)_ | Value for `--ecosystem` (`npm`, `python`, `pypi`, or `go`). When set, `package` is analyzed instead of `repository` (and no mirror is built). |
 | `package` | _(empty)_ | Package name to analyze. Only used (and required) when `ecosystem` is set. |
-| `csv-path` | `LICENSE-3rdparty.csv` | Path (in the checked-out workspace) of the committed file to validate against. |
+| `csv-path` | `LICENSE-3rdparty.csv` | Path (in the checked-out workspace) of the committed file to validate against. Required only when `compare` is `true`. |
 | `override-spec` | _(empty)_ | Value for `--override-spec` (a JSON file of override rules). |
 | `compare` | `true` | When `true`, the generated SBOM must match `csv-path` exactly (a unified diff is printed on mismatch). When `false`, only structural validation (non-empty CSV with the expected header) is performed. |
 | `github-sbom-strategy` | `true` | Set to `false` to pass `--no-github-sbom-strategy`. |
@@ -529,9 +538,10 @@ jobs:
 | `scancode-strategy` | `true` | Set to `false` to pass `--no-scancode-strategy`. |
 | `experimental-strategy` | `false` | Set to `true` to pass `--experimental-strategy`. |
 | `deep-scanning` | `false` | Set to `true` to pass `--deep-scanning`. |
+| `yarn-subdir` | _(empty)_ | Newline-separated subdirectory paths containing additional `yarn.lock` files. Each non-empty line is passed as a separate `--yarn-subdir` argument. |
 | `default-branch` | `${{ github.event.repository.default_branch }}` | Default branch of `repository`, used as the source ref when the mirror is mapped onto the branch under test. Defaults to the default branch of the repository the workflow runs in. |
-| `use-mirrors` | _(empty)_ | Path (in the workspace) to a JSON file of mirror specifications. Its entries are merged *ahead* of the auto-built mirror, so they take precedence for any overlapping `original_url` while the auto-built token-authenticated entry remains a fallback. In ecosystem mode it is passed verbatim to `--use-mirrors`. |
-| `github-token` | `${{ github.token }}` | Token used for GitHub API calls and, embedded in the mirror URL, for cloning the repository. Required for private repositories. |
+| `use-mirrors` | _(empty)_ | Path (in the workspace) to a JSON file of mirror specifications. Its entries are merged *ahead* of the auto-built mirror, so they take precedence for any overlapping `original_url` while the auto-built entry remains a fallback. In ecosystem mode it is passed verbatim to `--use-mirrors`. |
+| `github-token` | _(empty)_ | Token used for GitHub API calls and, embedded in the mirror URL, for cloning the repository. Leave empty for public or untrusted targets; provide a read-only token for a trusted private repository. |
 | `python-version` | `3.14` | Python version to set up and run the tool with. Set to `false` to skip the internal Python setup and use the `python` already on `PATH`. |
 | `go-version` | `1.23` | Go version to set up when `gopkg-strategy` is enabled or `ecosystem` is `go`. Set to `false` to skip the internal Go setup and use the calling workflow's Go toolchain. |
 | `node-version` | `24` | Node.js version to set up when `npm-strategy` is enabled or `ecosystem` is `npm`; npm and Yarn Classic are also installed. Set to `false` to use the calling workflow's JavaScript toolchain. |
@@ -557,20 +567,32 @@ Each collection strategy has a boolean input that defaults to enabled. Set one t
           scancode-strategy: false
 ```
 
+For Yarn monorepos, pass each additional lockfile directory on a separate line:
+
+```yaml
+      - uses: DataDog/dd-license-attribution@<sha>
+        with:
+          yarn-subdir: |
+            packages/frontend
+            packages/admin
+```
+
 ### Supplying custom mirrors
 
 For special needs — for example mirroring a dependency's repository, or pointing
 the target repository at an internal host — commit a mirror-specification JSON
 file and pass its path via `use-mirrors`. Your entries are merged *ahead* of the
 mirror the action builds automatically, so they win for any repository they
-name, while the auto-built token-authenticated mirror still covers the primary
-repository as a fallback. Each `original_url` must use GitHub's canonical
+name, while the auto-built mirror still covers the primary repository as a
+fallback. Each `original_url` must use GitHub's canonical
 `owner/name` casing: the tool resolves scan targets to their canonical URL and
 matches mirror entries case-sensitively, so a mismatched-casing entry is
 silently ignored.
 
 ```yaml
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
       # Pin to the full commit SHA of the release you want; `<sha>` is a
       # placeholder — see the repository's tags/releases.
       - uses: DataDog/dd-license-attribution@<sha>
