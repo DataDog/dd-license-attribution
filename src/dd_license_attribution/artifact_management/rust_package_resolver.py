@@ -178,12 +178,17 @@ class RustPackageResolver:
             "Rust crate %s has no lib target; falling back to crates.io source",
             rust_package_spec,
         )
+        repository = (
+            self._get_crates_io_repository(name)
+            if self.source_code_manager is not None
+            else None
+        )
         return self._resolve_crate_from_source(
             name,
             rust_package_spec,
             resolve_dir,
             cargo_lock_path,
-            None,
+            repository,
         )
 
     def _metadata_contains_crate(
@@ -295,6 +300,37 @@ class RustPackageResolver:
             if isinstance(repository, str) and repository:
                 return repository
             return None
+        return None
+
+    def _get_crates_io_repository(self, crate_name: str) -> str | None:
+        metadata_endpoint = (
+            f"https://crates.io/api/v1/crates/{quote(crate_name, safe='')}"
+        )
+        try:
+            crates_io_metadata: Any = json.loads(
+                download_url(
+                    metadata_endpoint,
+                    user_agent=CRATES_IO_USER_AGENT,
+                )
+            )
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
+            logger.warning(  # pragma: no mutate
+                "Could not retrieve crates.io metadata for Rust crate %s: %s",
+                crate_name,
+                e,
+            )
+            return None
+
+        if not isinstance(crates_io_metadata, dict):
+            return None
+
+        crate_metadata = crates_io_metadata.get("crate")
+        if not isinstance(crate_metadata, dict):
+            return None
+
+        repository = crate_metadata.get("repository")
+        if isinstance(repository, str) and repository:
+            return repository
         return None
 
     def _metadata_reports_missing_lib_target(

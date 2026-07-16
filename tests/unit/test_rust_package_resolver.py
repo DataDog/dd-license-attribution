@@ -886,6 +886,139 @@ class TestResolvePackage:
             "/cache/dd-rust-license-tool/crate-source",
         )
 
+    def test_binary_only_crate_copies_repository_license_tool_config(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        source_code_manager = Mock()
+        source_code_manager.get_code.return_value = SourceCodeReference(
+            repo_url="https://github.com/DataDog/dd-rust-license-tool",
+            branch="main",
+            local_root_path="/cache/repositories/dd-rust-license-tool",
+            local_full_path="/cache/repositories/dd-rust-license-tool",
+        )
+        resolver = RustPackageResolver("/cache", source_code_manager)
+        config_content = (
+            "[overrides]\n"
+            '"openssl-macros" = '
+            '{ origin = "https://github.com/sfackler/rust-openssl" }\n'
+        )
+        cargo_lock_content = self._cargo_lock_with_package(
+            "dd-rust-license-tool",
+            "1.0.6",
+        )
+        (
+            _,
+            mock_write_file,
+            mock_run_command,
+            mock_path_exists,
+            mock_open_file,
+            mock_download_url,
+            mock_extract_tar_gz,
+        ) = self._setup_mocks(
+            mocker,
+            metadata_return=self._binary_metadata_return("dd-rust-license-tool"),
+            path_exists_return=[True, True, True],
+            cargo_lock_content=cargo_lock_content,
+            extracted_members=["dd-rust-license-tool-1.0.6/Cargo.toml"],
+        )
+        mock_open_file.side_effect = [cargo_lock_content, config_content]
+        mock_download_url.side_effect = [
+            json.dumps(
+                {
+                    "crate": {
+                        "repository": (
+                            "https://github.com/DataDog/dd-rust-license-tool"
+                        )
+                    }
+                }
+            ).encode(),
+            b"crate archive",
+        ]
+
+        result = resolver.resolve_package("dd-rust-license-tool")
+
+        assert (
+            result
+            == "/cache/dd-rust-license-tool/crate-source/dd-rust-license-tool-1.0.6"
+        )
+        source_code_manager.get_code.assert_called_once_with(
+            "https://github.com/DataDog/dd-rust-license-tool"
+        )
+        assert mock_write_file.call_count == 3
+        mock_write_file.assert_called_with(
+            "/cache/dd-rust-license-tool/crate-source/"
+            "dd-rust-license-tool-1.0.6/license-tool.toml",
+            config_content,
+        )
+        mock_run_command.assert_has_calls(
+            [
+                call(
+                    ["cargo", "generate-lockfile"],
+                    cwd="/cache/dd-rust-license-tool",
+                ),
+                call(
+                    ["cargo", "metadata", "--format-version", "1"],
+                    cwd="/cache/dd-rust-license-tool",
+                ),
+            ]
+        )
+        assert mock_run_command.call_count == 2
+        mock_path_exists.assert_has_calls(
+            [
+                call("/cache/dd-rust-license-tool/Cargo.lock"),
+                call(
+                    "/cache/dd-rust-license-tool/crate-source/"
+                    "dd-rust-license-tool-1.0.6/Cargo.toml"
+                ),
+                call(
+                    "/cache/repositories/dd-rust-license-tool/license-tool.toml",
+                ),
+            ]
+        )
+        assert mock_path_exists.call_count == 3
+        mock_open_file.assert_has_calls(
+            [
+                call("/cache/dd-rust-license-tool/Cargo.lock"),
+                call("/cache/repositories/dd-rust-license-tool/license-tool.toml"),
+            ]
+        )
+        assert mock_open_file.call_count == 2
+        mock_download_url.assert_has_calls(
+            [
+                call(
+                    "https://crates.io/api/v1/crates/dd-rust-license-tool",
+                    user_agent=CRATES_IO_USER_AGENT,
+                ),
+                call(
+                    "https://crates.io/api/v1/crates/dd-rust-license-tool/1.0.6/download",
+                    user_agent=CRATES_IO_USER_AGENT,
+                ),
+            ]
+        )
+        assert mock_download_url.call_count == 2
+        mock_extract_tar_gz.assert_called_once_with(
+            b"crate archive",
+            "/cache/dd-rust-license-tool/crate-source",
+        )
+
+    def test_crates_io_repository_metadata_failure_returns_none(
+        self, mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture
+    ) -> None:
+        mock_download_url = mocker.patch(
+            "dd_license_attribution.artifact_management.rust_package_resolver.download_url",
+            side_effect=OSError("network unavailable"),
+        )
+
+        with caplog.at_level(logging.WARNING):
+            result = self.resolver._get_crates_io_repository("serde")
+
+        assert result is None
+        assert "Could not retrieve crates.io metadata" in caplog.text
+        mock_download_url.assert_called_once_with(
+            "https://crates.io/api/v1/crates/serde",
+            user_agent=CRATES_IO_USER_AGENT,
+        )
+
     def test_get_resolved_crate_version_reads_cargo_lock(
         self, mocker: pytest_mock.MockFixture
     ) -> None:
