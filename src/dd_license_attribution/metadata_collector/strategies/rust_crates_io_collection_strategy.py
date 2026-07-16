@@ -74,17 +74,18 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         metadata_cache: dict[tuple[str, str | None], CrateMetadata | None] = {}
         for package in updated_metadata:
-            if (
-                package.name is None
-                or package.name not in crate_versions
-                or (package.license and package.copyright)
-            ):
+            if package.name is None or package.name not in crate_versions:
                 continue
 
             requested_version = self._choose_requested_version(
                 package.version,
                 crate_versions[package.name],
             )
+            if package.version is None:
+                package.version = requested_version
+            if package.license and package.copyright:
+                continue
+
             cache_key = (package.name, requested_version)
             if cache_key not in metadata_cache:
                 metadata_cache[cache_key] = self._get_crates_io_metadata(

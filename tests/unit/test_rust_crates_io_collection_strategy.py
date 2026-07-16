@@ -280,6 +280,66 @@ helper = { path = "." }
     assert mock_normalize_path.call_count == 3
 
 
+def test_complete_metadata_still_receives_locked_version(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=[True, False],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        return_value=(
+            '[[package]]\nname = "serde"\nversion = "1.0.0"\n'
+            'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
+        ),
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_url"
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "serde",
+        source_code_manager,
+        local_project_path="/project",
+    )
+
+    result = strategy.augment_metadata(
+        [
+            _metadata(
+                "serde",
+                None,
+                license=["MIT OR Apache-2.0"],
+                copyright=["Serde Developers"],
+            )
+        ]
+    )
+
+    assert result == [
+        _metadata(
+            "serde",
+            "1.0.0",
+            license=["MIT OR Apache-2.0"],
+            copyright=["Serde Developers"],
+        )
+    ]
+    source_code_manager.get_code.assert_not_called()
+    mock_path_exists.assert_has_calls(
+        [call("/project/Cargo.lock"), call("/project/Cargo.toml")]
+    )
+    assert mock_path_exists.call_count == 2
+    mock_open_file.assert_called_once_with("/project/Cargo.lock")
+    mock_download.assert_not_called()
+
+
 def test_repository_mode_discovers_cargo_root_and_uses_default_crate_version(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -336,7 +396,7 @@ def test_repository_mode_discovers_cargo_root_and_uses_default_crate_version(
     assert result == [
         _metadata(
             "zip",
-            None,
+            "0.6.6",
             origin="https://github.com/zip-rs/zip-old",
             license=["MIT"],
             copyright=["The zip Authors"],
