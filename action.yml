@@ -305,12 +305,9 @@ runs:
         target_repo = repository
         target_ref = ""
 
-        if (
-            is_self
-            and event in ("pull_request", "pull_request_target")
-            and pr_head_repo
-            and head_ref
-        ):
+        # Never map pull_request_target to an untrusted PR head: its privileged
+        # token is exposed while source-based discovery may execute project code.
+        if is_self and event == "pull_request" and pr_head_repo and head_ref:
             # Scan the PR head branch, cloning from the (possibly forked) head repo.
             target_repo = pr_head_repo
             target_ref = head_ref

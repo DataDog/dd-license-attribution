@@ -470,10 +470,18 @@ The action always assumes github.com as the host and takes the target as an
 It builds its own mirror configuration internally, embedding `github-token` so
 the repository can be cloned — this is what makes **private repositories** work —
 and, when validating the repository the workflow runs in, points that mirror at
-the branch actually under test (the PR head branch for `pull_request` and
-`pull_request_target` events, the merge-queue branch, or the pushed branch)
-rather than the default branch. Because the mirror embeds a credential, provide
-a token with read access to the target repository.
+the branch actually under test (the PR head branch for `pull_request` events,
+the merge-queue branch, or the pushed branch) rather than the default branch.
+Because the mirror embeds a credential, provide a token with read access to the
+target repository.
+
+> **`pull_request_target` security caveat.** The action intentionally does not
+> map `pull_request_target` events to the PR head. Those workflows run in the
+> base repository's security context and can expose a privileged token, while
+> source-based dependency discovery may execute code from the repository being
+> scanned. Mapping the mirror to an untrusted fork head could therefore leak the
+> token. Use `pull_request` with read-only permissions to validate untrusted PR
+> heads; on `pull_request_target`, the action scans the base/default branch.
 
 > **Branch-under-test caveat.** The mirror only redirects the strategies that
 > clone source code. The GitHub SBOM strategy (`github-sbom-strategy`, enabled
