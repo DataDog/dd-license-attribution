@@ -127,8 +127,11 @@ version = "1.0.0"
 [dependencies]
 renamed = { package = "actual-crate", version = "2.0.0" }
 simple = "1.0.0"
-helper = { path = "patches/helper" }
+helper = { path = "patches/helper", version = "1.0.0" }
 unversioned = { git = "https://github.com/org/unversioned" }
+git-versioned = { git = "https://github.com/org/git-versioned", version = "1.0.0" }
+alternate-registry = { version = "1.0.0", registry = "private" }
+explicit-crates-io = { version = "5.0.0", registry = "crates-io" }
 
 [workspace.dependencies]
 workspace-crate = "3.0.0"
@@ -178,6 +181,13 @@ helper = { path = "." }
                 license_expression="MIT",
                 repository="https://github.com/tokio-rs/tracing",
             )
+        if url.endswith("/explicit-crates-io"):
+            return _crate_response(
+                "explicit-crates-io",
+                "5.0.0",
+                license_expression="Apache-2.0",
+                repository="https://github.com/org/explicit-crates-io",
+            )
         raise AssertionError(f"Unexpected URL: {url}")
 
     mock_download = mocker.patch(
@@ -211,6 +221,14 @@ helper = { path = "." }
         [
             _metadata("regex", ">= 1.12.3,< 2.0.0"),
             _metadata("tracing-subscriber", ">= 0.3.20,< 0.4.0"),
+            _metadata(
+                "explicit-crates-io",
+                ">= 5.0.0,< 6.0.0",
+                copyright=["Existing Explicit Author"],
+            ),
+            _metadata("helper", "1.0.0"),
+            _metadata("git-versioned", "1.0.0"),
+            _metadata("alternate-registry", "1.0.0"),
             complete,
             unrelated,
         ]
@@ -231,6 +249,16 @@ helper = { path = "." }
             license=["MIT"],
             copyright=["Tokio Contributors"],
         ),
+        _metadata(
+            "explicit-crates-io",
+            ">= 5.0.0,< 6.0.0",
+            origin="https://github.com/org/explicit-crates-io",
+            license=["Apache-2.0"],
+            copyright=["Existing Explicit Author"],
+        ),
+        _metadata("helper", "1.0.0"),
+        _metadata("git-versioned", "1.0.0"),
+        _metadata("alternate-registry", "1.0.0"),
         complete,
         unrelated,
     ]
@@ -269,9 +297,13 @@ helper = { path = "." }
                 f"{CRATES_IO_API_BASE_URL}/tracing-subscriber/0.3.20/download",
                 user_agent=CRATES_IO_USER_AGENT,
             ),
+            call(
+                f"{CRATES_IO_API_BASE_URL}/explicit-crates-io",
+                user_agent=CRATES_IO_USER_AGENT,
+            ),
         ]
     )
-    assert mock_download.call_count == 4
+    assert mock_download.call_count == 5
     mock_read_archive.assert_has_calls(
         [call(b"crate archive", "/Cargo.toml"), call(b"crate archive", "/Cargo.toml")]
     )

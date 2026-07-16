@@ -191,6 +191,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                 if isinstance(dependency_config, str):
                     version = dependency_config
                 elif isinstance(dependency_config, dict):
+                    is_crates_io_dependency = True
                     package_name = dependency_config.get("package")
                     if isinstance(package_name, str):
                         crate_name = package_name
@@ -199,6 +200,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                         version = configured_version
                     dependency_path = dependency_config.get("path")
                     if isinstance(dependency_path, str):
+                        is_crates_io_dependency = False
                         self._merge_crate_versions(
                             crate_versions,
                             self._get_manifest_crate_versions(
@@ -206,6 +208,13 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                                 visited_projects,
                             ),
                         )
+                    if "git" in dependency_config:
+                        is_crates_io_dependency = False
+                    registry = dependency_config.get("registry")
+                    if isinstance(registry, str) and registry != "crates-io":
+                        is_crates_io_dependency = False
+                    if not is_crates_io_dependency:
+                        version = None
                 if version is not None:
                     crate_versions.setdefault(crate_name, set()).add(version)
         return crate_versions
