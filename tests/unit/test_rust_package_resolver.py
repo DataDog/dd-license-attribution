@@ -12,7 +12,7 @@ from typing import Any
 from unittest.mock import Mock, call
 
 import pytest_mock
-from pytest import LogCaptureFixture
+from pytest import LogCaptureFixture, mark
 
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
@@ -191,8 +191,20 @@ class TestResolvePackage:
             mock_extract_tar_gz,
         )
 
+    @mark.parametrize(
+        ("rust_package_spec", "expected_requirement"),
+        [
+            ("serde", "*"),
+            ("serde@1.0", "=1.0"),
+            ("serde@1.0.0", "=1.0.0"),
+            ("serde@^1.0", "^1.0"),
+        ],
+    )
     def test_happy_path_creates_project_and_runs_cargo(
-        self, mocker: pytest_mock.MockFixture
+        self,
+        mocker: pytest_mock.MockFixture,
+        rust_package_spec: str,
+        expected_requirement: str,
     ) -> None:
         (
             mock_create_dirs,
@@ -204,7 +216,7 @@ class TestResolvePackage:
             mock_extract_tar_gz,
         ) = self._setup_mocks(mocker)
 
-        result = self.resolver.resolve_package("serde@1.0")
+        result = self.resolver.resolve_package(rust_package_spec)
 
         assert result == "/cache/serde/crate-source/serde-1.0.0"
         mock_create_dirs.assert_has_calls(
@@ -222,7 +234,7 @@ class TestResolvePackage:
         cargo_toml = tomllib.loads(cargo_toml_content)
         assert cargo_toml["package"]["name"] == SYNTHETIC_PACKAGE_NAME
         assert cargo_toml["package"]["publish"] is False
-        assert cargo_toml["dependencies"] == {"serde": "1.0"}
+        assert cargo_toml["dependencies"] == {"serde": expected_requirement}
 
         main_rs_path, main_rs_content = mock_write_file.call_args_list[1][0]
         assert main_rs_path == "/cache/serde/src/main.rs"

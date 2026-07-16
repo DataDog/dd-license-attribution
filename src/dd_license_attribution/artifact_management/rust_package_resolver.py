@@ -36,6 +36,9 @@ LICENSE_TOOL_CONFIG_NAME = "license-tool.toml"
 CRATES_IO_USER_AGENT = (
     "dd-license-attribution (https://github.com/DataDog/dd-license-attribution)"
 )
+EXACT_VERSION_PATTERN = re.compile(
+    r"\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?"
+)
 
 
 class RustPackageResolver:
@@ -62,9 +65,16 @@ class RustPackageResolver:
         version = parts[1] if len(parts) == 2 and parts[1] else "*"
         return name, version
 
+    def _cargo_version_requirement(self, version: str) -> str:
+        """Convert an unadorned crate version into an exact Cargo requirement."""
+        if EXACT_VERSION_PATTERN.fullmatch(version):
+            return f"={version}"
+        return version
+
     def resolve_package(self, rust_package_spec: str) -> str | None:
         """Resolve a Rust crate spec into a local directory with Cargo.lock."""
         name, version = self._parse_rust_spec(rust_package_spec)
+        version_requirement = self._cargo_version_requirement(version)
         logger.info("Resolving Rust crate: %s@%s", name, version)  # pragma: no mutate
 
         sanitized_name = re.sub(r"[^a-zA-Z0-9_-]", "_", name)
@@ -79,7 +89,7 @@ class RustPackageResolver:
             "publish = false\n"
             "\n"
             "[dependencies]\n"
-            f"{json.dumps(name)} = {json.dumps(version)}\n"
+            f"{json.dumps(name)} = {json.dumps(version_requirement)}\n"
         )
         cargo_toml_path = path_join(resolve_dir, "Cargo.toml")
         src_dir = path_join(resolve_dir, "src")
