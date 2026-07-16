@@ -456,7 +456,7 @@ class SourceCodeManager(ArtifactManager):
             effective_branch,
             local_branch_path,
         )
-        run_command(
+        clone_result = run_command(
             [
                 "git",
                 "clone",
@@ -469,6 +469,14 @@ class SourceCodeManager(ArtifactManager):
                 local_branch_path,
             ]
         )
+        if clone_result != 0:
+            logger.error(
+                "Failed to clone repository %s at branch %s to %s",
+                effective_repository_url,
+                effective_branch,
+                local_branch_path,
+            )
+            return None
 
         logger.debug(
             "Cloned repository %s at branch %s to %s",
