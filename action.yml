@@ -127,11 +127,19 @@ inputs:
     default: "3.14"
   go-version:
     description: >-
-      Go version to set up (only when the GoPkg strategy is enabled). Required
-      for analyzing Go dependencies. Set to 'false' to skip the internal Go
-      setup entirely and use the calling workflow's Go toolchain.
+      Go version to set up when the GoPkg strategy is enabled or `ecosystem` is
+      `go`. Required for analyzing Go dependencies. Set to 'false' to skip the
+      internal Go setup entirely and use the calling workflow's Go toolchain.
     required: false
     default: "1.23"
+  node-version:
+    description: >-
+      Node.js version to set up when the NPM strategy is enabled or `ecosystem`
+      is `npm`. The setup includes npm and Yarn Classic. Set to 'false' to skip
+      the internal JavaScript toolchain setup entirely and use the calling
+      workflow's Node.js, npm, and Yarn installations.
+    required: false
+    default: "24"
 
 outputs:
   sbom-path:
@@ -154,10 +162,21 @@ runs:
         cache: "pip"
 
     - name: Set up Go
-      if: ${{ inputs.go-version != 'false' && inputs.gopkg-strategy != 'false' }}
+      if: ${{ inputs.go-version != 'false' && (inputs.gopkg-strategy != 'false' || inputs.ecosystem == 'go') }}
       uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
       with:
         go-version: ${{ inputs.go-version }}
+
+    - name: Set up Node.js
+      if: ${{ inputs.node-version != 'false' && (inputs.npm-strategy != 'false' || inputs.ecosystem == 'npm') }}
+      uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Set up Yarn Classic
+      if: ${{ inputs.node-version != 'false' && (inputs.npm-strategy != 'false' || inputs.ecosystem == 'npm') }}
+      shell: bash
+      run: npm install --global --ignore-scripts yarn@1.22.22
 
     - name: Install dd-license-attribution
       shell: bash
@@ -286,7 +305,12 @@ runs:
         target_repo = repository
         target_ref = ""
 
-        if is_self and event == "pull_request" and pr_head_repo and head_ref:
+        if (
+            is_self
+            and event in ("pull_request", "pull_request_target")
+            and pr_head_repo
+            and head_ref
+        ):
             # Scan the PR head branch, cloning from the (possibly forked) head repo.
             target_repo = pr_head_repo
             target_ref = head_ref

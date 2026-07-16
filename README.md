@@ -456,21 +456,24 @@ third-party license SBOM and validates it against a committed
 `LICENSE-3rdparty.csv` file. Use it in CI to fail a build whenever the committed
 file drifts from what `dd-license-attribution` would produce.
 
-The action sets up its own Python (and, when the GoPkg strategy is enabled, Go)
-toolchain and installs the exact version of `dd-license-attribution` shipped with
-the `@ref` you pin, so no additional setup steps are required. If your workflow
-already provides Python and/or Go, opt out of the redundant internal setup by
-passing `python-version: false` and/or `go-version: false`. Your repository must
-be checked out so the action can read the committed `LICENSE-3rdparty.csv`.
+The action sets up its own Python and, when their strategies or ecosystems
+require them, Go and Node.js toolchains. The Node.js setup also provides npm and
+Yarn Classic. It installs the exact version of `dd-license-attribution` shipped
+with the `@ref` you pin, so no additional setup steps are required. If your
+workflow already provides any of these toolchains, opt out of the corresponding
+internal setup by passing `python-version: false`, `go-version: false`, or
+`node-version: false`. Your repository must be checked out so the action can
+read the committed `LICENSE-3rdparty.csv`.
 
 The action always assumes github.com as the host and takes the target as an
 `owner/name` `repository` (defaulting to the repository the workflow runs in).
 It builds its own mirror configuration internally, embedding `github-token` so
 the repository can be cloned — this is what makes **private repositories** work —
 and, when validating the repository the workflow runs in, points that mirror at
-the branch actually under test (the PR head branch, the merge-queue branch, or
-the pushed branch) rather than the default branch. Because the mirror embeds a
-credential, provide a token with read access to the target repository.
+the branch actually under test (the PR head branch for `pull_request` and
+`pull_request_target` events, the merge-queue branch, or the pushed branch)
+rather than the default branch. Because the mirror embeds a credential, provide
+a token with read access to the target repository.
 
 > **Branch-under-test caveat.** The mirror only redirects the strategies that
 > clone source code. The GitHub SBOM strategy (`github-sbom-strategy`, enabled
@@ -512,9 +515,9 @@ jobs:
 | `override-spec` | _(empty)_ | Value for `--override-spec` (a JSON file of override rules). |
 | `compare` | `true` | When `true`, the generated SBOM must match `csv-path` exactly (a unified diff is printed on mismatch). When `false`, only structural validation (non-empty CSV with the expected header) is performed. |
 | `github-sbom-strategy` | `true` | Set to `false` to pass `--no-github-sbom-strategy`. |
-| `gopkg-strategy` | `true` | Set to `false` to pass `--no-gopkg-strategy`. Also gates whether Go is set up. |
+| `gopkg-strategy` | `true` | Set to `false` to pass `--no-gopkg-strategy`. Go is still set up when `ecosystem` is `go`. |
 | `pypi-strategy` | `true` | Set to `false` to pass `--no-pypi-strategy`. |
-| `npm-strategy` | `true` | Set to `false` to pass `--no-npm-strategy`. |
+| `npm-strategy` | `true` | Set to `false` to pass `--no-npm-strategy`. Node.js, npm, and Yarn are still set up when `ecosystem` is `npm`. |
 | `scancode-strategy` | `true` | Set to `false` to pass `--no-scancode-strategy`. |
 | `experimental-strategy` | `false` | Set to `true` to pass `--experimental-strategy`. |
 | `deep-scanning` | `false` | Set to `true` to pass `--deep-scanning`. |
@@ -522,7 +525,8 @@ jobs:
 | `use-mirrors` | _(empty)_ | Path (in the workspace) to a JSON file of mirror specifications. Its entries are merged *ahead* of the auto-built mirror, so they take precedence for any overlapping `original_url` while the auto-built token-authenticated entry remains a fallback. In ecosystem mode it is passed verbatim to `--use-mirrors`. |
 | `github-token` | `${{ github.token }}` | Token used for GitHub API calls and, embedded in the mirror URL, for cloning the repository. Required for private repositories. |
 | `python-version` | `3.14` | Python version to set up and run the tool with. Set to `false` to skip the internal Python setup and use the `python` already on `PATH`. |
-| `go-version` | `1.23` | Go version to set up (only when `gopkg-strategy` is enabled). Set to `false` to skip the internal Go setup and use the calling workflow's Go toolchain. |
+| `go-version` | `1.23` | Go version to set up when `gopkg-strategy` is enabled or `ecosystem` is `go`. Set to `false` to skip the internal Go setup and use the calling workflow's Go toolchain. |
+| `node-version` | `24` | Node.js version to set up when `npm-strategy` is enabled or `ecosystem` is `npm`; npm and Yarn Classic are also installed. Set to `false` to use the calling workflow's JavaScript toolchain. |
 
 ### Outputs
 
