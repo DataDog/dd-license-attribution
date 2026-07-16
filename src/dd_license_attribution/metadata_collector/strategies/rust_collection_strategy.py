@@ -106,9 +106,19 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
             source_code_ref.local_full_path
         )
         for project_path in cargo_project_roots:
-            root_package_names = self._get_root_package_names(project_path)
             rows = self._collect_rows_from_project(project_path)
-            self._ingest_rows(updated_metadata, rows, root_package_names)
+            if not rows:
+                continue
+
+            root_package_names, root_package_versions = self._get_root_package_metadata(
+                project_path
+            )
+            self._ingest_rows(
+                updated_metadata,
+                rows,
+                root_package_names,
+                root_package_versions,
+            )
 
         return updated_metadata
 
@@ -130,7 +140,23 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
             )
 
         rows = self._collect_rows_from_project(project_path)
-        self._ingest_rows(metadata, rows, root_package_names)
+        if not rows:
+            return metadata
+
+        root_package_versions: dict[str, str] = {}
+        should_read_cargo_metadata = (
+            self.only_root_project
+            or self.only_transitive
+            or any(row["Component"] in root_package_names for row in rows)
+        )
+        if should_read_cargo_metadata:
+            cargo_package_names, root_package_versions = (
+                self._get_root_package_metadata(project_path)
+            )
+            if cargo_package_names:
+                root_package_names = cargo_package_names
+
+        self._ingest_rows(metadata, rows, root_package_names, root_package_versions)
         return metadata
 
     def _find_cargo_project_roots(self, source_root: str) -> list[str]:
@@ -214,6 +240,7 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
         metadata: list[Metadata],
         rows: list[dict[str, str]],
         root_package_names: set[str],
+        root_package_versions: dict[str, str] | None = None,
     ) -> None:
         for row in rows:
             component = row["Component"]
@@ -229,7 +256,11 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
                 origin=row["Origin"],
                 local_src_path=None,
                 license=[row["License"]] if row["License"] else [],
-                version=None,
+                version=(
+                    root_package_versions.get(component)
+                    if root_package_versions is not None
+                    else None
+                ),
                 copyright=[row["Copyright"]] if row["Copyright"] else [],
             )
             self._upsert_metadata(metadata, row_metadata)
@@ -256,15 +287,37 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
         metadata.append(new_metadata)
 
     def _get_root_package_names(self, project_path: str) -> set[str]:
-        package_name = self._read_cargo_package_name(project_path)
+        package_name, _ = self._read_cargo_package_info(project_path)
         if package_name is None:
             return set()
         return {package_name}
 
+    def _get_root_package_versions(self, project_path: str) -> dict[str, str]:
+        package_name, package_version = self._read_cargo_package_info(project_path)
+        if package_name is None or package_version is None:
+            return {}
+        return {package_name: package_version}
+
+    def _get_root_package_metadata(
+        self, project_path: str
+    ) -> tuple[set[str], dict[str, str]]:
+        package_name, package_version = self._read_cargo_package_info(project_path)
+        if package_name is None:
+            return set(), {}
+        if package_version is None:
+            return {package_name}, {}
+        return {package_name}, {package_name: package_version}
+
     def _read_cargo_package_name(self, project_path: str) -> str | None:
+        package_name, _ = self._read_cargo_package_info(project_path)
+        return package_name
+
+    def _read_cargo_package_info(
+        self, project_path: str
+    ) -> tuple[str | None, str | None]:
         cargo_toml_path = path_join(project_path, "Cargo.toml")
         if not path_exists(cargo_toml_path):
-            return None
+            return None, None
 
         try:
             cargo_toml = tomllib.loads(open_file(cargo_toml_path))
@@ -272,16 +325,18 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
             logger.warning(  # pragma: no mutate
                 "Failed to parse Cargo.toml at %s: %s", cargo_toml_path, e
             )
-            return None
+            return None, None
 
         package_data = cargo_toml.get("package")
         if not isinstance(package_data, dict):
-            return None
+            return None, None
 
         name = package_data.get("name")
-        if isinstance(name, str):
-            return name
-        return None
+        version = package_data.get("version")
+        return (
+            name if isinstance(name, str) else None,
+            version if isinstance(version, str) else None,
+        )
 
     def _parse_crate_name(self, spec: str) -> str:
         return spec.split("@", 1)[0]

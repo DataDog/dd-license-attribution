@@ -53,6 +53,7 @@ def _mock_source_code_manager() -> Mock:
 def _patch_common_io(
     mocker: pytest_mock.MockFixture,
     csv_content: str = "",
+    cargo_toml: str = "",
 ) -> tuple[Mock, Mock, Mock, Mock]:
     def fake_path_join(*args: str) -> str:
         return "/".join(args)
@@ -67,7 +68,7 @@ def _patch_common_io(
     )
     mock_open_file = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.open_file",
-        return_value="",
+        return_value=cargo_toml,
     )
     mock_run_command = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.run_command_with_check",
@@ -81,7 +82,11 @@ def test_local_project_path_ingests_csv_and_filters_seed_entries(
 ) -> None:
     source_code_manager = _mock_source_code_manager()
     mock_path_join, mock_path_exists, mock_open_file, mock_run_command = (
-        _patch_common_io(mocker, _csv_output())
+        _patch_common_io(
+            mocker,
+            _csv_output(),
+            '[package]\nname = "serde"\nversion = "1.0.0"\n',
+        )
     )
     strategy = RustMetadataCollectionStrategy(
         "serde@1.0",
@@ -124,7 +129,7 @@ def test_local_project_path_ingests_csv_and_filters_seed_entries(
             origin="https://github.com/serde-rs/serde",
             local_src_path=None,
             license=["MIT OR Apache-2.0"],
-            version=None,
+            version="1.0.0",
             copyright=["The serde developers"],
         ),
         Metadata(
@@ -153,9 +158,9 @@ def test_local_project_path_ingests_csv_and_filters_seed_entries(
         ],
         cwd="/tmp/rust-resolve/serde",
     )
-    mock_path_exists.assert_not_called()
-    mock_open_file.assert_not_called()
-    mock_path_join.assert_not_called()
+    mock_path_join.assert_called_once_with("/tmp/rust-resolve/serde", "Cargo.toml")
+    mock_path_exists.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
+    mock_open_file.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
 
 
 def test_rust_metadata_replaces_fallback_origin_without_duplicating_dependency(
@@ -213,12 +218,16 @@ def test_rust_metadata_replaces_fallback_origin_without_duplicating_dependency(
     mock_path_join.assert_not_called()
 
 
-def test_local_project_path_only_root_project_filters_to_requested_crate(
+def test_local_project_path_only_root_project_filters_to_requested_crate_and_sets_version(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager = _mock_source_code_manager()
-    _, mock_path_exists, mock_open_file, mock_run_command = _patch_common_io(
-        mocker, _csv_output()
+    mock_path_join, mock_path_exists, mock_open_file, mock_run_command = (
+        _patch_common_io(
+            mocker,
+            _csv_output(),
+            '[package]\nname = "serde"\nversion = "1.0.0"\n',
+        )
     )
     strategy = RustMetadataCollectionStrategy(
         "serde@1.0",
@@ -246,22 +255,33 @@ def test_local_project_path_only_root_project_filters_to_requested_crate(
             origin="https://github.com/serde-rs/serde",
             local_src_path=None,
             license=["MIT OR Apache-2.0"],
-            version=None,
+            version="1.0.0",
             copyright=["The serde developers"],
         )
     ]
     source_code_manager.get_code.assert_not_called()
-    mock_run_command.assert_called_once()
-    mock_path_exists.assert_not_called()
-    mock_open_file.assert_not_called()
+    mock_run_command.assert_called_once_with(
+        [
+            RUST_LICENSE_TOOL_COMMAND,
+            "dump",
+        ],
+        cwd="/tmp/rust-resolve/serde",
+    )
+    mock_path_join.assert_called_once_with("/tmp/rust-resolve/serde", "Cargo.toml")
+    mock_path_exists.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
+    mock_open_file.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
 
 
 def test_local_project_path_only_transitive_filters_requested_crate(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager = _mock_source_code_manager()
-    _, mock_path_exists, mock_open_file, mock_run_command = _patch_common_io(
-        mocker, _csv_output()
+    mock_path_join, mock_path_exists, mock_open_file, mock_run_command = (
+        _patch_common_io(
+            mocker,
+            _csv_output(),
+            '[package]\nname = "serde"\nversion = "1.0.0"\n',
+        )
     )
     strategy = RustMetadataCollectionStrategy(
         "serde@1.0",
@@ -293,8 +313,9 @@ def test_local_project_path_only_transitive_filters_requested_crate(
         ],
         cwd="/tmp/rust-resolve/serde",
     )
-    mock_path_exists.assert_not_called()
-    mock_open_file.assert_not_called()
+    mock_path_join.assert_called_once_with("/tmp/rust-resolve/serde", "Cargo.toml")
+    mock_path_exists.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
+    mock_open_file.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
 
 
 def test_github_mode_walks_sibling_cargo_projects_and_filters_roots_for_transitive_scope(
