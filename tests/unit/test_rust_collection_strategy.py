@@ -26,6 +26,7 @@ from dd_license_attribution.metadata_collector.strategies.rust_collection_strate
     RustMetadataCollectionStrategy,
     _looks_like_missing_binary,
     ensure_rust_license_tool_installed,
+    is_rust_metadata,
 )
 
 
@@ -267,6 +268,59 @@ def test_rust_metadata_replaces_fallback_origin_without_duplicating_dependency(
             ],
         )
     ]
+    source_code_manager.get_canonical_urls.assert_not_called()
+    source_code_manager.get_code.assert_not_called()
+    mock_run_command.assert_called_once_with(
+        [RUST_LICENSE_TOOL_COMMAND, "dump"],
+        cwd="/tmp/rust-resolve/root-crate",
+    )
+    mock_path_exists.assert_not_called()
+    mock_open_file.assert_not_called()
+    mock_path_join.assert_not_called()
+
+
+def test_rust_metadata_keeps_same_name_non_rust_dependency_separate(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _mock_source_code_manager()
+    mock_path_join, mock_path_exists, mock_open_file, mock_run_command = (
+        _patch_common_io(
+            mocker,
+            "Component,Origin,License,Copyright\n"
+            "regex,https://github.com/rust-lang/regex,MIT OR Apache-2.0,"
+            "The Rust Developers\n",
+        )
+    )
+    strategy = RustMetadataCollectionStrategy(
+        "root-crate",
+        source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/rust-resolve/root-crate",
+    )
+    non_rust_metadata = Metadata(
+        name="regex",
+        origin="https://pypi.org/project/regex",
+        local_src_path=None,
+        license=["Apache-2.0"],
+        version="2024.11.6",
+        copyright=["Python regex maintainers"],
+    )
+
+    result = strategy.augment_metadata([non_rust_metadata])
+
+    assert result == [
+        non_rust_metadata,
+        Metadata(
+            name="regex",
+            origin="https://github.com/rust-lang/regex",
+            local_src_path=None,
+            license=["MIT OR Apache-2.0"],
+            version=None,
+            copyright=["The Rust Developers"],
+        ),
+    ]
+    assert not is_rust_metadata(result[0])
+    assert is_rust_metadata(result[1])
     source_code_manager.get_canonical_urls.assert_not_called()
     source_code_manager.get_code.assert_not_called()
     mock_run_command.assert_called_once_with(

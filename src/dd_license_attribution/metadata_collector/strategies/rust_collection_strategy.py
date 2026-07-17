@@ -38,10 +38,20 @@ RUST_LICENSE_TOOL_INSTALL_HINT = (
     "Install it with `cargo install dd-rust-license-tool` and see the README "
     "Requirements section."
 )
+RUST_METADATA_MARKER = "_ddla_rust_metadata"
 
 
 class RustLicenseToolNotInstalledError(RuntimeError):
     """Raised when dd-rust-license-tool is required but not available."""
+
+
+def mark_rust_metadata(metadata: Metadata) -> Metadata:
+    setattr(metadata, RUST_METADATA_MARKER, True)
+    return metadata
+
+
+def is_rust_metadata(metadata: Metadata) -> bool:
+    return bool(getattr(metadata, RUST_METADATA_MARKER, False))
 
 
 def ensure_rust_license_tool_installed() -> None:
@@ -202,14 +212,16 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
         fallback_name: str,
     ) -> Metadata:
         root_package_name = next(iter(root_package_names), fallback_name)
-        return Metadata(
-            name=root_package_name,
-            origin=root_package_name,
-            local_src_path=seed_metadata.local_src_path,
-            license=seed_metadata.license.copy(),
-            version=root_package_versions.get(root_package_name)
-            or seed_metadata.version,
-            copyright=seed_metadata.copyright.copy(),
+        return mark_rust_metadata(
+            Metadata(
+                name=root_package_name,
+                origin=root_package_name,
+                local_src_path=seed_metadata.local_src_path,
+                license=seed_metadata.license.copy(),
+                version=root_package_versions.get(root_package_name)
+                or seed_metadata.version,
+                copyright=seed_metadata.copyright.copy(),
+            )
         )
 
     def _find_cargo_project_roots(self, source_root: str) -> list[str]:
@@ -304,17 +316,19 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
             if self.only_transitive and component in root_package_names:
                 continue
 
-            row_metadata = Metadata(
-                name=component,
-                origin=row["Origin"],
-                local_src_path=None,
-                license=[row["License"]] if row["License"] else [],
-                version=(
-                    root_package_versions.get(component)
-                    if root_package_versions is not None
-                    else None
+            row_metadata = mark_rust_metadata(
+                Metadata(
+                    name=component,
+                    origin=row["Origin"],
+                    local_src_path=None,
+                    license=[row["License"]] if row["License"] else [],
+                    version=(
+                        root_package_versions.get(component)
+                        if root_package_versions is not None
+                        else None
+                    ),
+                    copyright=[row["Copyright"]] if row["Copyright"] else [],
                 ),
-                copyright=[row["Copyright"]] if row["Copyright"] else [],
             )
             self._upsert_metadata(metadata, row_metadata)
 
@@ -323,6 +337,8 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
     ) -> None:
         for existing in metadata:
             if existing.name != new_metadata.name:
+                continue
+            if not self._should_merge_metadata(existing, new_metadata):
                 continue
 
             if new_metadata.origin:
@@ -335,9 +351,27 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
                 existing.license = new_metadata.license
             if not existing.copyright:
                 existing.copyright = new_metadata.copyright
+            mark_rust_metadata(existing)
             return
 
         metadata.append(new_metadata)
+
+    def _should_merge_metadata(
+        self,
+        existing: Metadata,
+        new_metadata: Metadata,
+    ) -> bool:
+        if existing.origin == new_metadata.origin:
+            return True
+        return self._is_empty_fallback_metadata(existing)
+
+    def _is_empty_fallback_metadata(self, metadata: Metadata) -> bool:
+        return (
+            metadata.local_src_path is None
+            and not metadata.license
+            and not metadata.copyright
+            and metadata.origin in {None, "", metadata.name}
+        )
 
     def _get_root_package_names(self, project_path: str) -> set[str]:
         package_name, _ = self._read_cargo_package_info(project_path)
