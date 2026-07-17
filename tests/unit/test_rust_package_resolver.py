@@ -925,11 +925,12 @@ class TestResolvePackage:
         mock_download_url.side_effect = [
             json.dumps(
                 {
-                    "crate": {
+                    "version": {
+                        "num": "1.0.6",
                         "repository": (
                             "https://github.com/DataDog/dd-rust-license-tool"
-                        )
-                    }
+                        ),
+                    },
                 }
             ).encode(),
             b"crate archive",
@@ -986,7 +987,7 @@ class TestResolvePackage:
         mock_download_url.assert_has_calls(
             [
                 call(
-                    "https://crates.io/api/v1/crates/dd-rust-license-tool",
+                    "https://crates.io/api/v1/crates/dd-rust-license-tool/1.0.6",
                     user_agent=CRATES_IO_USER_AGENT,
                 ),
                 call(
@@ -1010,12 +1011,12 @@ class TestResolvePackage:
         )
 
         with caplog.at_level(logging.WARNING):
-            result = self.resolver._get_crates_io_repository("serde")
+            result = self.resolver._get_crates_io_repository("serde", "1.0.0")
 
         assert result is None
         assert "Could not retrieve crates.io metadata" in caplog.text
         mock_download_url.assert_called_once_with(
-            "https://crates.io/api/v1/crates/serde",
+            "https://crates.io/api/v1/crates/serde/1.0.0",
             user_agent=CRATES_IO_USER_AGENT,
         )
 

@@ -178,8 +178,20 @@ class RustPackageResolver:
             "Rust crate %s has no lib target; falling back to crates.io source",
             rust_package_spec,
         )
+        resolved_version = self._get_resolved_crate_version(
+            cargo_lock_path,
+            name,
+        )
+        if resolved_version is None:
+            logger.error(  # pragma: no mutate
+                "Could not find resolved version for Rust crate %s in %s",
+                rust_package_spec,
+                cargo_lock_path,
+            )
+            return None
+
         repository = (
-            self._get_crates_io_repository(name)
+            self._get_crates_io_repository(name, resolved_version)
             if self.source_code_manager is not None
             else None
         )
@@ -189,6 +201,7 @@ class RustPackageResolver:
             resolve_dir,
             cargo_lock_path,
             repository,
+            resolved_version,
         )
 
     def _metadata_contains_crate(
@@ -302,9 +315,12 @@ class RustPackageResolver:
             return None
         return None
 
-    def _get_crates_io_repository(self, crate_name: str) -> str | None:
+    def _get_crates_io_repository(
+        self, crate_name: str, crate_version: str
+    ) -> str | None:
         metadata_endpoint = (
-            f"https://crates.io/api/v1/crates/{quote(crate_name, safe='')}"
+            "https://crates.io/api/v1/crates/"
+            f"{quote(crate_name, safe='')}/{quote(crate_version, safe='')}"
         )
         try:
             crates_io_metadata: Any = json.loads(
@@ -324,11 +340,11 @@ class RustPackageResolver:
         if not isinstance(crates_io_metadata, dict):
             return None
 
-        crate_metadata = crates_io_metadata.get("crate")
-        if not isinstance(crate_metadata, dict):
+        version_metadata = crates_io_metadata.get("version")
+        if not isinstance(version_metadata, dict):
             return None
 
-        repository = crate_metadata.get("repository")
+        repository = version_metadata.get("repository")
         if isinstance(repository, str) and repository:
             return repository
         return None
@@ -351,11 +367,13 @@ class RustPackageResolver:
         resolve_dir: str,
         cargo_lock_path: str,
         repository: str | None,
+        resolved_version: str | None = None,
     ) -> str | None:
-        resolved_version = self._get_resolved_crate_version(
-            cargo_lock_path,
-            crate_name,
-        )
+        if resolved_version is None:
+            resolved_version = self._get_resolved_crate_version(
+                cargo_lock_path,
+                crate_name,
+            )
         if resolved_version is None:
             logger.error(  # pragma: no mutate
                 "Could not find resolved version for Rust crate %s in %s",
