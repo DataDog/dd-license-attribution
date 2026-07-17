@@ -644,11 +644,12 @@ def generate_sbom(
                     )
                 )
         elif ecosystem == "rust":
-            try:
-                ensure_rust_license_tool_installed()
-            except RustLicenseToolNotInstalledError as e:
-                logger.error(str(e))
-                sys.exit(1)
+            if enabled_strategies["RustMetadataCollectionStrategy"]:
+                try:
+                    ensure_rust_license_tool_installed()
+                except RustLicenseToolNotInstalledError as e:
+                    logger.error(str(e))
+                    sys.exit(1)
 
             rust_temp_dir = cleanup_stack.enter_context(tempfile.TemporaryDirectory())
             rust_resolver = RustPackageResolver(rust_temp_dir, source_code_manager)
