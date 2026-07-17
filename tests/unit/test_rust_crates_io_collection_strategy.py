@@ -20,6 +20,9 @@ from dd_license_attribution.artifact_management.rust_package_resolver import (
     CRATES_IO_USER_AGENT,
 )
 from dd_license_attribution.metadata_collector.metadata import Metadata
+from dd_license_attribution.metadata_collector.strategies.rust_collection_strategy import (
+    mark_rust_metadata,
+)
 from dd_license_attribution.metadata_collector.strategies.rust_crates_io_collection_strategy import (
     CRATES_IO_API_BASE_URL,
     RustCratesIoMetadataCollectionStrategy,
@@ -523,6 +526,155 @@ def test_repository_mode_ignores_manifest_ranges_without_lockfile(
     assert mock_open_file.call_count == 2
     mock_download.assert_not_called()
     mock_read_archive.assert_not_called()
+
+
+def test_repository_mode_does_not_enrich_unmarked_same_name_metadata(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    mock_walk = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.walk_directory",
+        return_value=[("/cache/org-project", [], ["Cargo.toml"])],
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=lambda path: path.endswith("Cargo.lock"),
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        return_value=(
+            '[[package]]\nname = "serde"\nversion = "1.0.228"\n'
+            'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
+        ),
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_url"
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "https://github.com/org/project",
+        source_code_manager,
+    )
+    metadata = [
+        _metadata(
+            "serde",
+            None,
+            origin="https://pypi.org/project/serde",
+        )
+    ]
+
+    result = strategy.augment_metadata(metadata)
+
+    assert result == metadata
+    source_code_manager.get_code.assert_called_once_with(
+        "https://github.com/org/project"
+    )
+    mock_walk.assert_called_once_with("/cache/org-project")
+    mock_path_exists.assert_has_calls(
+        [
+            call("/cache/org-project/Cargo.lock"),
+            call("/cache/org-project/Cargo.toml"),
+        ]
+    )
+    assert mock_path_exists.call_count == 2
+    mock_open_file.assert_called_once_with("/cache/org-project/Cargo.lock")
+    mock_download.assert_not_called()
+
+
+def test_repository_mode_enriches_marked_rust_metadata(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    mock_walk = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.walk_directory",
+        return_value=[("/cache/org-project", [], ["Cargo.toml"])],
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=lambda path: path.endswith("Cargo.lock"),
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        return_value=(
+            '[[package]]\nname = "serde"\nversion = "1.0.228"\n'
+            'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
+        ),
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_url",
+        side_effect=[
+            _crate_response(
+                "serde",
+                "1.0.228",
+                repository="https://github.com/serde-rs/serde",
+            ),
+            b"crate archive",
+        ],
+    )
+    mock_read_archive = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.read_tar_gz_text_file",
+        return_value='[package]\nname = "serde"\nauthors = ["Serde Developers"]\n',
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "https://github.com/org/project",
+        source_code_manager,
+    )
+
+    result = strategy.augment_metadata([mark_rust_metadata(_metadata("serde", None))])
+
+    assert result == [
+        _metadata(
+            "serde",
+            "1.0.228",
+            origin="https://github.com/serde-rs/serde",
+            license=["MIT OR Apache-2.0"],
+            copyright=["Serde Developers"],
+        )
+    ]
+    source_code_manager.get_code.assert_called_once_with(
+        "https://github.com/org/project"
+    )
+    mock_walk.assert_called_once_with("/cache/org-project")
+    mock_path_exists.assert_has_calls(
+        [
+            call("/cache/org-project/Cargo.lock"),
+            call("/cache/org-project/Cargo.toml"),
+        ]
+    )
+    assert mock_path_exists.call_count == 2
+    mock_open_file.assert_called_once_with("/cache/org-project/Cargo.lock")
+    mock_download.assert_has_calls(
+        [
+            call(
+                f"{CRATES_IO_API_BASE_URL}/serde",
+                user_agent=CRATES_IO_USER_AGENT,
+            ),
+            call(
+                f"{CRATES_IO_API_BASE_URL}/serde/1.0.228/download",
+                user_agent=CRATES_IO_USER_AGENT,
+            ),
+        ]
+    )
+    assert mock_download.call_count == 2
+    mock_read_archive.assert_called_once_with(b"crate archive", "/Cargo.toml")
 
 
 def test_unavailable_repository_returns_metadata_unchanged() -> None:

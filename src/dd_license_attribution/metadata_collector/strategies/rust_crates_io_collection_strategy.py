@@ -30,6 +30,9 @@ from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
+from dd_license_attribution.metadata_collector.strategies.rust_collection_strategy import (
+    is_rust_metadata,
+)
 
 logger = logging.getLogger("dd_license_attribution")
 
@@ -78,6 +81,8 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         for package in updated_metadata:
             if package.name is None or package.name not in crate_versions:
                 continue
+            if not self._should_enrich_package(package):
+                continue
 
             requested_version = self._choose_requested_version(
                 package.version,
@@ -114,6 +119,11 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                 package.origin = repository
 
         return updated_metadata
+
+    def _should_enrich_package(self, package: Metadata) -> bool:
+        if self.local_project_path is not None:
+            return True
+        return is_rust_metadata(package)
 
     def _has_usable_origin(self, package: Metadata) -> bool:
         return bool(package.origin and package.origin != package.name)
