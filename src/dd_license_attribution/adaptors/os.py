@@ -36,12 +36,22 @@ def list_dir(path: str) -> list[str]:
 
 
 def run_command(
-    args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    args: list[str],
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    timeout: int | None = None,
 ) -> int:
-    result = subprocess.run(
-        args, stdout=subprocess.DEVNULL, cwd=cwd, env=_merge_env(env)
-    )
-    return result.returncode
+    try:
+        result = subprocess.run(
+            args,
+            stdout=subprocess.DEVNULL,
+            cwd=cwd,
+            env=_merge_env(env),
+            timeout=timeout,
+        )
+        return result.returncode
+    except subprocess.TimeoutExpired:
+        return 124
 
 
 def path_exists(file_path: str) -> bool:
@@ -57,12 +67,23 @@ def walk_directory(path: str) -> Iterator[tuple[str, list[str], list[str]]]:
 
 
 def output_from_command(
-    args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    args: list[str],
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    timeout: int | None = None,
 ) -> str:
-    result = subprocess.run(
-        args, capture_output=True, text=True, cwd=cwd, env=_merge_env(env)
-    )
-    return result.stdout
+    try:
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            env=_merge_env(env),
+            timeout=timeout,
+        )
+        return result.stdout
+    except subprocess.TimeoutExpired as e:
+        raise OSError(f"Command timed out after {timeout} seconds: {args[0]}") from e
 
 
 def change_directory(dir_name: str) -> None:
@@ -226,7 +247,10 @@ def is_dir(path: str) -> bool:
 
 
 def run_command_with_check(
-    args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    args: list[str],
+    cwd: str | None = None,
+    env: dict[str, str] | None = None,
+    timeout: int | None = None,
 ) -> tuple[int, str, str]:
     """Run a command and return (exit_code, stdout, stderr).
 
@@ -238,10 +262,25 @@ def run_command_with_check(
     Returns:
         Tuple of (exit_code, stdout, stderr)
     """
-    result = subprocess.run(
-        args, capture_output=True, text=True, cwd=cwd, env=_merge_env(env)
-    )
-    return result.returncode, result.stdout, result.stderr
+    try:
+        result = subprocess.run(
+            args,
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+            env=_merge_env(env),
+            timeout=timeout,
+        )
+        return result.returncode, result.stdout, result.stderr
+    except subprocess.TimeoutExpired as e:
+        output = e.stdout if isinstance(e.stdout, str) else ""
+        error_output = e.stderr if isinstance(e.stderr, str) else ""
+        timeout_message = f"Command timed out after {timeout} seconds: {args[0]}"
+        if error_output:
+            error_output = f"{error_output}\n{timeout_message}"
+        else:
+            error_output = timeout_message
+        return 124, output, error_output
 
 
 def format_command_output(output: str, error_output: str) -> str:

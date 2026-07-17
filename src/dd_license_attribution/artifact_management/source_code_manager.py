@@ -30,6 +30,11 @@ from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
 
+NONINTERACTIVE_GIT_ENV = {
+    "GIT_TERMINAL_PROMPT": "0",
+}
+NONINTERACTIVE_GIT_TIMEOUT_SECONDS = 30
+
 
 class NonAccessibleRepository(Exception):
     """Exception raised when a repository is not accessible."""
@@ -43,18 +48,28 @@ class UnauthorizedRepository(Exception):
     pass
 
 
-def extract_ref(ref: str, url: str) -> str:
+def _output_from_git_command(args: list[str], git_env: dict[str, str] | None) -> str:
+    if git_env is None:
+        return output_from_command(args)
+    return output_from_command(
+        args, env=git_env, timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS
+    )
+
+
+def extract_ref(ref: str, url: str, git_env: dict[str, str] | None = None) -> str:
     logger.debug("Extracting ref %s from %s", ref, url)
     split_ref = ref.split("/")
     for i in range(len(split_ref)):
         ref_guess = "/".join(split_ref[: i + 1])
-        ls_output = output_from_command(["git", "ls-remote", url, ref_guess])
+        ls_output = _output_from_git_command(
+            ["git", "ls-remote", url, ref_guess], git_env
+        )
         if ref_guess in ls_output:
             logger.debug("Found valid ref: %s", ref_guess)
             return ref_guess
     if len(split_ref) > 0:  # may be a hash
         ref_guess = split_ref[0]
-        ls_output = output_from_command(["git", "ls-remote", url])
+        ls_output = _output_from_git_command(["git", "ls-remote", url], git_env)
         if ref_guess in ls_output:
             logger.debug("Found valid ref from hash: %s", ref_guess)
             return ref_guess
@@ -243,7 +258,9 @@ class SourceCodeManager(ArtifactManager):
         )
         return cached_result
 
-    def _discover_default_branch(self, url: str) -> str:
+    def _discover_default_branch(
+        self, url: str, git_env: dict[str, str] | None = None
+    ) -> str:
         """Discover the default branch for a repository.
         Args:
             url: The URL of the repository to check
@@ -254,7 +271,10 @@ class SourceCodeManager(ArtifactManager):
         """
         try:
             discovered_branch = (
-                output_from_command(["git", "ls-remote", "--symref", url, "HEAD"])
+                _output_from_git_command(
+                    ["git", "ls-remote", "--symref", url, "HEAD"],
+                    git_env,
+                )
                 .split()[1]
                 .removeprefix("refs/heads/")
             )
@@ -268,7 +288,11 @@ class SourceCodeManager(ArtifactManager):
             ) from e
 
     def _get_mirror_url_and_ref(
-        self, original_url: str, original_ref_type: RefType, original_ref_name: str
+        self,
+        original_url: str,
+        original_ref_type: RefType,
+        original_ref_name: str,
+        git_env: dict[str, str] | None = None,
     ) -> tuple[str, RefType, str, str]:
         """Get the mirror URL and reference for a given original URL and reference.
         Returns a tuple of (mirror_url, ref_type, effective_ref_name, discovered_branch) where discovered_branch
@@ -276,7 +300,9 @@ class SourceCodeManager(ArtifactManager):
         """
         if original_ref_name == "default_branch":
             try:
-                original_ref_name = self._discover_default_branch(original_url)
+                original_ref_name = self._discover_default_branch(
+                    original_url, git_env=git_env
+                )
             except NonAccessibleRepository as e:
                 # ignoring the failure, we will try with the mirror url if found next
                 logger.debug(
@@ -295,7 +321,9 @@ class SourceCodeManager(ArtifactManager):
                 mirror_url = mirror_map.mirror_url
                 if original_ref_name == "default_branch":
                     try:
-                        original_ref_name = self._discover_default_branch(mirror_url)
+                        original_ref_name = self._discover_default_branch(
+                            mirror_url, git_env=git_env
+                        )
                     except NonAccessibleRepository as e:
                         # ignoring the failure, we will try with the mirror url if found next
                         logger.error(
@@ -338,10 +366,17 @@ class SourceCodeManager(ArtifactManager):
                     original_ref_name,
                     original_ref_name,
                 )
+        if original_ref_name == "default_branch":
+            raise NonAccessibleRepository(
+                f"Could not discover default branch for {original_url}"
+            )
         return original_url, original_ref_type, original_ref_name, original_ref_name
 
     def get_code(
-        self, resource_url: str, force_update: bool = False
+        self,
+        resource_url: str,
+        force_update: bool = False,
+        skip_canonical_lookup: bool = False,
     ) -> SourceCodeReference | None:
         logger.debug("Getting code for resource URL: %s", resource_url)
 
@@ -349,8 +384,18 @@ class SourceCodeManager(ArtifactManager):
         if not original_parsed_url.valid or not original_parsed_url.github:
             return None
 
-        canonical_url, api_url = self.get_canonical_urls(resource_url)
-        if api_url is None:
+        if skip_canonical_lookup:
+            canonical_url = (
+                f"{original_parsed_url.protocol}://{original_parsed_url.host}/"
+                f"{original_parsed_url.owner}/{original_parsed_url.repo}"
+            )
+            api_url = None
+            git_env = NONINTERACTIVE_GIT_ENV
+        else:
+            canonical_url, api_url = self.get_canonical_urls(resource_url)
+            git_env = None
+
+        if api_url is None and not skip_canonical_lookup:
             status, _ = self.get_repository_info(
                 original_parsed_url.owner, original_parsed_url.repo
             )
@@ -365,6 +410,7 @@ class SourceCodeManager(ArtifactManager):
                 resource_url,
                 status,
             )
+            git_env = NONINTERACTIVE_GIT_ENV
 
         parsed_url = parse_git_url(canonical_url)
         if not parsed_url.valid or not parsed_url.github:
@@ -383,7 +429,9 @@ class SourceCodeManager(ArtifactManager):
         branch = "default_branch"
         if original_parsed_url.branch:
             # branches are guessed from url, and may fail to be correct specially on tags and branches with slashes
-            validated_ref = extract_ref(original_parsed_url.branch, repository_url)
+            validated_ref = extract_ref(
+                original_parsed_url.branch, repository_url, git_env=git_env
+            )
             if validated_ref != "":
                 branch = validated_ref
         if original_parsed_url.path_raw.startswith("/tree/"):
@@ -392,7 +440,7 @@ class SourceCodeManager(ArtifactManager):
             path = "/".join(
                 original_parsed_url.path_raw.removeprefix("/blob/").split("/")[:-1]
             )
-            validated_ref = extract_ref(path, repository_url)
+            validated_ref = extract_ref(path, repository_url, git_env=git_env)
             if validated_ref != "":
                 branch = validated_ref
                 path = path.removeprefix(f"{branch}")
@@ -405,9 +453,20 @@ class SourceCodeManager(ArtifactManager):
             repository_url,
         )
         # Get mirror URL and branch if available
-        effective_repository_url, _, effective_branch, branch = (
-            self._get_mirror_url_and_ref(repository_url, RefType.BRANCH, branch)
-        )
+        try:
+            effective_repository_url, _, effective_branch, branch = (
+                self._get_mirror_url_and_ref(
+                    repository_url,
+                    RefType.BRANCH,
+                    branch,
+                    git_env=git_env,
+                )
+            )
+        except NonAccessibleRepository as e:
+            logger.error(
+                "Failed to resolve repository branch for %s: %s", resource_url, e
+            )
+            return None
         logger.debug(
             "Effective repository URL: %s, effective branch: %s",
             effective_repository_url,
@@ -456,19 +515,23 @@ class SourceCodeManager(ArtifactManager):
             effective_branch,
             local_branch_path,
         )
-        clone_result = run_command(
-            [
-                "git",
-                "clone",
-                "-c",
-                "advice.detachedHead=False",
-                "--depth",
-                "1",
-                f"--branch={effective_branch}",
-                effective_repository_url,
-                local_branch_path,
-            ]
-        )
+        clone_command = [
+            "git",
+            "clone",
+            "-c",
+            "advice.detachedHead=False",
+            "--depth",
+            "1",
+            f"--branch={effective_branch}",
+            effective_repository_url,
+            local_branch_path,
+        ]
+        if git_env is None:
+            clone_result = run_command(clone_command)
+        else:
+            clone_result = run_command(
+                clone_command, env=git_env, timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS
+            )
         if clone_result != 0:
             logger.error(
                 "Failed to clone repository %s at branch %s to %s",

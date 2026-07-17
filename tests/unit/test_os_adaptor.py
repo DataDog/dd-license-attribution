@@ -6,6 +6,7 @@
 # Copyright 2026-present Datadog, Inc.
 
 import io
+import subprocess
 import tarfile
 from unittest.mock import Mock
 
@@ -19,6 +20,8 @@ from dd_license_attribution.adaptors.os import (
     extract_tar_gz,
     normalize_path,
     read_tar_gz_text_file,
+    run_command,
+    run_command_with_check,
 )
 
 
@@ -256,4 +259,47 @@ def test_read_tar_gz_text_file_rejects_malformed_archive() -> None:
 def test_normalize_path_collapses_relative_segments() -> None:
     assert normalize_path("/project/patches/helper/../helper/.") == (
         "/project/patches/helper"
+    )
+
+
+def test_run_command_returns_timeout_exit_code(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_run = mocker.patch(
+        "dd_license_attribution.adaptors.os.subprocess.run",
+        side_effect=subprocess.TimeoutExpired(["slow"], timeout=1),
+    )
+
+    result = run_command(["slow"], timeout=1)
+
+    assert result == 124
+    mock_run.assert_called_once_with(
+        ["slow"],
+        stdout=subprocess.DEVNULL,
+        cwd=None,
+        env=None,
+        timeout=1,
+    )
+
+
+def test_run_command_with_check_returns_timeout_details(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_run = mocker.patch(
+        "dd_license_attribution.adaptors.os.subprocess.run",
+        side_effect=subprocess.TimeoutExpired(["slow"], timeout=1),
+    )
+
+    exit_code, output, error_output = run_command_with_check(["slow"], timeout=1)
+
+    assert exit_code == 124
+    assert output == ""
+    assert error_output == "Command timed out after 1 seconds: slow"
+    mock_run.assert_called_once_with(
+        ["slow"],
+        capture_output=True,
+        text=True,
+        cwd=None,
+        env=None,
+        timeout=1,
     )

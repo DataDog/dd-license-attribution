@@ -15,6 +15,8 @@ from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
+    NONINTERACTIVE_GIT_ENV,
+    NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
     MirrorSpec,
     RefType,
     SourceCodeManager,
@@ -1669,6 +1671,148 @@ def test_discover_default_branch_with_exception(
     )
 
 
+@patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
+@patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+@patch("dd_license_attribution.artifact_management.source_code_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+@patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
+def test_get_code_returns_none_when_default_branch_cannot_be_discovered(
+    git_url_parse_mock: Mock,
+    artifact_path_exists_mock: Mock,
+    artifact_list_dir_mock: Mock,
+    source_code_list_dir_mock: Mock,
+    output_from_command_mock: Mock,
+    run_command_mock: Mock,
+    create_dirs_mock: Mock,
+) -> None:
+    parsed_url = GitUrlParseMock(
+        valid=True,
+        owner="test_owner",
+        repo="test_repo",
+        branch="",
+        path="",
+        path_raw="",
+    )
+    git_url_parse_mock.return_value = parsed_url
+    artifact_path_exists_mock.return_value = True
+    artifact_list_dir_mock.return_value = []
+    source_code_list_dir_mock.return_value = []
+    output_from_command_mock.side_effect = OSError("git ls-remote failed")
+    github_client_mock = create_github_client_mock()
+    source_code_manager = SourceCodeManager("cache_dir", github_client_mock, 86400)
+
+    code_ref = source_code_manager.get_code("https://github.com/test_owner/test_repo")
+
+    assert code_ref is None
+    output_from_command_mock.assert_called_once_with(
+        [
+            "git",
+            "ls-remote",
+            "--symref",
+            "https://github.com/test_owner/test_repo",
+            "HEAD",
+        ]
+    )
+    create_dirs_mock.assert_not_called()
+    run_command_mock.assert_not_called()
+    artifact_path_exists_mock.assert_called_once_with("cache_dir")
+    artifact_list_dir_mock.assert_called_once_with("cache_dir")
+    source_code_list_dir_mock.assert_not_called()
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
+@patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+@patch("dd_license_attribution.artifact_management.source_code_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+@patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
+@patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+def test_get_code_can_skip_canonical_lookup_for_direct_git_checkout(
+    get_datetime_now_mock: Mock,
+    git_url_parse_mock: Mock,
+    artifact_path_exists_mock: Mock,
+    artifact_list_dir_mock: Mock,
+    source_code_list_dir_mock: Mock,
+    output_from_command_mock: Mock,
+    run_command_mock: Mock,
+    create_dirs_mock: Mock,
+) -> None:
+    get_datetime_now_mock.return_value = datetime.fromisoformat(
+        "2022-01-01T00:00:00+00:00"
+    )
+    parsed_url = GitUrlParseMock(
+        valid=True,
+        owner="test_owner",
+        repo="test_repo",
+        branch="",
+        path="",
+        path_raw="",
+    )
+    git_url_parse_mock.return_value = parsed_url
+    artifact_path_exists_mock.return_value = True
+    artifact_list_dir_mock.return_value = []
+    source_code_list_dir_mock.return_value = []
+    output_from_command_mock.return_value = (
+        "ref: refs/heads/main\tHEAD\n"
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\tHEAD\n"
+    )
+    run_command_mock.return_value = 0
+    github_client_mock = Mock()
+    source_code_manager = SourceCodeManager("cache_dir", github_client_mock, 86400)
+
+    code_ref = source_code_manager.get_code(
+        "https://github.com/test_owner/test_repo",
+        skip_canonical_lookup=True,
+    )
+
+    assert code_ref == SourceCodeReference(
+        repo_url="https://github.com/test_owner/test_repo",
+        branch="main",
+        local_root_path="cache_dir/20220101_000000Z/test_owner-test_repo/main",
+        local_full_path="cache_dir/20220101_000000Z/test_owner-test_repo/main",
+    )
+    assert not github_client_mock.mock_calls
+    output_from_command_mock.assert_called_once_with(
+        [
+            "git",
+            "ls-remote",
+            "--symref",
+            "https://github.com/test_owner/test_repo",
+            "HEAD",
+        ],
+        env=NONINTERACTIVE_GIT_ENV,
+        timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
+    )
+    create_dirs_mock.assert_called_once_with(
+        "cache_dir/20220101_000000Z/test_owner-test_repo/main"
+    )
+    run_command_mock.assert_called_once_with(
+        [
+            "git",
+            "clone",
+            "-c",
+            "advice.detachedHead=False",
+            "--depth",
+            "1",
+            "--branch=main",
+            "https://github.com/test_owner/test_repo",
+            "cache_dir/20220101_000000Z/test_owner-test_repo/main",
+        ],
+        env=NONINTERACTIVE_GIT_ENV,
+        timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
+    )
+    artifact_path_exists_mock.assert_called_once_with("cache_dir")
+    artifact_list_dir_mock.assert_called_once_with("cache_dir")
+    source_code_list_dir_mock.assert_called_once_with("cache_dir")
+
+
 @pytest.mark.parametrize("status", [404, 500])
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
 @patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
@@ -1801,7 +1945,9 @@ def test_get_code_falls_back_to_clone_when_github_api_auth_fails(
             "--symref",
             "https://github.com/test_owner/test_repo",
             "HEAD",
-        ]
+        ],
+        env=NONINTERACTIVE_GIT_ENV,
+        timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
     )
     create_dirs_mock.assert_called_once_with(
         "cache_dir/20220101_000000Z/test_owner-test_repo/main"
@@ -1817,7 +1963,9 @@ def test_get_code_falls_back_to_clone_when_github_api_auth_fails(
             "--branch=main",
             "https://github.com/test_owner/test_repo",
             "cache_dir/20220101_000000Z/test_owner-test_repo/main",
-        ]
+        ],
+        env=NONINTERACTIVE_GIT_ENV,
+        timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
     )
     artifact_path_exists_mock.assert_called_once_with("cache_dir")
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
@@ -1887,7 +2035,9 @@ def test_get_code_returns_none_when_auth_fallback_clone_fails(
             "--symref",
             "https://github.com/test_owner/test_repo",
             "HEAD",
-        ]
+        ],
+        env=NONINTERACTIVE_GIT_ENV,
+        timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
     )
     create_dirs_mock.assert_called_once_with(
         "cache_dir/20220101_000000Z/test_owner-test_repo/main"
@@ -1903,7 +2053,9 @@ def test_get_code_returns_none_when_auth_fallback_clone_fails(
             "--branch=main",
             "https://github.com/test_owner/test_repo",
             "cache_dir/20220101_000000Z/test_owner-test_repo/main",
-        ]
+        ],
+        env=NONINTERACTIVE_GIT_ENV,
+        timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
     )
     artifact_path_exists_mock.assert_called_once_with("cache_dir")
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
