@@ -131,7 +131,7 @@ helper = { path = "patches/helper", version = "1.0.0" }
 unversioned = { git = "https://github.com/org/unversioned" }
 git-versioned = { git = "https://github.com/org/git-versioned", version = "1.0.0" }
 alternate-registry = { version = "1.0.0", registry = "private" }
-explicit-crates-io = { version = "5.0.0", registry = "crates-io" }
+explicit-crates-io = { version = "=5.0.0", registry = "crates-io" }
 
 [workspace.dependencies]
 workspace-crate = "3.0.0"
@@ -148,7 +148,7 @@ name = "helper"
 version = "1.0.0"
 
 [dev-dependencies]
-tracing-subscriber = "0.3.20"
+tracing-subscriber = "=0.3.20"
 helper = { path = "." }
 """
 
@@ -372,7 +372,7 @@ def test_complete_metadata_still_receives_locked_version(
     mock_download.assert_not_called()
 
 
-def test_repository_mode_discovers_cargo_root_and_uses_default_crate_version(
+def test_repository_mode_ignores_manifest_ranges_without_lockfile(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager = _source_code_manager()
@@ -402,16 +402,7 @@ def test_repository_mode_discovers_cargo_root_and_uses_default_crate_version(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url",
-        side_effect=[
-            _crate_response(
-                "zip",
-                "0.6.6",
-                license_expression="MIT",
-                repository="https://github.com/zip-rs/zip-old",
-            ),
-            b"crate archive",
-        ],
+        "rust_crates_io_collection_strategy.download_url"
     )
     mock_read_archive = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
@@ -425,15 +416,7 @@ def test_repository_mode_discovers_cargo_root_and_uses_default_crate_version(
 
     result = strategy.augment_metadata([_metadata("zip", None)])
 
-    assert result == [
-        _metadata(
-            "zip",
-            "0.6.6",
-            origin="https://github.com/zip-rs/zip-old",
-            license=["MIT"],
-            copyright=["The zip Authors"],
-        )
-    ]
+    assert result == [_metadata("zip", None)]
     source_code_manager.get_code.assert_called_once_with(
         "https://github.com/org/project"
     )
@@ -454,19 +437,8 @@ def test_repository_mode_discovers_cargo_root_and_uses_default_crate_version(
         ]
     )
     assert mock_open_file.call_count == 2
-    mock_download.assert_has_calls(
-        [
-            call(
-                f"{CRATES_IO_API_BASE_URL}/zip",
-                user_agent=CRATES_IO_USER_AGENT,
-            ),
-            call(
-                f"{CRATES_IO_API_BASE_URL}/zip/0.6.6/download",
-                user_agent=CRATES_IO_USER_AGENT,
-            ),
-        ]
-    )
-    mock_read_archive.assert_called_once_with(b"crate archive", "/Cargo.toml")
+    mock_download.assert_not_called()
+    mock_read_archive.assert_not_called()
 
 
 def test_unavailable_repository_returns_metadata_unchanged() -> None:
@@ -559,7 +531,7 @@ def test_locked_crate_is_used_when_manifest_is_missing(
     "metadata_version",
     [None, ">= 1.13.0,< 2.0.0"],
 )
-def test_unparseable_manifest_version_only_enriches_with_metadata_range(
+def test_unparseable_manifest_version_is_ignored(
     mocker: pytest_mock.MockFixture,
     metadata_version: str | None,
 ) -> None:
@@ -604,41 +576,14 @@ def test_unparseable_manifest_version_only_enriches_with_metadata_range(
 
     result = strategy.augment_metadata([_metadata("regex", metadata_version)])
 
-    if metadata_version is None:
-        assert result == [_metadata("regex", None)]
-    else:
-        assert result == [
-            _metadata(
-                "regex",
-                metadata_version,
-                origin="https://github.com/rust-lang/regex",
-                license=["MIT OR Apache-2.0"],
-                copyright=["The Rust Developers"],
-            )
-        ]
+    assert result == [_metadata("regex", metadata_version)]
     mock_path_exists.assert_has_calls(
         [call("/project/Cargo.lock"), call("/project/Cargo.toml")]
     )
     assert mock_path_exists.call_count == 2
     mock_open_file.assert_called_once_with("/project/Cargo.toml")
-    if metadata_version is None:
-        mock_download.assert_not_called()
-        mock_read_archive.assert_not_called()
-    else:
-        mock_download.assert_has_calls(
-            [
-                call(
-                    f"{CRATES_IO_API_BASE_URL}/regex",
-                    user_agent=CRATES_IO_USER_AGENT,
-                ),
-                call(
-                    f"{CRATES_IO_API_BASE_URL}/regex/1.13.0/download",
-                    user_agent=CRATES_IO_USER_AGENT,
-                ),
-            ]
-        )
-        assert mock_download.call_count == 2
-        mock_read_archive.assert_called_once_with(b"crate archive", "/Cargo.toml")
+    mock_download.assert_not_called()
+    mock_read_archive.assert_not_called()
 
 
 def test_ambiguous_locked_versions_do_not_set_version_or_enrich(
@@ -687,8 +632,13 @@ def test_ambiguous_locked_versions_do_not_set_version_or_enrich(
     mock_download.assert_not_called()
 
 
-def test_manifest_range_without_concrete_version_is_not_enriched_from_default_release(
+@pytest.mark.parametrize(
+    "manifest_requirement",
+    ["2", "^1", "1.0.203", ">= 0.6.6", "=not-semver"],
+)
+def test_manifest_requirement_without_exact_version_is_not_enriched(
     mocker: pytest_mock.MockFixture,
+    manifest_requirement: str,
 ) -> None:
     source_code_manager = _source_code_manager()
     mocker.patch(
@@ -704,7 +654,7 @@ def test_manifest_range_without_concrete_version_is_not_enriched_from_default_re
     mock_open_file = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "rust_crates_io_collection_strategy.open_file",
-        return_value='[dependencies]\nclap = "2"\n',
+        return_value=f'[dependencies]\nclap = "{manifest_requirement}"\n',
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
@@ -765,7 +715,7 @@ def test_invalid_crates_io_metadata_is_ignored(
     mock_open_file = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "rust_crates_io_collection_strategy.open_file",
-        return_value='[dependencies]\nregex = "1.0.0"\n',
+        return_value='[dependencies]\nregex = "=1.0.0"\n',
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
@@ -835,7 +785,7 @@ def test_author_metadata_failures_preserve_other_crate_metadata(
     mock_open_file = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "rust_crates_io_collection_strategy.open_file",
-        return_value='[dependencies]\nregex = "1.0.0"\n',
+        return_value='[dependencies]\nregex = "=1.0.0"\n',
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."

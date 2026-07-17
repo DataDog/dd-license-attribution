@@ -7,7 +7,6 @@
 
 import json
 import logging
-import re
 import tomllib
 
 import semver
@@ -191,7 +190,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                 crate_name = dependency_name
                 version: str | None = None
                 if isinstance(dependency_config, str):
-                    version = dependency_config
+                    version = self._exact_manifest_version(dependency_config)
                 elif isinstance(dependency_config, dict):
                     is_crates_io_dependency = True
                     package_name = dependency_config.get("package")
@@ -199,7 +198,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                         crate_name = package_name
                     configured_version = dependency_config.get("version")
                     if isinstance(configured_version, str):
-                        version = configured_version
+                        version = self._exact_manifest_version(configured_version)
                     dependency_path = dependency_config.get("path")
                     if isinstance(dependency_path, str):
                         is_crates_io_dependency = False
@@ -220,6 +219,17 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                 if version is not None:
                     crate_versions.setdefault(crate_name, set()).add(version)
         return crate_versions
+
+    def _exact_manifest_version(self, version_requirement: str) -> str | None:
+        normalized_requirement = version_requirement.strip()
+        if not normalized_requirement.startswith("="):
+            return None
+
+        requested_version = normalized_requirement[1:].strip()
+        try:
+            return str(semver.Version.parse(requested_version))
+        except ValueError:
+            return None
 
     def _get_dependency_tables(
         self, cargo_toml: dict[str, object]
@@ -275,15 +285,6 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
             return str(max(exact_versions))
         if len(exact_versions) > 1:
             return None
-
-        preferred_version = self._preferred_crate_version(metadata_version)
-        if preferred_version is not None:
-            return preferred_version
-
-        for version in sorted(candidate_versions):
-            preferred_version = self._preferred_crate_version(version)
-            if preferred_version is not None:
-                return preferred_version
         return None
 
     def _get_crates_io_metadata(
@@ -354,9 +355,6 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
     def _preferred_crate_version(self, requested_version: str | None) -> str | None:
         if requested_version is None:
             return None
-        lower_bound = re.search(r">=\s*([^,\s]+)", requested_version)
-        if lower_bound is not None:
-            return lower_bound.group(1)
         normalized_version = requested_version.strip()
         try:
             return str(semver.Version.parse(normalized_version))
