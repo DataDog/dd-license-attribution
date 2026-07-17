@@ -19,6 +19,7 @@ from dd_license_attribution.artifact_management.artifact_manager import (
 )
 from dd_license_attribution.artifact_management.rust_package_resolver import (
     CRATES_IO_USER_AGENT,
+    RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
     SYNTHETIC_PACKAGE_NAME,
     RustPackageResolver,
 )
@@ -242,9 +243,15 @@ class TestResolvePackage:
 
         mock_run_command.assert_has_calls(
             [
-                call(["cargo", "generate-lockfile"], cwd="/cache/serde"),
                 call(
-                    ["cargo", "metadata", "--format-version", "1"], cwd="/cache/serde"
+                    ["cargo", "generate-lockfile"],
+                    cwd="/cache/serde",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
+                ),
+                call(
+                    ["cargo", "metadata", "--format-version", "1"],
+                    cwd="/cache/serde",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
             ]
         )
@@ -320,7 +327,8 @@ class TestResolvePackage:
             result == "/cache/datadog-api-client/crate-source/datadog-api-client-1.0.0"
         )
         source_code_manager.get_code.assert_called_once_with(
-            "https://github.com/DataDog/datadog-api-client-rust"
+            "https://github.com/DataDog/datadog-api-client-rust",
+            skip_canonical_lookup=True,
         )
         mock_create_dirs.assert_has_calls(
             [
@@ -351,10 +359,12 @@ class TestResolvePackage:
                 call(
                     ["cargo", "generate-lockfile"],
                     cwd="/cache/datadog-api-client",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
                 call(
                     ["cargo", "metadata", "--format-version", "1"],
                     cwd="/cache/datadog-api-client",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
             ]
         )
@@ -460,7 +470,8 @@ class TestResolvePackage:
         assert result == "/cache/serde/crate-source/serde-1.0.0"
         assert "Could not retrieve repository configuration" in caplog.text
         source_code_manager.get_code.assert_called_once_with(
-            "https://github.com/serde-rs/serde"
+            "https://github.com/serde-rs/serde",
+            skip_canonical_lookup=True,
         )
         assert mock_write_file.call_count == 2
         assert mock_run_command.call_count == 2
@@ -508,7 +519,8 @@ class TestResolvePackage:
 
         assert result == "/cache/serde/crate-source/serde-1.0.0"
         source_code_manager.get_code.assert_called_once_with(
-            "https://github.com/serde-rs/serde"
+            "https://github.com/serde-rs/serde",
+            skip_canonical_lookup=True,
         )
         assert mock_write_file.call_count == 2
         assert mock_run_command.call_count == 2
@@ -570,7 +582,8 @@ class TestResolvePackage:
         assert result == "/cache/serde/crate-source/serde-1.0.0"
         assert "Could not copy license-tool.toml" in caplog.text
         source_code_manager.get_code.assert_called_once_with(
-            "https://github.com/serde-rs/serde"
+            "https://github.com/serde-rs/serde",
+            skip_canonical_lookup=True,
         )
         assert mock_write_file.call_count == 2
         assert mock_run_command.call_count == 2
@@ -597,7 +610,8 @@ class TestResolvePackage:
         )
 
         source_code_manager.get_code.assert_called_once_with(
-            "https://github.com/serde-rs/serde"
+            "https://github.com/serde-rs/serde",
+            skip_canonical_lookup=True,
         )
 
     def test_get_crate_repository_ignores_unrelated_packages(self) -> None:
@@ -646,10 +660,15 @@ class TestResolvePackage:
         )
         mock_run_command.assert_has_calls(
             [
-                call(["cargo", "generate-lockfile"], cwd="/cache/anyhow"),
+                call(
+                    ["cargo", "generate-lockfile"],
+                    cwd="/cache/anyhow",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
+                ),
                 call(
                     ["cargo", "metadata", "--format-version", "1"],
                     cwd="/cache/anyhow",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
             ]
         )
@@ -692,10 +711,15 @@ class TestResolvePackage:
         assert mock_create_dirs.call_count == 3
         mock_run_command.assert_has_calls(
             [
-                call(["cargo", "generate-lockfile"], cwd="/cache/serde-json"),
+                call(
+                    ["cargo", "generate-lockfile"],
+                    cwd="/cache/serde-json",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
+                ),
                 call(
                     ["cargo", "metadata", "--format-version", "1"],
                     cwd="/cache/serde-json",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
             ]
         )
@@ -732,6 +756,7 @@ class TestResolvePackage:
         mock_run_command.assert_called_once_with(
             ["cargo", "generate-lockfile"],
             cwd="/cache/missing-crate",
+            timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
         )
         mock_path_exists.assert_not_called()
         mock_open_file.assert_not_called()
@@ -758,6 +783,7 @@ class TestResolvePackage:
         mock_run_command.assert_called_once_with(
             ["cargo", "generate-lockfile"],
             cwd="/cache/serde",
+            timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
         )
         mock_path_exists.assert_not_called()
         mock_open_file.assert_not_called()
@@ -786,6 +812,7 @@ class TestResolvePackage:
         mock_run_command.assert_called_once_with(
             ["cargo", "generate-lockfile"],
             cwd="/cache/serde",
+            timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
         )
         mock_path_exists.assert_called_once_with("/cache/serde/Cargo.lock")
         mock_open_file.assert_not_called()
@@ -858,10 +885,12 @@ class TestResolvePackage:
                 call(
                     ["cargo", "generate-lockfile"],
                     cwd="/cache/dd-rust-license-tool",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
                 call(
                     ["cargo", "metadata", "--format-version", "1"],
                     cwd="/cache/dd-rust-license-tool",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
             ]
         )
@@ -943,7 +972,8 @@ class TestResolvePackage:
             == "/cache/dd-rust-license-tool/crate-source/dd-rust-license-tool-1.0.6"
         )
         source_code_manager.get_code.assert_called_once_with(
-            "https://github.com/DataDog/dd-rust-license-tool"
+            "https://github.com/DataDog/dd-rust-license-tool",
+            skip_canonical_lookup=True,
         )
         assert mock_write_file.call_count == 3
         mock_write_file.assert_called_with(
@@ -956,10 +986,12 @@ class TestResolvePackage:
                 call(
                     ["cargo", "generate-lockfile"],
                     cwd="/cache/dd-rust-license-tool",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
                 call(
                     ["cargo", "metadata", "--format-version", "1"],
                     cwd="/cache/dd-rust-license-tool",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
             ]
         )
@@ -1020,6 +1052,27 @@ class TestResolvePackage:
             user_agent=CRATES_IO_USER_AGENT,
         )
 
+    def test_crates_io_repository_falls_back_to_crate_metadata(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        mock_download_url = mocker.patch(
+            "dd_license_attribution.artifact_management.rust_package_resolver.download_url",
+            return_value=json.dumps(
+                {
+                    "crate": {"repository": "https://github.com/serde-rs/serde"},
+                    "version": {"num": "1.0.0"},
+                }
+            ).encode(),
+        )
+
+        result = self.resolver._get_crates_io_repository("serde", "1.0.0")
+
+        assert result == "https://github.com/serde-rs/serde"
+        mock_download_url.assert_called_once_with(
+            "https://crates.io/api/v1/crates/serde/1.0.0",
+            user_agent=CRATES_IO_USER_AGENT,
+        )
+
     def test_get_resolved_crate_version_reads_cargo_lock(
         self, mocker: pytest_mock.MockFixture
     ) -> None:
@@ -1035,6 +1088,76 @@ class TestResolvePackage:
 
         assert result == "1.0.6"
         mock_open_file.assert_called_once_with("/cache/dd-rust-license-tool/Cargo.lock")
+
+    def test_get_resolved_crate_version_uses_synthetic_dependency(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        cargo_lock_content = (
+            "version = 4\n"
+            "\n"
+            "[[package]]\n"
+            'name = "same-name"\n'
+            'version = "0.1.0"\n'
+            'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
+            "\n"
+            "[[package]]\n"
+            f'name = "{SYNTHETIC_PACKAGE_NAME}"\n'
+            'version = "0.0.0"\n'
+            "dependencies = [\n"
+            ' "same-name 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",\n'
+            "]\n"
+            "\n"
+            "[[package]]\n"
+            'name = "same-name"\n'
+            'version = "1.0.0"\n'
+            'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
+        )
+        mock_open_file = mocker.patch(
+            "dd_license_attribution.artifact_management.rust_package_resolver.open_file",
+            return_value=cargo_lock_content,
+        )
+
+        result = self.resolver._get_resolved_crate_version(
+            "/cache/same-name/Cargo.lock",
+            "same-name",
+        )
+
+        assert result == "1.0.0"
+        mock_open_file.assert_called_once_with("/cache/same-name/Cargo.lock")
+
+    def test_get_resolved_crate_version_rejects_ambiguous_synthetic_dependency(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        cargo_lock_content = (
+            "version = 4\n"
+            "\n"
+            "[[package]]\n"
+            'name = "same-name"\n'
+            'version = "0.1.0"\n'
+            "\n"
+            "[[package]]\n"
+            f'name = "{SYNTHETIC_PACKAGE_NAME}"\n'
+            'version = "0.0.0"\n'
+            "dependencies = [\n"
+            ' "same-name",\n'
+            "]\n"
+            "\n"
+            "[[package]]\n"
+            'name = "same-name"\n'
+            'version = "1.0.0"\n'
+        )
+        mock_open_file = mocker.patch(
+            "dd_license_attribution.artifact_management.rust_package_resolver.open_file",
+            return_value=cargo_lock_content,
+        )
+
+        result = self.resolver._get_resolved_crate_version(
+            "/cache/same-name/Cargo.lock",
+            "same-name",
+        )
+
+        assert result is None
+        mock_open_file.assert_called_once_with("/cache/same-name/Cargo.lock")
 
     def test_metadata_failure_returns_none(
         self, mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture
@@ -1061,9 +1184,15 @@ class TestResolvePackage:
         )
         mock_run_command.assert_has_calls(
             [
-                call(["cargo", "generate-lockfile"], cwd="/cache/serde"),
                 call(
-                    ["cargo", "metadata", "--format-version", "1"], cwd="/cache/serde"
+                    ["cargo", "generate-lockfile"],
+                    cwd="/cache/serde",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
+                ),
+                call(
+                    ["cargo", "metadata", "--format-version", "1"],
+                    cwd="/cache/serde",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
             ]
         )
@@ -1100,10 +1229,15 @@ class TestResolvePackage:
         )
         mock_run_command.assert_has_calls(
             [
-                call(["cargo", "generate-lockfile"], cwd="/cache/serde"),
+                call(
+                    ["cargo", "generate-lockfile"],
+                    cwd="/cache/serde",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
+                ),
                 call(
                     ["cargo", "metadata", "--format-version", "1"],
                     cwd="/cache/serde",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
             ]
         )
@@ -1139,10 +1273,15 @@ class TestResolvePackage:
         )
         mock_run_command.assert_has_calls(
             [
-                call(["cargo", "generate-lockfile"], cwd="/cache/serde"),
+                call(
+                    ["cargo", "generate-lockfile"],
+                    cwd="/cache/serde",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
+                ),
                 call(
                     ["cargo", "metadata", "--format-version", "1"],
                     cwd="/cache/serde",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
             ]
         )
@@ -1206,10 +1345,15 @@ class TestResolvePackage:
         )
         mock_run_command.assert_has_calls(
             [
-                call(["cargo", "generate-lockfile"], cwd="/cache/serde"),
+                call(
+                    ["cargo", "generate-lockfile"],
+                    cwd="/cache/serde",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
+                ),
                 call(
                     ["cargo", "metadata", "--format-version", "1"],
                     cwd="/cache/serde",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
             ]
         )
@@ -1291,10 +1435,12 @@ class TestResolvePackage:
                 call(
                     ["cargo", "generate-lockfile"],
                     cwd="/cache/dd-rust-license-tool",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
                 call(
                     ["cargo", "metadata", "--format-version", "1"],
                     cwd="/cache/dd-rust-license-tool",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
             ]
         )
@@ -1449,10 +1595,12 @@ class TestResolvePackage:
                 call(
                     ["cargo", "generate-lockfile"],
                     cwd="/cache/dd-rust-license-tool",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
                 call(
                     ["cargo", "metadata", "--format-version", "1"],
                     cwd="/cache/dd-rust-license-tool",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
             ]
         )
@@ -1498,10 +1646,12 @@ class TestResolvePackage:
                 call(
                     ["cargo", "generate-lockfile"],
                     cwd="/cache/dd-rust-license-tool",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
                 call(
                     ["cargo", "metadata", "--format-version", "1"],
                     cwd="/cache/dd-rust-license-tool",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
             ]
         )
@@ -1553,10 +1703,12 @@ class TestResolvePackage:
                 call(
                     ["cargo", "generate-lockfile"],
                     cwd="/cache/dd-rust-license-tool",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
                 call(
                     ["cargo", "metadata", "--format-version", "1"],
                     cwd="/cache/dd-rust-license-tool",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
             ]
         )
@@ -1648,10 +1800,12 @@ class TestResolvePackage:
                 call(
                     ["cargo", "generate-lockfile"],
                     cwd="/cache/dd-rust-license-tool",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
                 call(
                     ["cargo", "metadata", "--format-version", "1"],
                     cwd="/cache/dd-rust-license-tool",
+                    timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
                 ),
             ]
         )

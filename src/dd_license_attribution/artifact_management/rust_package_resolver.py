@@ -36,6 +36,7 @@ LICENSE_TOOL_CONFIG_NAME = "license-tool.toml"
 CRATES_IO_USER_AGENT = (
     "dd-license-attribution (https://github.com/DataDog/dd-license-attribution)"
 )
+RUST_CARGO_COMMAND_TIMEOUT_SECONDS = 120
 EXACT_VERSION_PATTERN = re.compile(
     r"\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?"
 )
@@ -110,6 +111,7 @@ class RustPackageResolver:
             exit_code, output, error_output = run_command_with_check(
                 ["cargo", "generate-lockfile"],
                 cwd=resolve_dir,
+                timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
             )
             if exit_code != 0:
                 logger.error(  # pragma: no mutate
@@ -136,6 +138,7 @@ class RustPackageResolver:
             exit_code, output, error_output = run_command_with_check(
                 ["cargo", "metadata", "--format-version", "1"],
                 cwd=resolve_dir,
+                timeout=RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
             )
             if exit_code != 0:
                 logger.error(  # pragma: no mutate
@@ -251,7 +254,10 @@ class RustPackageResolver:
             return
 
         try:
-            source_code_ref = self.source_code_manager.get_code(repository)
+            source_code_ref = self.source_code_manager.get_code(
+                repository,
+                skip_canonical_lookup=True,
+            )
         except (NonAccessibleRepository, UnauthorizedRepository) as e:
             logger.warning(  # pragma: no mutate
                 "Could not retrieve repository configuration for Rust crate %s: %s",
@@ -341,10 +347,19 @@ class RustPackageResolver:
             return None
 
         version_metadata = crates_io_metadata.get("version")
-        if not isinstance(version_metadata, dict):
-            return None
+        if isinstance(version_metadata, dict):
+            repository = self._metadata_repository(version_metadata)
+            if repository is not None:
+                return repository
 
-        repository = version_metadata.get("repository")
+        crate_metadata = crates_io_metadata.get("crate")
+        if isinstance(crate_metadata, dict):
+            return self._metadata_repository(crate_metadata)
+
+        return None
+
+    def _metadata_repository(self, metadata: dict[str, Any]) -> str | None:
+        repository = metadata.get("repository")
         if isinstance(repository, str) and repository:
             return repository
         return None
@@ -459,15 +474,104 @@ class RustPackageResolver:
             )
             return None
 
+        package_entries = [package for package in packages if isinstance(package, dict)]
+        synthetic_package = self._get_synthetic_package(package_entries)
+        if synthetic_package is not None:
+            direct_dependency = self._get_synthetic_dependency(
+                synthetic_package,
+                crate_name,
+            )
+            if direct_dependency is None:
+                return None
+            return self._get_dependency_version(package_entries, direct_dependency)
+
+        return self._get_unique_package_version(package_entries, crate_name)
+
+    def _get_synthetic_package(
+        self, packages: list[dict[str, Any]]
+    ) -> dict[str, Any] | None:
         for package in packages:
-            if not isinstance(package, dict) or package.get("name") != crate_name:
-                continue
-
-            version = package.get("version")
-            if isinstance(version, str):
-                return version
-
+            if package.get("name") == SYNTHETIC_PACKAGE_NAME:
+                return package
         return None
+
+    def _get_synthetic_dependency(
+        self, package: dict[str, Any], crate_name: str
+    ) -> str | None:
+        dependencies = package.get("dependencies")
+        if not isinstance(dependencies, list):
+            return None
+
+        matching_dependencies = [
+            dependency
+            for dependency in dependencies
+            if isinstance(dependency, str)
+            and self._parse_lock_dependency_entry(dependency)[0] == crate_name
+        ]
+        if len(matching_dependencies) == 1:
+            return matching_dependencies[0]
+        return None
+
+    def _get_dependency_version(
+        self, packages: list[dict[str, Any]], dependency: str
+    ) -> str | None:
+        dependency_name, dependency_version, dependency_source = (
+            self._parse_lock_dependency_entry(dependency)
+        )
+        candidates = [
+            package for package in packages if package.get("name") == dependency_name
+        ]
+        if dependency_version is not None:
+            candidates = [
+                package
+                for package in candidates
+                if package.get("version") == dependency_version
+            ]
+        if dependency_source is not None:
+            candidates = [
+                package
+                for package in candidates
+                if package.get("source") == dependency_source
+            ]
+
+        versions = [
+            package.get("version")
+            for package in candidates
+            if isinstance(package.get("version"), str)
+        ]
+        if len(versions) == 1:
+            return versions[0]
+        return None
+
+    def _get_unique_package_version(
+        self, packages: list[dict[str, Any]], crate_name: str
+    ) -> str | None:
+        versions = [
+            package.get("version")
+            for package in packages
+            if package.get("name") == crate_name
+            and isinstance(package.get("version"), str)
+        ]
+        if len(versions) == 1:
+            return versions[0]
+        return None
+
+    def _parse_lock_dependency_entry(
+        self, dependency: str
+    ) -> tuple[str, str | None, str | None]:
+        dependency_parts = dependency.split(" ", 2)
+        dependency_name = dependency_parts[0]
+        dependency_version = None
+        dependency_source = None
+
+        if len(dependency_parts) > 1:
+            dependency_version = dependency_parts[1]
+        if len(dependency_parts) > 2:
+            dependency_source = dependency_parts[2]
+            if dependency_source.startswith("(") and dependency_source.endswith(")"):
+                dependency_source = dependency_source[1:-1]
+
+        return dependency_name, dependency_version, dependency_source
 
     def _crates_io_download_url(self, crate_name: str, version: str) -> str:
         return (
