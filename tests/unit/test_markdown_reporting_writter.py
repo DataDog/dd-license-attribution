@@ -158,6 +158,45 @@ def test_markdown_reporting_writter_matches_pypi_exact_version_spec_root() -> No
     ) in markdown
 
 
+def test_markdown_reporting_writter_matches_rust_requirement_root_by_name() -> None:
+    metadata = [
+        Metadata(
+            name="serde",
+            version="1.0.228",
+            origin="https://github.com/serde-rs/serde",
+            local_src_path=None,
+            license=["MIT OR Apache-2.0"],
+            copyright=["Serde Developers"],
+        ),
+        Metadata(
+            name="serde_derive",
+            version="1.0.228",
+            origin="https://github.com/serde-rs/serde",
+            local_src_path=None,
+            license=["MIT OR Apache-2.0"],
+            copyright=["Serde Developers"],
+        ),
+    ]
+    markdown_report_writter = MarkdownReportingWritter(
+        document_name="serde@1.0",
+        ecosystem="rust",
+        created_at=lambda: datetime(2026, 6, 24, 12, 30, 0),
+    )
+
+    markdown = markdown_report_writter.write(metadata)
+
+    assert markdown.startswith("# License Compliance Report: serde\n")
+    assert "| Package | `serde` |" in markdown
+    assert "| Version | 1.0.228 |" in markdown
+    assert "| Dependencies | 1 |" in markdown
+    assert "| License | ['MIT OR Apache-2.0'] |" in markdown
+    assert "| serde | https://github.com/serde-rs/serde |" not in markdown
+    assert (
+        "| serde\\_derive | https://github.com/serde-rs/serde | "
+        "['MIT OR Apache-2.0'] | ['Serde Developers'] |"
+    ) in markdown
+
+
 def test_markdown_reporting_writter_uses_defaults_for_empty_metadata() -> None:
     markdown_report_writter = MarkdownReportingWritter(
         created_at=lambda: datetime(2026, 6, 24, 12, 30, 0),

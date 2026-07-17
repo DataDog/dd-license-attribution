@@ -97,6 +97,8 @@ class MarkdownReportingWritter(ReportingWritter):
         package_name, package_version = _split_package_spec(
             default_name, self.ecosystem
         )
+        if self.ecosystem == "rust":
+            package_version = None
         root_row = _find_root_row(rows, package_name, package_version, self.ecosystem)
 
         if root_row is not None:
