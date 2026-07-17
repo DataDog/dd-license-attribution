@@ -84,7 +84,11 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                 package.version = requested_version
             if requested_version is None:
                 continue
-            if package.license and package.copyright:
+            if (
+                package.license
+                and package.copyright
+                and self._has_usable_origin(package)
+            ):
                 continue
 
             cache_key = (package.name, requested_version)
@@ -107,6 +111,9 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                 package.origin = repository
 
         return updated_metadata
+
+    def _has_usable_origin(self, package: Metadata) -> bool:
+        return bool(package.origin and package.origin != package.name)
 
     def _get_project_paths(self) -> list[str]:
         if self.local_project_path is not None:

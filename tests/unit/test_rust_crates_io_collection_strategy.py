@@ -312,7 +312,7 @@ helper = { path = "." }
     assert mock_normalize_path.call_count == 3
 
 
-def test_complete_metadata_still_receives_locked_version(
+def test_complete_metadata_still_receives_locked_version_and_repository_origin(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager = _source_code_manager()
@@ -336,7 +336,12 @@ def test_complete_metadata_still_receives_locked_version(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url"
+        "rust_crates_io_collection_strategy.download_url",
+        return_value=_crate_response(
+            "serde",
+            "1.0.0",
+            repository="https://github.com/serde-rs/serde",
+        ),
     )
     strategy = RustCratesIoMetadataCollectionStrategy(
         "serde",
@@ -359,6 +364,7 @@ def test_complete_metadata_still_receives_locked_version(
         _metadata(
             "serde",
             "1.0.0",
+            origin="https://github.com/serde-rs/serde",
             license=["MIT OR Apache-2.0"],
             copyright=["Serde Developers"],
         )
@@ -369,7 +375,10 @@ def test_complete_metadata_still_receives_locked_version(
     )
     assert mock_path_exists.call_count == 2
     mock_open_file.assert_called_once_with("/project/Cargo.lock")
-    mock_download.assert_not_called()
+    mock_download.assert_called_once_with(
+        f"{CRATES_IO_API_BASE_URL}/serde",
+        user_agent=CRATES_IO_USER_AGENT,
+    )
 
 
 def test_repository_mode_ignores_manifest_ranges_without_lockfile(
