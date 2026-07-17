@@ -68,7 +68,10 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
             )
             self._merge_crate_versions(
                 crate_versions,
-                self._get_manifest_crate_versions(project_path),
+                self._get_manifest_crate_versions(
+                    project_path,
+                    include_package_version=self.local_project_path is not None,
+                ),
             )
 
         metadata_cache: dict[tuple[str, str | None], CrateMetadata | None] = {}
@@ -169,6 +172,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         self,
         project_path: str,
         visited_projects: set[str] | None = None,
+        include_package_version: bool = False,
     ) -> dict[str, set[str]]:
         if visited_projects is None:
             visited_projects = set()
@@ -192,6 +196,11 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         dependency_tables = self._get_dependency_tables(cargo_toml)
         crate_versions: dict[str, set[str]] = {}
+        if include_package_version:
+            self._merge_crate_versions(
+                crate_versions,
+                self._get_package_crate_version(cargo_toml),
+            )
         for dependency_table in dependency_tables:
             for dependency_name, dependency_config in dependency_table.items():
                 crate_name = dependency_name
@@ -226,6 +235,24 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                 if version is not None:
                     crate_versions.setdefault(crate_name, set()).add(version)
         return crate_versions
+
+    def _get_package_crate_version(
+        self,
+        cargo_toml: dict[str, object],
+    ) -> dict[str, set[str]]:
+        package = cargo_toml.get("package")
+        if not isinstance(package, dict):
+            return {}
+
+        package_name = package.get("name")
+        package_version = package.get("version")
+        if not isinstance(package_name, str) or not isinstance(package_version, str):
+            return {}
+
+        try:
+            return {package_name: {str(semver.Version.parse(package_version))}}
+        except ValueError:
+            return {}
 
     def _exact_manifest_version(self, version_requirement: str) -> str | None:
         normalized_requirement = version_requirement.strip()
