@@ -91,6 +91,7 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
     ) -> None:
         self.local_project_path = local_project_path
         self.source_code_manager = source_code_manager
+        self.requested_top_package = top_package
         self.only_root_project = project_scope == ProjectScope.ONLY_ROOT_PROJECT
         self.only_transitive = (
             project_scope == ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
@@ -110,6 +111,8 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         source_code_ref = self.source_code_manager.get_code(self.top_package)
         if not source_code_ref:
+            if self.only_transitive:
+                return self._without_repository_seed(updated_metadata)
             return updated_metadata
 
         cargo_project_roots = self._find_cargo_project_roots(
@@ -130,7 +133,27 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
                 root_package_versions,
             )
 
+        if self.only_transitive:
+            return self._without_repository_seed(updated_metadata)
         return updated_metadata
+
+    def _without_repository_seed(self, metadata: list[Metadata]) -> list[Metadata]:
+        return [
+            package
+            for package in metadata
+            if not self._is_repository_seed_metadata(package)
+        ]
+
+    def _is_repository_seed_metadata(self, metadata: Metadata) -> bool:
+        root_names = {
+            self._strip_url_scheme(self.requested_top_package),
+            self._strip_url_scheme(self.top_package),
+        }
+        root_origins = {self.requested_top_package, self.top_package}
+        return metadata.name in root_names and metadata.origin in root_origins
+
+    def _strip_url_scheme(self, value: str) -> str:
+        return value.replace("https://", "").replace("http://", "")
 
     def _augment_metadata_from_local_path(
         self, metadata: list[Metadata]

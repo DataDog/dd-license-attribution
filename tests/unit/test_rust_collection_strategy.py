@@ -512,7 +512,6 @@ def test_github_mode_walks_sibling_cargo_projects_and_filters_roots_for_transiti
     result = strategy.augment_metadata(initial_metadata)
 
     assert [metadata.name for metadata in result] == [
-        "github.com/org/repo",
         "dep1",
         "dep2",
     ]
@@ -551,6 +550,107 @@ def test_github_mode_walks_sibling_cargo_projects_and_filters_roots_for_transiti
         ]
     )
     assert mock_path_join.call_count == 2
+
+
+def test_github_mode_transitive_scope_removes_seed_when_no_code_available(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _mock_source_code_manager()
+    source_code_manager.get_code.return_value = None
+    mock_walk_directory = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.walk_directory"
+    )
+    strategy = RustMetadataCollectionStrategy(
+        "https://github.com/org/repo",
+        source_code_manager,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/repo",
+            origin="https://github.com/org/repo",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+        Metadata(
+            name="preserved-dep",
+            origin="https://github.com/org/preserved-dep",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert result == [
+        Metadata(
+            name="preserved-dep",
+            origin="https://github.com/org/preserved-dep",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        )
+    ]
+    source_code_manager.get_canonical_urls.assert_called_once_with(
+        "https://github.com/org/repo"
+    )
+    source_code_manager.get_code.assert_called_once_with("https://github.com/org/repo")
+    mock_walk_directory.assert_not_called()
+
+
+def test_github_mode_transitive_scope_removes_canonicalized_seed(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _mock_source_code_manager()
+    source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/new-org/new-repo",
+        "https://api.github.com/repos/new-org/new-repo",
+    )
+    source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/new-org/new-repo",
+        branch="main",
+        local_root_path="/cache/new-org-new-repo",
+        local_full_path="/cache/new-org-new-repo",
+    )
+    mock_walk_directory = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.walk_directory",
+        return_value=[],
+    )
+    mock_run_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.run_command_with_check"
+    )
+    strategy = RustMetadataCollectionStrategy(
+        "https://github.com/old-org/old-repo",
+        source_code_manager,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/new-org/new-repo",
+            origin="https://github.com/new-org/new-repo",
+            local_src_path=None,
+            license=["Apache-2.0"],
+            version=None,
+            copyright=["Datadog"],
+        )
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert result == []
+    source_code_manager.get_canonical_urls.assert_called_once_with(
+        "https://github.com/old-org/old-repo"
+    )
+    source_code_manager.get_code.assert_called_once_with(
+        "https://github.com/new-org/new-repo"
+    )
+    mock_walk_directory.assert_called_once_with("/cache/new-org-new-repo")
+    mock_run_command.assert_not_called()
 
 
 def test_find_cargo_project_roots_prunes_nested_projects(
