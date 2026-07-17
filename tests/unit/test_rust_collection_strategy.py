@@ -715,9 +715,12 @@ def test_invalid_csv_keeps_non_seed_metadata(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager = _mock_source_code_manager()
-    _, mock_path_exists, mock_open_file, mock_run_command = _patch_common_io(
-        mocker,
-        "bad,header\nvalue,value\n",
+    mock_path_join, mock_path_exists, mock_open_file, mock_run_command = (
+        _patch_common_io(
+            mocker,
+            "bad,header\nvalue,value\n",
+            '[package]\nname = "serde"\nversion = "1.0.0"\n',
+        )
     )
     strategy = RustMetadataCollectionStrategy(
         "serde",
@@ -748,7 +751,17 @@ def test_invalid_csv_keeps_non_seed_metadata(
         ]
     )
 
-    assert result == [preserved_metadata]
+    assert result == [
+        preserved_metadata,
+        Metadata(
+            name="serde",
+            origin="serde",
+            local_src_path=None,
+            license=[],
+            version="1.0.0",
+            copyright=[],
+        ),
+    ]
     mock_run_command.assert_called_once_with(
         [
             RUST_LICENSE_TOOL_COMMAND,
@@ -756,17 +769,21 @@ def test_invalid_csv_keeps_non_seed_metadata(
         ],
         cwd="/tmp/rust-resolve/serde",
     )
-    mock_path_exists.assert_not_called()
-    mock_open_file.assert_not_called()
+    mock_path_join.assert_called_once_with("/tmp/rust-resolve/serde", "Cargo.toml")
+    mock_path_exists.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
+    mock_open_file.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
 
 
 def test_empty_tool_output_keeps_non_seed_metadata(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager = _mock_source_code_manager()
-    _, mock_path_exists, mock_open_file, mock_run_command = _patch_common_io(
-        mocker,
-        "",
+    mock_path_join, mock_path_exists, mock_open_file, mock_run_command = (
+        _patch_common_io(
+            mocker,
+            "",
+            '[package]\nname = "dd-rust-license-tool"\nversion = "1.0.6"\n',
+        )
     )
     mock_run_command.return_value = (
         0,
@@ -802,7 +819,17 @@ def test_empty_tool_output_keeps_non_seed_metadata(
         ]
     )
 
-    assert result == [preserved_metadata]
+    assert result == [
+        preserved_metadata,
+        Metadata(
+            name="dd-rust-license-tool",
+            origin="dd-rust-license-tool",
+            local_src_path=None,
+            license=[],
+            version="1.0.6",
+            copyright=[],
+        ),
+    ]
     mock_run_command.assert_called_once_with(
         [
             RUST_LICENSE_TOOL_COMMAND,
@@ -810,8 +837,15 @@ def test_empty_tool_output_keeps_non_seed_metadata(
         ],
         cwd="/tmp/rust-resolve/dd-rust-license-tool",
     )
-    mock_path_exists.assert_not_called()
-    mock_open_file.assert_not_called()
+    mock_path_join.assert_called_once_with(
+        "/tmp/rust-resolve/dd-rust-license-tool", "Cargo.toml"
+    )
+    mock_path_exists.assert_called_once_with(
+        "/tmp/rust-resolve/dd-rust-license-tool/Cargo.toml"
+    )
+    mock_open_file.assert_called_once_with(
+        "/tmp/rust-resolve/dd-rust-license-tool/Cargo.toml"
+    )
 
 
 def test_local_project_path_value_error_when_missing(
@@ -869,8 +903,12 @@ def test_non_missing_os_error_returns_non_seed_metadata(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager = _mock_source_code_manager()
-    _, mock_path_exists, mock_open_file, mock_run_command = _patch_common_io(
-        mocker, _csv_output()
+    mock_path_join, mock_path_exists, mock_open_file, mock_run_command = (
+        _patch_common_io(
+            mocker,
+            _csv_output(),
+            '[package]\nname = "serde"\nversion = "1.0.0"\n',
+        )
     )
     mock_run_command.side_effect = OSError("permission denied")
     strategy = RustMetadataCollectionStrategy(
@@ -902,7 +940,17 @@ def test_non_missing_os_error_returns_non_seed_metadata(
         ]
     )
 
-    assert result == [preserved_metadata]
+    assert result == [
+        preserved_metadata,
+        Metadata(
+            name="serde",
+            origin="serde",
+            local_src_path=None,
+            license=[],
+            version="1.0.0",
+            copyright=[],
+        ),
+    ]
     mock_run_command.assert_called_once_with(
         [
             RUST_LICENSE_TOOL_COMMAND,
@@ -910,16 +958,21 @@ def test_non_missing_os_error_returns_non_seed_metadata(
         ],
         cwd="/tmp/rust-resolve/serde",
     )
-    mock_path_exists.assert_not_called()
-    mock_open_file.assert_not_called()
+    mock_path_join.assert_called_once_with("/tmp/rust-resolve/serde", "Cargo.toml")
+    mock_path_exists.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
+    mock_open_file.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
 
 
 def test_nonzero_tool_failure_returns_non_seed_metadata(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager = _mock_source_code_manager()
-    _, mock_path_exists, mock_open_file, mock_run_command = _patch_common_io(
-        mocker, _csv_output()
+    mock_path_join, mock_path_exists, mock_open_file, mock_run_command = (
+        _patch_common_io(
+            mocker,
+            _csv_output(),
+            '[package]\nname = "serde"\nversion = "1.0.0"\n',
+        )
     )
     mock_run_command.return_value = (1, "stdout", "license-tool error")
     strategy = RustMetadataCollectionStrategy(
@@ -951,7 +1004,17 @@ def test_nonzero_tool_failure_returns_non_seed_metadata(
         ]
     )
 
-    assert result == [preserved_metadata]
+    assert result == [
+        preserved_metadata,
+        Metadata(
+            name="serde",
+            origin="serde",
+            local_src_path=None,
+            license=[],
+            version="1.0.0",
+            copyright=[],
+        ),
+    ]
     mock_run_command.assert_called_once_with(
         [
             RUST_LICENSE_TOOL_COMMAND,
@@ -959,8 +1022,9 @@ def test_nonzero_tool_failure_returns_non_seed_metadata(
         ],
         cwd="/tmp/rust-resolve/serde",
     )
-    mock_path_exists.assert_not_called()
-    mock_open_file.assert_not_called()
+    mock_path_join.assert_called_once_with("/tmp/rust-resolve/serde", "Cargo.toml")
+    mock_path_exists.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
+    mock_open_file.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
 
 
 def test_parse_csv_defaults_missing_cells_to_empty_strings() -> None:

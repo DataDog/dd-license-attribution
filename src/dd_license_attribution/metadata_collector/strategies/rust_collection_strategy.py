@@ -147,11 +147,26 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
                 "local_project_path must be set before calling this method"
             )
 
+        root_package_versions: dict[str, str] = {}
         rows = self._collect_rows_from_project(project_path)
         if not rows:
+            if seed_metadata is not None and not self.only_transitive:
+                cargo_package_names, root_package_versions = (
+                    self._get_root_package_metadata(project_path)
+                )
+                if cargo_package_names:
+                    root_package_names = cargo_package_names
+                self._upsert_metadata(
+                    metadata,
+                    self._root_metadata_from_seed(
+                        seed_metadata,
+                        root_package_names,
+                        root_package_versions,
+                        parsed_root_package_name,
+                    ),
+                )
             return metadata
 
-        root_package_versions: dict[str, str] = {}
         should_read_cargo_metadata = (
             seed_metadata is not None
             or self.only_root_project
