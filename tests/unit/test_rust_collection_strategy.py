@@ -41,6 +41,14 @@ def _csv_output() -> str:
     )
 
 
+def _dependency_only_csv_output() -> str:
+    return (
+        "Component,Origin,License,Copyright\n"
+        "anyhow,https://github.com/dtolnay/anyhow,MIT OR Apache-2.0,"
+        "David Tolnay\n"
+    )
+
+
 def _mock_source_code_manager() -> Mock:
     source_code_manager = Mock()
     source_code_manager.get_canonical_urls.return_value = (
@@ -156,6 +164,58 @@ def test_local_project_path_ingests_csv_and_filters_seed_entries(
             RUST_LICENSE_TOOL_COMMAND,
             "dump",
         ],
+        cwd="/tmp/rust-resolve/serde",
+    )
+    mock_path_join.assert_called_once_with("/tmp/rust-resolve/serde", "Cargo.toml")
+    mock_path_exists.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
+    mock_open_file.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
+
+
+def test_local_project_path_preserves_root_when_tool_omits_root_row(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _mock_source_code_manager()
+    mock_path_join, mock_path_exists, mock_open_file, mock_run_command = (
+        _patch_common_io(
+            mocker,
+            _dependency_only_csv_output(),
+            '[package]\nname = "serde"\nversion = "1.0.0"\n',
+        )
+    )
+    strategy = RustMetadataCollectionStrategy(
+        "serde@1.0",
+        source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+        local_project_path="/tmp/rust-resolve/serde",
+    )
+
+    result = strategy.augment_metadata(
+        [
+            Metadata(
+                name="serde@1.0",
+                origin="serde@1.0",
+                local_src_path=None,
+                license=[],
+                version=None,
+                copyright=[],
+            )
+        ]
+    )
+
+    assert result == [
+        Metadata(
+            name="serde",
+            origin="serde",
+            local_src_path=None,
+            license=[],
+            version="1.0.0",
+            copyright=[],
+        )
+    ]
+    source_code_manager.get_canonical_urls.assert_not_called()
+    source_code_manager.get_code.assert_not_called()
+    mock_run_command.assert_called_once_with(
+        [RUST_LICENSE_TOOL_COMMAND, "dump"],
         cwd="/tmp/rust-resolve/serde",
     )
     mock_path_join.assert_called_once_with("/tmp/rust-resolve/serde", "Cargo.toml")

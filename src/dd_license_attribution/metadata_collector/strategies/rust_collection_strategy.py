@@ -125,12 +125,20 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
     def _augment_metadata_from_local_path(
         self, metadata: list[Metadata]
     ) -> list[Metadata]:
-        root_package_names = {self._parse_crate_name(self.top_package)}
+        parsed_root_package_name = self._parse_crate_name(self.top_package)
+        root_package_names = {parsed_root_package_name}
+        seed_metadata = next(
+            (
+                m
+                for m in metadata
+                if m.name in {self.top_package, parsed_root_package_name}
+            ),
+            None,
+        )
         metadata = [
             m
             for m in metadata
-            if m.name
-            not in {self.top_package, self._parse_crate_name(self.top_package)}
+            if m.name not in {self.top_package, parsed_root_package_name}
         ]
 
         project_path = self.local_project_path
@@ -145,7 +153,8 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         root_package_versions: dict[str, str] = {}
         should_read_cargo_metadata = (
-            self.only_root_project
+            seed_metadata is not None
+            or self.only_root_project
             or self.only_transitive
             or any(row["Component"] in root_package_names for row in rows)
         )
@@ -156,8 +165,37 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
             if cargo_package_names:
                 root_package_names = cargo_package_names
 
+        if seed_metadata is not None and not self.only_transitive:
+            self._upsert_metadata(
+                metadata,
+                self._root_metadata_from_seed(
+                    seed_metadata,
+                    root_package_names,
+                    root_package_versions,
+                    parsed_root_package_name,
+                ),
+            )
+
         self._ingest_rows(metadata, rows, root_package_names, root_package_versions)
         return metadata
+
+    def _root_metadata_from_seed(
+        self,
+        seed_metadata: Metadata,
+        root_package_names: set[str],
+        root_package_versions: dict[str, str],
+        fallback_name: str,
+    ) -> Metadata:
+        root_package_name = next(iter(root_package_names), fallback_name)
+        return Metadata(
+            name=root_package_name,
+            origin=root_package_name,
+            local_src_path=seed_metadata.local_src_path,
+            license=seed_metadata.license.copy(),
+            version=root_package_versions.get(root_package_name)
+            or seed_metadata.version,
+            copyright=seed_metadata.copyright.copy(),
+        )
 
     def _find_cargo_project_roots(self, source_root: str) -> list[str]:
         cargo_project_roots: list[str] = []
