@@ -196,6 +196,7 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
                         root_package_names,
                         root_package_versions,
                         parsed_root_package_name,
+                        project_path,
                     ),
                 )
             return metadata
@@ -221,6 +222,7 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
                     root_package_names,
                     root_package_versions,
                     parsed_root_package_name,
+                    project_path,
                 ),
             )
 
@@ -233,13 +235,14 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
         root_package_names: set[str],
         root_package_versions: dict[str, str],
         fallback_name: str,
+        local_src_path: str,
     ) -> Metadata:
         root_package_name = next(iter(root_package_names), fallback_name)
         return mark_rust_metadata(
             Metadata(
                 name=root_package_name,
                 origin=root_package_name,
-                local_src_path=seed_metadata.local_src_path,
+                local_src_path=local_src_path,
                 license=seed_metadata.license.copy(),
                 version=root_package_versions.get(root_package_name)
                 or seed_metadata.version,
@@ -390,8 +393,7 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
 
     def _is_empty_fallback_metadata(self, metadata: Metadata) -> bool:
         return (
-            metadata.local_src_path is None
-            and not metadata.license
+            not metadata.license
             and not metadata.copyright
             and metadata.origin in {None, "", metadata.name}
         )

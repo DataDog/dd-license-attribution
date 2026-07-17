@@ -136,7 +136,7 @@ def test_local_project_path_ingests_csv_and_filters_seed_entries(
         Metadata(
             name="serde",
             origin="https://github.com/serde-rs/serde",
-            local_src_path=None,
+            local_src_path="/tmp/rust-resolve/serde",
             license=["MIT OR Apache-2.0"],
             version="1.0.0",
             copyright=["The serde developers"],
@@ -207,7 +207,7 @@ def test_local_project_path_preserves_root_when_tool_omits_root_row(
         Metadata(
             name="serde",
             origin="serde",
-            local_src_path=None,
+            local_src_path="/tmp/rust-resolve/serde",
             license=[],
             version="1.0.0",
             copyright=[],
@@ -367,7 +367,7 @@ def test_local_project_path_only_root_project_filters_to_requested_crate_and_set
         Metadata(
             name="serde",
             origin="https://github.com/serde-rs/serde",
-            local_src_path=None,
+            local_src_path="/tmp/rust-resolve/serde",
             license=["MIT OR Apache-2.0"],
             version="1.0.0",
             copyright=["The serde developers"],
@@ -910,7 +910,7 @@ def test_invalid_csv_keeps_non_seed_metadata(
         Metadata(
             name="serde",
             origin="serde",
-            local_src_path=None,
+            local_src_path="/tmp/rust-resolve/serde",
             license=[],
             version="1.0.0",
             copyright=[],
@@ -978,7 +978,7 @@ def test_empty_tool_output_keeps_non_seed_metadata(
         Metadata(
             name="dd-rust-license-tool",
             origin="dd-rust-license-tool",
-            local_src_path=None,
+            local_src_path="/tmp/rust-resolve/dd-rust-license-tool",
             license=[],
             version="1.0.6",
             copyright=[],
@@ -1099,7 +1099,7 @@ def test_non_missing_os_error_returns_non_seed_metadata(
         Metadata(
             name="serde",
             origin="serde",
-            local_src_path=None,
+            local_src_path="/tmp/rust-resolve/serde",
             license=[],
             version="1.0.0",
             copyright=[],
@@ -1163,7 +1163,7 @@ def test_nonzero_tool_failure_returns_non_seed_metadata(
         Metadata(
             name="serde",
             origin="serde",
-            local_src_path=None,
+            local_src_path="/tmp/rust-resolve/serde",
             license=[],
             version="1.0.0",
             copyright=[],
