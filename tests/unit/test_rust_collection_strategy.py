@@ -1263,3 +1263,35 @@ def test_read_cargo_package_name_returns_none_for_unsupported_toml(
     )
     mock_path_exists.assert_called_once_with("/repo/Cargo.toml")
     mock_open_file.assert_called_once_with("/repo/Cargo.toml")
+
+
+def test_read_cargo_package_name_returns_none_when_file_read_fails(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _mock_source_code_manager()
+    strategy = RustMetadataCollectionStrategy(
+        "https://github.com/org/repo",
+        source_code_manager,
+        ProjectScope.ALL,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.path_join",
+        return_value="/repo/Cargo.toml",
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.path_exists",
+        return_value=True,
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.open_file",
+        side_effect=OSError("permission denied"),
+    )
+
+    result = strategy._read_cargo_package_name("/repo")
+
+    assert result is None
+    source_code_manager.get_canonical_urls.assert_called_once_with(
+        "https://github.com/org/repo"
+    )
+    mock_path_exists.assert_called_once_with("/repo/Cargo.toml")
+    mock_open_file.assert_called_once_with("/repo/Cargo.toml")

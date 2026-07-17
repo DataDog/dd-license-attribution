@@ -374,7 +374,7 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         try:
             cargo_toml = tomllib.loads(open_file(cargo_toml_path))
-        except tomllib.TOMLDecodeError as e:
+        except (OSError, tomllib.TOMLDecodeError) as e:
             logger.warning(  # pragma: no mutate
                 "Failed to parse Cargo.toml at %s: %s", cargo_toml_path, e
             )
