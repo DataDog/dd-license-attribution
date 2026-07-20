@@ -23,6 +23,8 @@ jobs:
     steps:
       - name: Check out the repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -69,7 +71,10 @@ jobs:
           # the matrix Python version; opt out of both by passing false.
           python-version: false
           go-version: false
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          # Pull requests execute code from the branch under test, so do not
+          # expose a token to their dependency-analysis subprocesses. Pushes to
+          # trusted branches keep authentication to avoid API rate limits.
+          github-token: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
 
       # The SPDX test below runs the CLI directly (not through the action), so
       # it still needs a mirror to scan the PR branch on pull_request events.
@@ -110,11 +115,13 @@ jobs:
       - name: Run the dd-license-attribution script with SPDX output
         if: ${{ matrix.python-version == '3.14' }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The PR branch is untrusted input to dependency analysis. Authenticate
+          # only on trusted events; public PR targets do not require a token.
+          GITHUB_TOKEN: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ "${EVENT_NAME}" = "pull_request" ]; then
-            dd-license-attribution generate-sbom --format spdx --use-mirrors=mirrors.json https://github.com/DataDog/dd-license-attribution > ddla-spdx-output.json
+            dd-license-attribution generate-sbom --format spdx --no-gh-auth --use-mirrors=mirrors.json https://github.com/DataDog/dd-license-attribution > ddla-spdx-output.json
           else
             dd-license-attribution generate-sbom --format spdx https://github.com/DataDog/dd-license-attribution > ddla-spdx-output.json
           fi
