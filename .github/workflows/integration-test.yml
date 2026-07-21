@@ -216,8 +216,13 @@ jobs:
       # would (`uses: owner/repo@sha`, not a local `uses: ./`), pinned to the
       # commit under review in PR #225 (DataDog/dd-license-attribution#225).
       # Once that PR merges, this can be repinned to a released tag or `main`.
+      #
+      # Unlike PR #225's own dogfood step, this always authenticates: it runs
+      # the already-reviewed action against this repository's own content,
+      # not untrusted PR-authored code, so there is no reason to withhold the
+      # token — and doing so throttles GitHub API calls heavily.
       - name: Validate LICENSE-3rdparty.csv using the reusable action
         uses: DataDog/dd-license-attribution@e264b48df60bc5618728bfabbb2dc01dc322fe99 # romain.marcadier/reusable-github-action
         with:
           override-spec: .ddla-overrides
-          github-token: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
