@@ -142,7 +142,7 @@ def test_skip_all_strategies(
 def test_missing_package() -> None:
     result = runner.invoke(app, ["generate-sbom-csv"], color=False)
     assert result.exit_code == 2
-    assert "Missing argument 'PACKAGE'." in result.stderr
+    assert "Missing argument 'package'." in result.stderr
 
 
 @patch("dd_license_attribution.config.json_config_parser.open_file")

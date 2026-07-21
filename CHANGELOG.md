@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 
 ### Added
+- New reusable composite GitHub Action (`action.yml` at the repository root) that regenerates a third-party license SBOM and validates it against a committed `LICENSE-3rdparty.csv` file. It sets up its own Python, Go, and Node.js/npm/Yarn toolchains as needed, installs the pinned tool version, and takes the target as an `owner/name` `repository` input (defaulting to the current repository). It automatically builds a mirror so the branch actually under test (`pull_request` head, merge-queue, or pushed branch) is scanned; when `github-token` is provided, the mirror supports cloning **private repositories**. `pull_request_target` intentionally remains on the base branch to avoid exposing privileged tokens while scanning untrusted code. Additional inputs control `ecosystem`/`package`, the `csv-path` to compare, `--override-spec`, per-strategy enable/disable toggles, `--experimental-strategy`, `--deep-scanning`, `--yarn-subdir`, the `default-branch`, the `github-token`, Python/Go/Node.js versions (each can be set to `false` to skip the internal toolchain setup when the calling workflow already provides it), and the exact-vs-structural `compare` mode; it exposes `sbom-path` and `matches` outputs. Callers with special needs can supply their own mirror-specification file via `use-mirrors`, whose entries are merged ahead of (and thus take precedence over) the auto-built mirror. Reference it as `DataDog/dd-license-attribution@<ref>`.
+- New `yarn-subdir` action input accepts newline-separated paths and forwards each path as a `--yarn-subdir` argument.
 - New `--experimental-strategy` flag for `generate-sbom`. When enabled, dependency discovery and metadata extraction run in three phases: pre-finders run once on the root package (e.g. GitHub SBOM, which already returns a full transitive closure); finders run in a fixpoint loop (up to 5 iterations) until the dependency set stabilises; enrichers run once on the complete set. When combined with `--ecosystem`, only the ecosystem-relevant finder is enabled by default; `--no-*` flags still override these defaults. This resolves cases where transitive dependencies discovered by one finder were not explored by other finders.
 - New `markdown` value for `generate-sbom --format` to emit Markdown license compliance reports.
 - New repeatable `generate-sbom --format` support with `--output-dir` to emit CSV, Markdown, and SPDX report files in one run.
@@ -21,6 +23,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - New `clean-spdx-id` CLI command to convert long license descriptions to valid SPDX license expressions using LLMs (OpenAI, Anthropic), including support for composite licenses (e.g., "MIT OR Apache-2.0")
 
 ### Changed
+- The action's `github-token` input now defaults to empty. Public and untrusted targets run without credentials unless the caller explicitly provides a token.
+- The minimum supported Typer version is now 0.27.0.
 - Markdown `generate-sbom` reports now show the root package version explicitly, exclude the root package from the dependency table, and include root license and copyright in the summary.
 - PyPI collection strategy now performs case-insensitive key matching for project_urls dictionary to better handle different key capitalizations from PyPI metadata
 
@@ -28,6 +32,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `generate-sbom-csv` is deprecated in favor of `generate-sbom --format csv`; it still works and emits a deprecation warning.
 
 ### Fixed
+- Fixed repeated action invocations overwriting earlier SBOM outputs by creating a unique output file for each invocation.
+- Fixed the action's default tokenless mode failing before a scan because it did not pass `--no-gh-auth` when `github-token` was empty.
+- Fixed the action requiring `csv-path` to exist during structural-only validation with `compare: false`.
 - Fixed `generate-sbom --no-gh-auth` so it ignores a `GITHUB_TOKEN` environment variable instead of using a potentially invalid token.
 - Fixed npm ecosystem SBOM generation when `npm list --json` emits warnings on stderr, which previously caused empty CSV output for packages such as `dd-trace`.
 - Fixed npm metadata collection using semver ranges instead of resolved versions, causing incorrect or failed npm registry API lookups

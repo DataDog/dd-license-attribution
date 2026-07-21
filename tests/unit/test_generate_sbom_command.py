@@ -743,7 +743,7 @@ def test_generate_sbom_missing_package_with_option_shows_usage_error() -> None:
     )
 
     assert result.exit_code == 2
-    assert "Missing argument 'PACKAGE'." in result.stderr
+    assert "Missing argument 'package'." in result.stderr
     assert "Traceback" not in result.stderr
 
 

@@ -140,7 +140,7 @@ Central component for git operations and caching.
 - **Caching**: Cloned repos stored in timestamped directories (`YYYYMMDD_HHMMSSz/`) with configurable TTL (default 24h).
 - **Canonical URLs**: Resolves GitHub 301 redirects for renamed/transferred repositories.
 - **GitHub API**: Caches repository info API calls.
-- **Mirror support**: Maps original URLs to mirror repositories with optional ref mapping.
+- **Mirror support**: Maps original URLs to mirror repositories with optional ref mapping. Targets are resolved to their canonical GitHub URL (via `html_url`) before mirror lookup, and `MirrorSpec.original_url` is matched case-sensitively, so mirror keys must use GitHub's canonical `owner/name` casing.
 - **Branch discovery**: Uses `git ls-remote` to find default (HEAD) branch.
 
 ### GoPackageResolver

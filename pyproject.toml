@@ -21,7 +21,7 @@ classifiers = [
 dependencies = [
     "agithub",
     "scancode-toolkit",
-    "typer",
+    "typer>=0.27.0",
     "pytz",
     "giturlparse",
     "requests",
