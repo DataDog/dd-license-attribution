@@ -201,3 +201,23 @@ jobs:
       - name: Test generate-overrides command with clean CSV
         run: |
           dd-license-attribution generate-overrides LICENSE-3rdparty.csv -o test-overrides.json
+
+  test-reusable-action:
+    runs-on: ubuntu-latest
+    name: reusable action (pinned to PR #225 commit)
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      # Exercises the reusable action end-to-end the way an external caller
+      # would (`uses: owner/repo@sha`, not a local `uses: ./`), pinned to the
+      # commit under review in PR #225 (DataDog/dd-license-attribution#225).
+      # Once that PR merges, this can be repinned to a released tag or `main`.
+      - name: Validate LICENSE-3rdparty.csv using the reusable action
+        uses: DataDog/dd-license-attribution@e264b48df60bc5618728bfabbb2dc01dc322fe99 # romain.marcadier/reusable-github-action
+        with:
+          override-spec: .ddla-overrides
+          github-token: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
