@@ -61,6 +61,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         project_scope: ProjectScope,
         yarn_subdirs: list[str] | None = None,
         local_project_path: str | None = None,
+        lockfile_subdirs: list[str] | None = None,
     ) -> None:
         # Store original top_package for matching
         self.original_top_package = top_package
@@ -80,7 +81,9 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         self.only_transitive = (
             project_scope == ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
         )
-        self.yarn_subdirs = yarn_subdirs or []
+        self.lockfile_subdirs = list(
+            dict.fromkeys((yarn_subdirs or []) + (lockfile_subdirs or []))
+        )
 
     def _detect_package_manager(self, project_path: str) -> str:
         """Detect whether the project uses npm or yarn.
@@ -393,6 +396,50 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         deps = self._get_yarn_dependencies(location_path)
         logger.info("Found %d dependencies at %s", len(deps), location_name)
         return deps
+
+    def _collect_dependencies_from_location(
+        self, location_path: str, location_name: str
+    ) -> dict[str, str]:
+        """Collect dependencies using the lockfile found at a location.
+
+        Args:
+            location_path: Full path to the directory containing the lockfile
+            location_name: Descriptive name for logging
+
+        Returns:
+            Dictionary mapping package names to resolved versions
+        """
+        package_manager = self._detect_package_manager(location_path)
+        logger.info(
+            "Detected package manager at %s: %s", location_name, package_manager
+        )
+
+        if package_manager == "yarn":
+            return self._collect_yarn_deps_from_location(location_path, location_name)
+
+        display_name = self.top_package if location_name == "root" else location_name
+        try:
+            logger.debug("Running npm install for %s", location_path)
+            exit_code, install_output, install_error_output = run_command_with_check(
+                ["npm", "install", "--omit=dev", "--ignore-scripts"],
+                cwd=location_path,
+            )
+            if exit_code != 0:
+                logger.warning(
+                    "npm install failed for %s: %s",
+                    display_name,
+                    format_command_output(install_output, install_error_output),
+                )
+                return {}
+
+            dependencies = self._get_npm_list_dependencies(location_path)
+            logger.info("Found %d dependencies at %s", len(dependencies), location_name)
+            return dependencies
+        except OSError as error:
+            logger.warning(
+                "Failed to run npm install/list for %s: %s", display_name, error
+            )
+            return {}
 
     def _extract_license_from_pkg_data(self, pkg_data: dict[str, Any]) -> list[str]:
         if "license" in pkg_data and pkg_data["license"]:
@@ -767,7 +814,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         """Collect vendored dependencies from subdirectories inside an npm package.
 
         After npm install, the target package is extracted to
-        node_modules/{target_package_name}/. This method looks for yarn_subdirs
+        node_modules/{target_package_name}/. This method looks for lockfile subdirs
         inside that extracted package directory.
 
         Collection strategy (in priority order):
@@ -784,7 +831,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         """
         vendored_deps: dict[str, str] = {}
 
-        if not self.yarn_subdirs:
+        if not self.lockfile_subdirs:
             return vendored_deps
 
         # The target package is installed at node_modules/{name}/
@@ -797,7 +844,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         unique_deps: set[tuple[str, str]] = set()
 
-        for subdir in self.yarn_subdirs:
+        for subdir in self.lockfile_subdirs:
             subdir_path = path_join(package_root, subdir)
             if not path_exists(subdir_path):
                 logger.warning(
@@ -962,9 +1009,9 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     target_name_for_filter,
                 )
 
-        # Collect vendored dependencies from subdirectories if yarn_subdirs is set
+        # Collect vendored dependencies from configured subdirectories
         target_name, _ = self._resolve_root_package_version(project_path)
-        if target_name and self.yarn_subdirs:
+        if target_name and self.lockfile_subdirs:
             vendored_deps = self._collect_vendored_deps(project_path, target_name)
             # Merge vendored deps into all_deps (vendored deps don't overwrite existing)
             for pkg, ver in vendored_deps.items():
@@ -1041,121 +1088,63 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         if self.only_root_project:
             return updated_metadata
 
-        # Detect package manager (npm or yarn)
-        package_manager = self._detect_package_manager(project_path)
-        logger.info("Detected package manager: %s", package_manager)
+        unique_dependencies: dict[tuple[str, str], None] = {}
+        root_dependencies = self._collect_dependencies_from_location(
+            project_path, "root"
+        )
+        for dependency in root_dependencies.items():
+            unique_dependencies[dependency] = None
 
-        all_deps: dict[str, str] = {}
-
-        if package_manager == "yarn":
-            # Collect dependencies from multiple locations (root + subdirs)
-            # Use a set to keep all unique (package, version) combinations
-            unique_deps: set[tuple[str, str]] = set()
-
-            # Collect from root
-            root_deps = self._collect_yarn_deps_from_location(project_path, "root")
-            for pkg, ver in root_deps.items():
-                unique_deps.add((pkg, ver))
-
-            # Collect from subdirectories
-            for subdir in self.yarn_subdirs:
-                subdir_path = path_join(project_path, subdir)
-                if not path_exists(subdir_path):
-                    logger.warning(
-                        "Subdirectory %s does not exist in %s", subdir, project_path
-                    )
-                    continue
-
-                subdir_deps = self._collect_yarn_deps_from_location(subdir_path, subdir)
-                for pkg, ver in subdir_deps.items():
-                    unique_deps.add((pkg, ver))
-
-            # Group dependencies by package name to identify multiple versions
-            deps_by_package: dict[str, list[str]] = {}
-            for pkg, ver in unique_deps:
-                if pkg not in deps_by_package:
-                    deps_by_package[pkg] = []
-                if ver not in deps_by_package[pkg]:
-                    deps_by_package[pkg].append(ver)
-
-            # Log packages with multiple versions
-            for pkg, versions in deps_by_package.items():
-                if len(versions) > 1:
-                    logger.info(
-                        "Package %s has multiple versions: %s",
-                        pkg,
-                        ", ".join(sorted(versions, key=_semver_sort_key)),
-                    )
-
-            # Flatten to dict - use lowest version for each package (deterministic)
-            # We'll handle multiple versions by processing all combinations
-            all_deps = {
-                pkg: sorted(versions, key=_semver_sort_key)[0]
-                for pkg, versions in deps_by_package.items()
-            }
-
-            if not all_deps:
+        for subdir in self.lockfile_subdirs:
+            subdir_path = path_join(project_path, subdir)
+            if not path_exists(subdir_path):
                 logger.warning(
-                    "No dependencies found for Yarn project at %s and subdirectories",
-                    project_path,
+                    "Subdirectory %s does not exist in %s", subdir, project_path
                 )
-        else:
-            # For npm projects, use npm list to discover all dependencies
-            # This includes vendored packages that are require()'d but not in package-lock.json
-            try:
-                # First ensure dependencies are installed
-                logger.debug("Running npm install for %s", project_path)
-                exit_code, install_output, install_error_output = (
-                    run_command_with_check(
-                        ["npm", "install", "--omit=dev", "--ignore-scripts"],
-                        cwd=project_path,
-                    )
-                )
-                if exit_code != 0:
-                    logger.warning(
-                        "npm install failed for %s: %s",
-                        self.top_package,
-                        format_command_output(install_output, install_error_output),
-                    )
-                    return updated_metadata
+                continue
 
-                # Then use npm list to discover all packages
-                all_deps = self._get_npm_list_dependencies(project_path)
+            subdir_dependencies = self._collect_dependencies_from_location(
+                subdir_path, subdir
+            )
+            for dependency in subdir_dependencies.items():
+                unique_dependencies[dependency] = None
 
-            except OSError as e:
-                logger.warning(
-                    "Failed to run npm install/list for %s: %s", self.top_package, e
-                )
-                return updated_metadata
-
-        if not all_deps:
+        if not unique_dependencies:
             logger.warning("No dependencies extracted from %s", project_path)
             return updated_metadata
 
-        logger.info("Found %d unique packages", len(all_deps))
+        dependencies_by_package: dict[str, list[str]] = {}
+        for dependency_name, version in unique_dependencies:
+            dependencies_by_package.setdefault(dependency_name, []).append(version)
 
-        # Use private method to enrich metadata with NPM registry data
-        # Handles scope filtering, version cleaning, fetching, and enrichment
+        first_versions: dict[str, str] = {}
+        additional_dependencies: list[tuple[str, str]] = []
+        for dependency_name, versions in dependencies_by_package.items():
+            sorted_versions = sorted(versions, key=_semver_sort_key)
+            first_versions[dependency_name] = sorted_versions[0]
+            if len(sorted_versions) > 1:
+                logger.info(
+                    "Package %s has multiple versions: %s",
+                    dependency_name,
+                    ", ".join(sorted_versions),
+                )
+                for version in sorted_versions[1:]:
+                    additional_dependencies.append((dependency_name, version))
+
+        logger.info("Found %d unique packages", len(first_versions))
+
         updated_metadata = self._enrich_metadata_with_npm_registry(
-            updated_metadata, all_deps
+            updated_metadata, first_versions
         )
 
-        # For yarn, process additional versions of packages (if any)
-        if package_manager == "yarn":
-            # Process additional versions (versions beyond the lowest for each package)
-            additional_deps: dict[str, str] = {}
-            for pkg, versions in deps_by_package.items():
-                for ver in sorted(versions, key=_semver_sort_key)[
-                    1:
-                ]:  # Skip lowest version (already processed)
-                    additional_deps[pkg] = ver
-
-            if additional_deps:
-                logger.info(
-                    "Processing %d additional package versions", len(additional_deps)
-                )
+        if additional_dependencies:
+            logger.info(
+                "Processing %d additional package versions",
+                len(additional_dependencies),
+            )
+            for dependency_name, version in additional_dependencies:
                 updated_metadata = self._enrich_metadata_with_npm_registry(
-                    updated_metadata, additional_deps
+                    updated_metadata, {dependency_name: version}
                 )
 
         return updated_metadata

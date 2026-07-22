@@ -429,7 +429,16 @@ def generate_sbom(
         list[str] | None,
         typer.Option(
             "--yarn-subdir",
-            help="Subdirectory path(s) containing additional yarn.lock files to include in dependency analysis. Can be specified multiple times. Paths are relative to repository root.",
+            help="Alias for --lockfile-subdir.",
+            rich_help_panel="Scanning Options",
+            hidden=True,
+        ),
+    ] = None,
+    lockfile_subdirs: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--lockfile-subdir",
+            help="Subdirectory path(s) containing additional yarn.lock or package-lock.json files to include in dependency analysis. Can be specified multiple times. Paths are relative to repository root.",
             rich_help_panel="Scanning Options",
         ),
     ] = None,
@@ -456,6 +465,10 @@ def generate_sbom(
     """
     if package is None:
         raise click.MissingParameter(param=click.Argument(["package"]))
+
+    all_lockfile_subdirs = list(
+        dict.fromkeys((yarn_subdirs or []) + (lockfile_subdirs or []))
+    )
 
     if log_level.upper() == "DEBUG":
         setup_logging(logging.DEBUG)
@@ -638,8 +651,8 @@ def generate_sbom(
                         package,
                         source_code_manager,
                         project_scope,
-                        yarn_subdirs=yarn_subdirs or [],
                         local_project_path=local_project_path,
+                        lockfile_subdirs=all_lockfile_subdirs,
                     )
                 )
 
@@ -736,7 +749,7 @@ def generate_sbom(
                         package,
                         source_code_manager,
                         project_scope,
-                        yarn_subdirs=yarn_subdirs or [],
+                        lockfile_subdirs=all_lockfile_subdirs,
                     )
                 )
 

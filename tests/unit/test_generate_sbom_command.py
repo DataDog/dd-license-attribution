@@ -132,6 +132,51 @@ def test_without_experimental_strategy_uses_metadata_collector(
     mock_three_phase_collector.assert_not_called()
 
 
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+def test_lockfile_subdir_combines_and_deduplicates_yarn_subdir_alias(
+    mock_csv: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_metadata_collector: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        None,
+    )
+    mock_csv.return_value.write.return_value = ""
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo",
+            "--no-gh-auth",
+            "--yarn-subdir",
+            "packages/shared",
+            "--lockfile-subdir",
+            "vendor",
+            "--lockfile-subdir",
+            "packages/shared",
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 0, result.output
+    strategies = mock_metadata_collector.call_args.args[0]
+    npm_strategy = next(
+        strategy
+        for strategy in strategies
+        if strategy.__class__.__name__ == "NpmMetadataCollectionStrategy"
+    )
+    assert npm_strategy.lockfile_subdirs == ["packages/shared", "vendor"]
+
+
 @patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
