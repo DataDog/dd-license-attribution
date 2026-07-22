@@ -43,8 +43,9 @@ from dd_license_attribution.metadata_collector.strategies.abstract_collection_st
 logger = logging.getLogger("dd_license_attribution")
 
 _NPM_REGISTRY_MAX_ATTEMPTS = 3
-_NPM_REGISTRY_RETRYABLE_STATUS_CODES = {408, 429, 500, 502, 503, 504}
+_NPM_REGISTRY_RETRYABLE_STATUS_CODES = {408, 429}
 _NPM_REGISTRY_TIMEOUT_SECONDS = 5
+_NPM_REGISTRY_MAX_RETRY_DELAY_SECONDS = _NPM_REGISTRY_TIMEOUT_SECONDS
 
 
 class NpmRegistryMetadataError(RuntimeError):
@@ -427,9 +428,14 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         attempt = 1
 
         while True:
+            retry_after: str | None = None
             try:
                 response = requests.get(url, timeout=_NPM_REGISTRY_TIMEOUT_SECONDS)
-            except (requests.ConnectionError, requests.Timeout) as error:
+            except (
+                requests.ConnectionError,
+                requests.Timeout,
+                requests.exceptions.ChunkedEncodingError,
+            ) as error:
                 failure = str(error)
             except requests.RequestException as error:
                 raise NpmRegistryMetadataError(
@@ -446,11 +452,16 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     )
 
                 failure = f"{response.status_code}, {response.text}"
-                if response.status_code not in _NPM_REGISTRY_RETRYABLE_STATUS_CODES:
+                if (
+                    response.status_code not in _NPM_REGISTRY_RETRYABLE_STATUS_CODES
+                    and not 500 <= response.status_code < 600
+                ):
                     raise NpmRegistryMetadataError(
                         f"Failed to fetch npm registry metadata for "
                         f"{dep_name}@{version}: {failure}"
                     )
+
+                retry_after = response.headers.get("Retry-After")
 
             if attempt == _NPM_REGISTRY_MAX_ATTEMPTS:
                 raise NpmRegistryMetadataError(
@@ -458,7 +469,17 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     f"{dep_name}@{version} after {attempt} attempts: {failure}"
                 )
 
-            delay = 2 ** (attempt - 1) + uniform(0, 1)
+            if isinstance(retry_after, str) and retry_after.strip().isdecimal():
+                delay = int(retry_after)
+                if delay > _NPM_REGISTRY_MAX_RETRY_DELAY_SECONDS:
+                    raise NpmRegistryMetadataError(
+                        f"Failed to fetch npm registry metadata for "
+                        f"{dep_name}@{version}: Retry-After value {delay} exceeds "
+                        f"the maximum retry delay of "
+                        f"{_NPM_REGISTRY_MAX_RETRY_DELAY_SECONDS} seconds"
+                    )
+            else:
+                delay = 2 ** (attempt - 1) + uniform(0, 1)
             logger.warning(
                 "Failed to fetch npm registry metadata for %s@%s "
                 "(attempt %d/%d): %s; retrying in %.2f seconds",
@@ -554,7 +575,6 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         self, metadata: list[Metadata], dependencies: dict[str, str]
     ) -> list[Metadata]:
         updated_metadata = metadata.copy()
-        registry_failures: list[str] = []
 
         # Apply project scope filters - filter transitive-only if needed
         if self.only_transitive:
@@ -572,13 +592,9 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             if idx % 50 == 0 or idx == total_deps:
                 logger.info("Progress: %d/%d dependencies processed", idx, total_deps)
 
-            try:
-                license, copyright, pkg_data = self._fetch_npm_registry_metadata(
-                    dep_name, version
-                )
-            except NpmRegistryMetadataError as error:
-                registry_failures.append(str(error))
-                continue
+            license, copyright, pkg_data = self._fetch_npm_registry_metadata(
+                dep_name, version
+            )
 
             origin = self._determine_origin(pkg_data, dep_name)
 
@@ -608,12 +624,6 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                         copyright=copyright,
                     )
                 )
-
-        if registry_failures:
-            raise NpmRegistryMetadataError(
-                "Npm registry metadata is incomplete:\n- "
-                + "\n- ".join(registry_failures)
-            )
 
         return updated_metadata
 

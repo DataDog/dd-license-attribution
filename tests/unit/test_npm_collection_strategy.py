@@ -603,8 +603,9 @@ def test_npm_collection_strategy_handles_missing_root_package(
     assert mock_requests.call_count == 1
 
 
+@pytest.mark.parametrize("retryable_status_code", [408, 429, 501, 599])
 def test_npm_collection_strategy_retries_registry_api_failures(
-    mocker: pytest_mock.MockFixture,
+    mocker: pytest_mock.MockFixture, retryable_status_code: int
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
     package_json: dict[str, Any] = {}
@@ -618,8 +619,9 @@ def test_npm_collection_strategy_retries_registry_api_failures(
 
     requests_responses = [
         mock.Mock(
-            status_code=503,
-            text="Service Unavailable",
+            status_code=retryable_status_code,
+            text="Retryable error",
+            headers={"Retry-After": "5"},
         ),
         mock.Mock(status_code=200, json=lambda: {"license": "MIT", "author": "Alice"}),
         mock.Mock(
@@ -642,7 +644,6 @@ def test_npm_collection_strategy_retries_registry_api_failures(
     mock_uniform = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
         "npm_collection_strategy.uniform",
-        return_value=0.25,
     )
 
     strategy = NpmMetadataCollectionStrategy(
@@ -691,8 +692,8 @@ def test_npm_collection_strategy_retries_registry_api_failures(
             mock.call("https://registry.npmjs.org/dep2/2.0.0", timeout=5),
         ]
     )
-    mock_sleep.assert_called_once_with(1.25)
-    mock_uniform.assert_called_once_with(0, 1)
+    mock_sleep.assert_called_once_with(5)
+    mock_uniform.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -703,9 +704,21 @@ def test_npm_collection_strategy_retries_registry_api_failures(
             requests.exceptions.InvalidURL("invalid registry URL"),
             "invalid registry URL",
         ),
+        (
+            mock.Mock(
+                status_code=503,
+                text="Service Unavailable",
+                headers={"Retry-After": "6"},
+            ),
+            "Retry-After value 6 exceeds the maximum retry delay of 5 seconds",
+        ),
+        (
+            mock.Mock(status_code=600, text="Retry later"),
+            "600, Retry later",
+        ),
     ],
 )
-def test_npm_collection_strategy_aggregates_non_retryable_registry_failures(
+def test_npm_collection_strategy_fails_fast_on_terminal_registry_failure(
     mocker: pytest_mock.MockFixture,
     registry_failure: mock.Mock | requests.RequestException,
     expected_failure: str,
@@ -729,10 +742,7 @@ def test_npm_collection_strategy_aggregates_non_retryable_registry_failures(
         mock_run_command,
         mock_requests,
     ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
-    mock_requests.side_effect = [
-        registry_failure,
-        mock.Mock(status_code=404, text="Not Found"),
-    ]
+    mock_requests.side_effect = [registry_failure]
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -748,17 +758,15 @@ def test_npm_collection_strategy_aggregates_non_retryable_registry_failures(
         ),
     ]
 
-    with pytest.raises(RuntimeError) as raised:
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "Failed to fetch npm registry metadata for dep1@1.0.0: "
+            f"{expected_failure}"
+        ),
+    ):
         strategy.augment_metadata(initial_metadata)
 
-    assert (
-        "Failed to fetch npm registry metadata for dep1@1.0.0: "
-        f"{expected_failure}" in str(raised.value)
-    )
-    assert (
-        "Failed to fetch npm registry metadata for dep2@2.0.0: 404, Not Found"
-        in str(raised.value)
-    )
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
@@ -773,12 +781,8 @@ def test_npm_collection_strategy_aggregates_non_retryable_registry_failures(
     assert mock_exists.call_count == 2  # package.json, yarn.lock
     assert mock_path_join.call_count == 2  # package.json, yarn.lock
     assert mock_open.call_count == 1  # package.json
-    assert mock_requests.call_count == 2
-    mock_requests.assert_has_calls(
-        [
-            mock.call("https://registry.npmjs.org/dep1/1.0.0", timeout=5),
-            mock.call("https://registry.npmjs.org/dep2/2.0.0", timeout=5),
-        ]
+    mock_requests.assert_called_once_with(
+        "https://registry.npmjs.org/dep1/1.0.0", timeout=5
     )
 
 
@@ -798,20 +802,28 @@ def test_npm_collection_strategy_aggregates_non_retryable_registry_failures(
                 mock.Mock(
                     status_code=503,
                     text="Service Unavailable",
-                    headers={},
+                    headers={"Retry-After": "invalid"},
                 ),
                 mock.Mock(
                     status_code=503,
                     text="Service Unavailable",
-                    headers={},
+                    headers={"Retry-After": "invalid"},
                 ),
                 mock.Mock(
                     status_code=503,
                     text="Service Unavailable",
-                    headers={},
+                    headers={"Retry-After": "invalid"},
                 ),
             ],
             "503, Service Unavailable",
+        ),
+        (
+            [
+                requests.exceptions.ChunkedEncodingError("broken response"),
+                requests.exceptions.ChunkedEncodingError("broken response"),
+                requests.exceptions.ChunkedEncodingError("broken response"),
+            ],
+            "broken response",
         ),
     ],
 )
