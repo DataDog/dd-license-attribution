@@ -10,7 +10,9 @@ import logging
 from typing import Any
 from unittest import mock
 
+import pytest
 import pytest_mock
+import requests
 from pytest import LogCaptureFixture
 
 from dd_license_attribution.artifact_management.artifact_manager import (
@@ -601,7 +603,7 @@ def test_npm_collection_strategy_handles_missing_root_package(
     assert mock_requests.call_count == 1
 
 
-def test_npm_collection_strategy_handles_registry_api_failures(
+def test_npm_collection_strategy_retries_registry_api_failures(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
@@ -615,7 +617,11 @@ def test_npm_collection_strategy_handles_registry_api_failures(
     }
 
     requests_responses = [
-        mock.Mock(status_code=404),  # dep1 not found
+        mock.Mock(
+            status_code=503,
+            text="Service Unavailable",
+        ),
+        mock.Mock(status_code=200, json=lambda: {"license": "MIT", "author": "Alice"}),
         mock.Mock(
             status_code=200, json=lambda: {"license": "Apache-2.0", "author": "Bob"}
         ),
@@ -629,6 +635,15 @@ def test_npm_collection_strategy_handles_registry_api_failures(
         mock_run_command,
         mock_requests,
     ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
+    mock_sleep = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.sleep"
+    )
+    mock_uniform = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.uniform",
+        return_value=0.25,
+    )
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -652,8 +667,8 @@ def test_npm_collection_strategy_handles_registry_api_failures(
 
     assert dep1_meta is not None
     assert dep2_meta is not None
-    assert dep1_meta.license == []  # Should be empty due to 404
-    assert dep2_meta.license == ["Apache-2.0"]  # Should have license
+    assert dep1_meta.license == ["MIT"]
+    assert dep2_meta.license == ["Apache-2.0"]
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
@@ -668,22 +683,43 @@ def test_npm_collection_strategy_handles_registry_api_failures(
     assert mock_exists.call_count == 2  # package.json, yarn.lock
     assert mock_path_join.call_count == 2  # package.json, yarn.lock
     assert mock_open.call_count == 1  # package.json
-    assert mock_requests.call_count == 2
+    assert mock_requests.call_count == 3
+    mock_requests.assert_has_calls(
+        [
+            mock.call("https://registry.npmjs.org/dep1/1.0.0", timeout=5),
+            mock.call("https://registry.npmjs.org/dep1/1.0.0", timeout=5),
+            mock.call("https://registry.npmjs.org/dep2/2.0.0", timeout=5),
+        ]
+    )
+    mock_sleep.assert_called_once_with(1.25)
+    mock_uniform.assert_called_once_with(0, 1)
 
 
-def test_npm_collection_strategy_logs_warning_on_non_200_response(
+@pytest.mark.parametrize(
+    ("registry_failure", "expected_failure"),
+    [
+        (mock.Mock(status_code=404, text="Not Found"), "404, Not Found"),
+        (
+            requests.exceptions.InvalidURL("invalid registry URL"),
+            "invalid registry URL",
+        ),
+    ],
+)
+def test_npm_collection_strategy_aggregates_non_retryable_registry_failures(
     mocker: pytest_mock.MockFixture,
-    caplog: LogCaptureFixture,
+    registry_failure: mock.Mock | requests.RequestException,
+    expected_failure: str,
 ) -> None:
     source_code_manager_mock = create_source_code_manager_mock()
     package_json: dict[str, Any] = {}
     package_lock = {
         "packages": {
-            "": {"dependencies": {"dep1": "1.0.0"}},
+            "": {"dependencies": {"dep1": "1.0.0", "dep2": "2.0.0"}},
             "node_modules/dep1": {"version": "1.0.0", "dependencies": {}},
+            "node_modules/dep2": {"version": "2.0.0", "dependencies": {}},
         }
     }
-    requests_responses = [mock.Mock(status_code=404, text="Not Found")]
+    requests_responses: list[mock.Mock] = []
 
     (
         mock_exists,
@@ -693,6 +729,10 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
         mock_run_command,
         mock_requests,
     ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
+    mock_requests.side_effect = [
+        registry_failure,
+        mock.Mock(status_code=404, text="Not Found"),
+    ]
 
     strategy = NpmMetadataCollectionStrategy(
         "package1", source_code_manager_mock, ProjectScope.ALL
@@ -708,20 +748,17 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
         ),
     ]
 
-    with caplog.at_level(logging.WARNING):
-        result = strategy.augment_metadata(initial_metadata)
+    with pytest.raises(RuntimeError) as raised:
+        strategy.augment_metadata(initial_metadata)
 
-    expected_warning = (
-        "Failed to fetch npm registry metadata for dep1@1.0.0: 404, Not Found"
+    assert (
+        "Failed to fetch npm registry metadata for dep1@1.0.0: "
+        f"{expected_failure}" in str(raised.value)
     )
-    assert any(expected_warning in record.message for record in caplog.records)
-
-    assert len(result) == 2
-    dep_meta = next((m for m in result if m.name == "dep1"), None)
-    assert dep_meta is not None
-    assert dep_meta.version == "1.0.0"
-    assert dep_meta.license == []
-    assert dep_meta.copyright == []
+    assert (
+        "Failed to fetch npm registry metadata for dep2@2.0.0: 404, Not Found"
+        in str(raised.value)
+    )
     # Verify npm install (via run_command_with_check) and npm list were called
     assert mock_run_command.call_count == 2
     mock_run_command.assert_any_call(
@@ -736,7 +773,128 @@ def test_npm_collection_strategy_logs_warning_on_non_200_response(
     assert mock_exists.call_count == 2  # package.json, yarn.lock
     assert mock_path_join.call_count == 2  # package.json, yarn.lock
     assert mock_open.call_count == 1  # package.json
-    assert mock_requests.call_count == 1
+    assert mock_requests.call_count == 2
+    mock_requests.assert_has_calls(
+        [
+            mock.call("https://registry.npmjs.org/dep1/1.0.0", timeout=5),
+            mock.call("https://registry.npmjs.org/dep2/2.0.0", timeout=5),
+        ]
+    )
+
+
+@pytest.mark.parametrize(
+    ("registry_failures", "expected_failure"),
+    [
+        (
+            [
+                requests.ReadTimeout("registry timeout"),
+                requests.ReadTimeout("registry timeout"),
+                requests.ReadTimeout("registry timeout"),
+            ],
+            "registry timeout",
+        ),
+        (
+            [
+                mock.Mock(
+                    status_code=503,
+                    text="Service Unavailable",
+                    headers={},
+                ),
+                mock.Mock(
+                    status_code=503,
+                    text="Service Unavailable",
+                    headers={},
+                ),
+                mock.Mock(
+                    status_code=503,
+                    text="Service Unavailable",
+                    headers={},
+                ),
+            ],
+            "503, Service Unavailable",
+        ),
+    ],
+)
+def test_npm_collection_strategy_fails_after_transient_registry_failures(
+    mocker: pytest_mock.MockFixture,
+    registry_failures: list[mock.Mock | requests.RequestException],
+    expected_failure: str,
+) -> None:
+    source_code_manager_mock = create_source_code_manager_mock()
+    package_json: dict[str, Any] = {}
+    package_lock = {
+        "packages": {
+            "": {"dependencies": {"dep1": "1.0.0"}},
+            "node_modules/dep1": {"version": "1.0.0", "dependencies": {}},
+        }
+    }
+    requests_responses: list[mock.Mock] = []
+
+    (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_run_command,
+        mock_requests,
+    ) = setup_npm_strategy_mocks(mocker, package_lock, package_json, requests_responses)
+    mock_requests.side_effect = registry_failures
+    mock_sleep = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.sleep"
+    )
+    mock_uniform = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.uniform",
+        return_value=0.25,
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager_mock, ProjectScope.ALL
+    )
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "Failed to fetch npm registry metadata for dep1@1.0.0 "
+            f"after 3 attempts: {expected_failure}"
+        ),
+    ):
+        strategy.augment_metadata(initial_metadata)
+
+    assert mock_run_command.call_count == 2
+    mock_run_command.assert_any_call(
+        ["npm", "install", "--omit=dev", "--ignore-scripts"],
+        cwd="cache_dir/org_package1",
+    )
+    mock_run_command.assert_any_call(
+        ["npm", "list", "--json", "--omit=dev", "--all"],
+        cwd="cache_dir/org_package1",
+    )
+    mock_output_from_command.assert_not_called()
+    assert mock_exists.call_count == 2  # package.json, yarn.lock
+    assert mock_path_join.call_count == 2  # package.json, yarn.lock
+    assert mock_open.call_count == 1  # package.json
+    assert mock_requests.call_count == 3
+    mock_requests.assert_has_calls(
+        [
+            mock.call("https://registry.npmjs.org/dep1/1.0.0", timeout=5),
+            mock.call("https://registry.npmjs.org/dep1/1.0.0", timeout=5),
+            mock.call("https://registry.npmjs.org/dep1/1.0.0", timeout=5),
+        ]
+    )
+    assert mock_sleep.call_args_list == [mock.call(1.25), mock.call(2.25)]
+    assert mock_uniform.call_args_list == [mock.call(0, 1), mock.call(0, 1)]
 
 
 def test_npm_collection_strategy_handles_npm_install_failure(
