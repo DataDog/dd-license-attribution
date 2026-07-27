@@ -230,6 +230,8 @@ Example mirror configuration file:
 
 Note: Currently, only branch-to-branch mapping is supported. The mirror URLs must also be GitHub repositories.
 
+Note: `original_url` is matched **case-sensitively against the repository's canonical URL**. Before applying mirrors, the tool resolves each scan target to its canonical GitHub `owner/name` (following renames/redirects and using the casing GitHub records for the owner and repository). An `original_url` whose casing differs from that canonical form will never match, so the mirror is silently ignored. Copy the `owner/name` exactly as GitHub displays it.
+
 #### Override Configuration
 
 Sometimes `dd-license-attribution` may not detect all dependencies correctly, or the detected license information may be inaccurate. For these cases, you can provide an override configuration file to:
@@ -467,6 +469,157 @@ dd-license-attribution generate-sbom --override-spec .ddla-overrides https://git
 # Clean up long license descriptions and convert to SPDX license expressions
 export OPENAI_API_KEY=your_key
 dd-license-attribution clean-spdx-id LICENSE-3rdparty.csv LICENSE-cleaned.csv
+```
+
+## GitHub Action: Validate `LICENSE-3rdparty.csv`
+
+This repository doubles as a reusable composite GitHub Action that regenerates a
+third-party license SBOM and validates it against a committed
+`LICENSE-3rdparty.csv` file. Use it in CI to fail a build whenever the committed
+file drifts from what `dd-license-attribution` would produce.
+
+The action sets up its own Python and, when their strategies or ecosystems
+require them, Go and Node.js toolchains. The Node.js setup also provides npm and
+Yarn Classic. It installs the exact version of `dd-license-attribution` shipped
+with the `@ref` you pin, so no additional setup steps are required. If your
+workflow already provides any of these toolchains, opt out of the corresponding
+internal setup by passing `python-version: false`, `go-version: false`, or
+`node-version: false`. When `compare` is enabled, your repository must be
+checked out so the action can read the committed `LICENSE-3rdparty.csv`.
+
+The action always assumes github.com as the host and takes the target as an
+`owner/name` `repository` (defaulting to the repository the workflow runs in).
+It builds its own mirror configuration internally and, when validating the
+repository the workflow runs in, points that mirror at the branch actually
+under test (the PR head branch for `pull_request` events, the merge-queue
+branch, or the pushed branch) rather than the default branch. When a
+`github-token` is provided, the action embeds it in the mirror so **private
+repositories** can be cloned.
+
+> **Authentication security caveat.** The action does not provide a GitHub token
+> by default. Source-based dependency discovery may execute code controlled by
+> the repository or package being scanned, and child processes may inherit the
+> action environment. Leave `github-token` empty for public or untrusted targets.
+> For a private repository, provide a read-only token only when you trust the
+> target code that will be analyzed.
+
+> **Checkout credential caveat.** `actions/checkout` persists its authentication
+> header in the workspace's Git configuration by default. Git commands run by
+> the scanner can inherit that header instead of using the action's mirror
+> credentials. Set `persist-credentials: false` on the checkout step, as shown
+> below, so the action's authentication behavior remains explicit.
+
+> **`pull_request_target` security caveat.** The action intentionally does not
+> map `pull_request_target` events to the PR head. Those workflows run in the
+> base repository's security context and can expose a privileged token, while
+> source-based dependency discovery may execute code from the repository being
+> scanned. Mapping the mirror to an untrusted fork head could therefore leak the
+> token. Use `pull_request` with read-only permissions to validate untrusted PR
+> heads; on `pull_request_target`, the action scans the base/default branch.
+
+> **Branch-under-test caveat.** The mirror only redirects the strategies that
+> clone source code. The GitHub SBOM strategy (`github-sbom-strategy`, enabled
+> by default) instead reads GitHub's dependency graph for the repository, which
+> reflects its default/base branch — not the branch under test. If a pull
+> request changes dependencies and you want that change validated, disable it
+> with `github-sbom-strategy: false` so discovery is driven by the source-based
+> strategies. The action also registers `github-token` as a masked secret so it
+> is redacted from the job logs.
+
+### Basic usage
+
+```yaml
+jobs:
+  validate-licenses:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      # Pin to the full commit SHA of the release you want; `<sha>` is a
+      # placeholder — see the repository's tags/releases.
+      - uses: DataDog/dd-license-attribution@<sha>
+```
+
+### Inputs
+
+| Input | Default | Description |
+| --- | --- | --- |
+| `repository` | `${{ github.repository }}` | GitHub repository to analyze, as `owner/name`. Ignored when `ecosystem` is set. Use GitHub's canonical `owner/name` casing — the auto-built mirror is matched case-sensitively against the canonical URL, so mismatched casing silently disables it. The default is already canonical. |
+| `ecosystem` | _(empty)_ | Value for `--ecosystem` (`npm`, `python`, `pypi`, or `go`). When set, `package` is analyzed instead of `repository` (and no mirror is built). |
+| `package` | _(empty)_ | Package name to analyze. Only used (and required) when `ecosystem` is set. |
+| `csv-path` | `LICENSE-3rdparty.csv` | Path (in the checked-out workspace) of the committed file to validate against. Required only when `compare` is `true`. |
+| `override-spec` | _(empty)_ | Value for `--override-spec` (a JSON file of override rules). |
+| `compare` | `true` | When `true`, the generated SBOM must match `csv-path` exactly (a unified diff is printed on mismatch). When `false`, only structural validation (non-empty CSV with the expected header) is performed. |
+| `github-sbom-strategy` | `true` | Set to `false` to pass `--no-github-sbom-strategy`. |
+| `gopkg-strategy` | `true` | Set to `false` to pass `--no-gopkg-strategy`. Go is still set up when `ecosystem` is `go`. |
+| `pypi-strategy` | `true` | Set to `false` to pass `--no-pypi-strategy`. |
+| `npm-strategy` | `true` | Set to `false` to pass `--no-npm-strategy`. Node.js, npm, and Yarn are still set up when `ecosystem` is `npm`. |
+| `scancode-strategy` | `true` | Set to `false` to pass `--no-scancode-strategy`. |
+| `experimental-strategy` | `false` | Set to `true` to pass `--experimental-strategy`. |
+| `deep-scanning` | `false` | Set to `true` to pass `--deep-scanning`. |
+| `yarn-subdir` | _(empty)_ | Newline-separated subdirectory paths containing additional `yarn.lock` files. Each non-empty line is passed as a separate `--yarn-subdir` argument. |
+| `default-branch` | `${{ github.event.repository.default_branch }}` | Default branch of `repository`, used as the source ref when the mirror is mapped onto the branch under test. Defaults to the default branch of the repository the workflow runs in. |
+| `use-mirrors` | _(empty)_ | Path (in the workspace) to a JSON file of mirror specifications. Its entries are merged *ahead* of the auto-built mirror, so they take precedence for any overlapping `original_url` while the auto-built entry remains a fallback. In ecosystem mode it is passed verbatim to `--use-mirrors`. |
+| `github-token` | _(empty)_ | Token used for GitHub API calls and, embedded in the mirror URL, for cloning the repository. Leave empty for public or untrusted targets; provide a read-only token for a trusted private repository. |
+| `python-version` | `3.14` | Python version to set up and run the tool with. Set to `false` to skip the internal Python setup and use the `python` already on `PATH`. |
+| `go-version` | `1.23` | Go version to set up when `gopkg-strategy` is enabled or `ecosystem` is `go`. Set to `false` to skip the internal Go setup and use the calling workflow's Go toolchain. |
+| `node-version` | `24` | Node.js version to set up when `npm-strategy` is enabled or `ecosystem` is `npm`; npm and Yarn Classic are also installed. Set to `false` to use the calling workflow's JavaScript toolchain. |
+
+### Outputs
+
+| Output | Description |
+| --- | --- |
+| `sbom-path` | Absolute path to the generated SBOM file (useful for uploading as an artifact on failure). |
+| `matches` | `true` when the generated SBOM matched `csv-path`. Only meaningful when `compare` is `true`. |
+
+### Controlling strategies
+
+Each collection strategy has a boolean input that defaults to enabled. Set one to
+`false` to skip it:
+
+```yaml
+      # Pin to the full commit SHA of the release you want; `<sha>` is a
+      # placeholder — see the repository's tags/releases.
+      - uses: DataDog/dd-license-attribution@<sha>
+        with:
+          pypi-strategy: false
+          scancode-strategy: false
+```
+
+For Yarn monorepos, pass each additional lockfile directory on a separate line:
+
+```yaml
+      - uses: DataDog/dd-license-attribution@<sha>
+        with:
+          yarn-subdir: |
+            packages/frontend
+            packages/admin
+```
+
+### Supplying custom mirrors
+
+For special needs — for example mirroring a dependency's repository, or pointing
+the target repository at an internal host — commit a mirror-specification JSON
+file and pass its path via `use-mirrors`. Your entries are merged *ahead* of the
+mirror the action builds automatically, so they win for any repository they
+name, while the auto-built mirror still covers the primary repository as a
+fallback. Each `original_url` must use GitHub's canonical
+`owner/name` casing: the tool resolves scan targets to their canonical URL and
+matches mirror entries case-sensitively, so a mismatched-casing entry is
+silently ignored.
+
+```yaml
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      # Pin to the full commit SHA of the release you want; `<sha>` is a
+      # placeholder — see the repository's tags/releases.
+      - uses: DataDog/dd-license-attribution@<sha>
+        with:
+          use-mirrors: .github/ddla-mirrors.json
 ```
 
 ### Development and Contributing
