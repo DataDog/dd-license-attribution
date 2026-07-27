@@ -25,6 +25,9 @@ _PYPI_SPEC_PATTERN = re.compile(
     r"(?:\[[A-Za-z0-9._,\-\s]+\])?"
     r"\s*(?:(==|!=|<=|>=|~=|<|>)\s*([^,;\s]+).*)?$"
 )
+_RUST_PARTIAL_VERSION_PATTERN = re.compile(
+    r"^\s*(\d+)(?:\.(\d+))?(?:\.(\d+))?((?:[-+].*)?)\s*$"
+)
 
 
 @dataclass
@@ -98,8 +101,14 @@ class MarkdownReportingWritter(ReportingWritter):
             default_name, self.ecosystem
         )
         if self.ecosystem == "rust":
-            package_version = None
+            package_version = _normalize_rust_package_version(package_version)
         root_row = _find_root_row(rows, package_name, package_version, self.ecosystem)
+        if (
+            root_row is None
+            and self.ecosystem == "rust"
+            and package_version is not None
+        ):
+            root_row = _find_unique_root_row_by_name(rows, package_name, self.ecosystem)
 
         if root_row is not None:
             return _RootPackage(
@@ -146,6 +155,21 @@ def _find_root_row(
     return None
 
 
+def _find_unique_root_row_by_name(
+    rows: list[CombinedMetadata],
+    package_name: str,
+    ecosystem: str | None = None,
+) -> CombinedMetadata | None:
+    matching_rows = [
+        row
+        for row in rows
+        if _package_name_matches(row.component, package_name, ecosystem)
+    ]
+    if len(matching_rows) == 1:
+        return matching_rows[0]
+    return None
+
+
 def _package_name_matches(
     row_component: str | None, package_name: str, ecosystem: str | None
 ) -> bool:
@@ -180,6 +204,18 @@ def _split_package_spec(
     if not name or not version:
         return value, None
     return name, version
+
+
+def _normalize_rust_package_version(package_version: str | None) -> str | None:
+    if package_version is None:
+        return None
+
+    match = _RUST_PARTIAL_VERSION_PATTERN.match(package_version)
+    if match is None:
+        return package_version
+
+    major, minor, patch, suffix = match.groups()
+    return f"{major}.{minor or '0'}.{patch or '0'}{suffix}"
 
 
 def _split_pypi_package_spec(value: str) -> tuple[str, str | None] | None:

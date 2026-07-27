@@ -197,6 +197,89 @@ def test_markdown_reporting_writter_matches_rust_requirement_root_by_name() -> N
     ) in markdown
 
 
+def test_markdown_reporting_writter_matches_exact_rust_version_root() -> None:
+    metadata = [
+        Metadata(
+            name="serde",
+            version="1.0.228",
+            origin="https://github.com/serde-rs/serde/v1",
+            local_src_path=None,
+            license=["MIT OR Apache-2.0"],
+            copyright=["Serde Developers"],
+        ),
+        Metadata(
+            name="serde",
+            version="1.0.229",
+            origin="https://github.com/serde-rs/serde/v2",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["Serde Developers 2"],
+        ),
+    ]
+    markdown_report_writter = MarkdownReportingWritter(
+        document_name="serde@1.0.229",
+        ecosystem="rust",
+        created_at=lambda: datetime(2026, 6, 24, 12, 30, 0),
+    )
+
+    markdown = markdown_report_writter.write(metadata)
+
+    assert markdown.startswith("# License Compliance Report: serde\n")
+    assert "| Package | `serde` |" in markdown
+    assert "| Version | 1.0.229 |" in markdown
+    assert "| Dependencies | 1 |" in markdown
+    assert "| License | ['MIT'] |" in markdown
+    assert "| serde | https://github.com/serde-rs/serde/v2 |" not in markdown
+    assert (
+        "| serde | https://github.com/serde-rs/serde/v1 | "
+        "['MIT OR Apache-2.0'] | ['Serde Developers'] |"
+    ) in markdown
+
+
+def test_markdown_reporting_writter_does_not_guess_ambiguous_rust_root_by_name() -> (
+    None
+):
+    metadata = [
+        Metadata(
+            name="serde",
+            version="1.0.228",
+            origin="https://github.com/serde-rs/serde/v1",
+            local_src_path=None,
+            license=["MIT OR Apache-2.0"],
+            copyright=["Serde Developers"],
+        ),
+        Metadata(
+            name="serde",
+            version="1.0.229",
+            origin="https://github.com/serde-rs/serde/v2",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["Serde Developers 2"],
+        ),
+    ]
+    markdown_report_writter = MarkdownReportingWritter(
+        document_name="serde@^1.0",
+        ecosystem="rust",
+        created_at=lambda: datetime(2026, 6, 24, 12, 30, 0),
+    )
+
+    markdown = markdown_report_writter.write(metadata)
+
+    assert markdown.startswith("# License Compliance Report: serde\n")
+    assert "| Package | `serde` |" in markdown
+    assert "| Version | ^1.0 |" in markdown
+    assert "| Dependencies | 2 |" in markdown
+    assert "| License | [] |" in markdown
+    assert (
+        "| serde | https://github.com/serde-rs/serde/v1 | "
+        "['MIT OR Apache-2.0'] | ['Serde Developers'] |"
+    ) in markdown
+    assert (
+        "| serde | https://github.com/serde-rs/serde/v2 | "
+        "['MIT'] | ['Serde Developers 2'] |"
+    ) in markdown
+
+
 def test_markdown_reporting_writter_uses_defaults_for_empty_metadata() -> None:
     markdown_report_writter = MarkdownReportingWritter(
         created_at=lambda: datetime(2026, 6, 24, 12, 30, 0),
