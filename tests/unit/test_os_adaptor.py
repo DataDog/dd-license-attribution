@@ -188,6 +188,52 @@ def test_extract_tar_gz_rejects_special_members(member_type: bytes) -> None:
         extract_tar_gz(archive_content, "/destination")
 
 
+@pytest.mark.parametrize(
+    "member_name",
+    [
+        "../escape.txt",
+        "crate/../../escape.txt",
+        "/tmp/escape.txt",
+        "crate\\..\\escape.txt",
+    ],
+)
+def test_extract_tar_gz_rejects_unsafe_member_paths(member_name: str) -> None:
+    member = tarfile.TarInfo(member_name)
+    member.size = 0
+    archive_content = _tar_gz_with_member(member)
+
+    with pytest.raises(ValueError, match="Unsafe archive path"):
+        extract_tar_gz(archive_content, "/destination")
+
+
+@pytest.mark.parametrize("member_type", [tarfile.SYMTYPE, tarfile.LNKTYPE])
+def test_extract_tar_gz_rejects_link_members(member_type: bytes) -> None:
+    member = tarfile.TarInfo("crate/link")
+    member.type = member_type
+    member.linkname = "../escape.txt"
+    archive_content = _tar_gz_with_member(member)
+
+    with pytest.raises(ValueError, match="Unsafe archive path: crate/link"):
+        extract_tar_gz(archive_content, "/destination")
+
+
+def test_extract_tar_gz_rejects_too_many_members() -> None:
+    archive_content = _tar_gz_with_files(
+        {
+            "crate/one.txt": b"one",
+            "crate/two.txt": b"two",
+        }
+    )
+
+    with pytest.raises(ValueError, match="Archive contains more than 1 members"):
+        extract_tar_gz(archive_content, "/destination", max_members=1)
+
+
+def test_extract_tar_gz_rejects_invalid_member_limit() -> None:
+    with pytest.raises(ValueError, match="max_members must be greater than zero"):
+        extract_tar_gz(b"archive", "/destination", max_members=0)
+
+
 def test_extract_tar_gz_rejects_file_over_extracted_size_limit() -> None:
     archive_content = _tar_gz_with_files({"crate/large.txt": b"x" * 21})
 

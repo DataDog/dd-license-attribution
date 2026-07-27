@@ -38,6 +38,7 @@ RUST_LICENSE_TOOL_INSTALL_HINT = (
     "Install it with `cargo install dd-rust-license-tool` and see the README "
     "Requirements section."
 )
+RUST_LICENSE_TOOL_COMMAND_TIMEOUT_SECONDS = 120
 RUST_METADATA_MARKER = "_ddla_rust_metadata"
 
 
@@ -57,7 +58,8 @@ def is_rust_metadata(metadata: Metadata) -> bool:
 def ensure_rust_license_tool_installed() -> None:
     try:
         exit_code, output, error_output = run_command_with_check(
-            [RUST_LICENSE_TOOL_COMMAND, "--version"]
+            [RUST_LICENSE_TOOL_COMMAND, "--version"],
+            timeout=RUST_LICENSE_TOOL_COMMAND_TIMEOUT_SECONDS,
         )
     except FileNotFoundError as e:
         raise RustLicenseToolNotInstalledError(RUST_LICENSE_TOOL_INSTALL_HINT) from e
@@ -264,6 +266,7 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
             exit_code, output, error_output = run_command_with_check(
                 [RUST_LICENSE_TOOL_COMMAND, "dump"],
                 cwd=project_path,
+                timeout=RUST_LICENSE_TOOL_COMMAND_TIMEOUT_SECONDS,
             )
         except FileNotFoundError as e:
             raise RustLicenseToolNotInstalledError(
@@ -398,18 +401,6 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
             and metadata.origin in {None, "", metadata.name}
         )
 
-    def _get_root_package_names(self, project_path: str) -> set[str]:
-        package_name, _ = self._read_cargo_package_info(project_path)
-        if package_name is None:
-            return set()
-        return {package_name}
-
-    def _get_root_package_versions(self, project_path: str) -> dict[str, str]:
-        package_name, package_version = self._read_cargo_package_info(project_path)
-        if package_name is None or package_version is None:
-            return {}
-        return {package_name: package_version}
-
     def _get_root_package_metadata(
         self, project_path: str
     ) -> tuple[set[str], dict[str, str]]:
@@ -419,10 +410,6 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
         if package_version is None:
             return {package_name}, {}
         return {package_name}, {package_name: package_version}
-
-    def _read_cargo_package_name(self, project_path: str) -> str | None:
-        package_name, _ = self._read_cargo_package_info(project_path)
-        return package_name
 
     def _read_cargo_package_info(
         self, project_path: str

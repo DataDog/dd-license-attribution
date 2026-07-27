@@ -21,6 +21,7 @@ from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.rust_collection_strategy import (
     RUST_LICENSE_TOOL_COMMAND,
+    RUST_LICENSE_TOOL_COMMAND_TIMEOUT_SECONDS,
     RUST_LICENSE_TOOL_INSTALL_HINT,
     RustLicenseToolNotInstalledError,
     RustMetadataCollectionStrategy,
@@ -84,6 +85,14 @@ def _patch_common_io(
         return_value=(0, csv_content, ""),
     )
     return mock_path_join, mock_path_exists, mock_open_file, mock_run_command
+
+
+def _assert_dump_called_once(mock_run_command: Mock, cwd: str) -> None:
+    mock_run_command.assert_called_once_with(
+        [RUST_LICENSE_TOOL_COMMAND, "dump"],
+        cwd=cwd,
+        timeout=RUST_LICENSE_TOOL_COMMAND_TIMEOUT_SECONDS,
+    )
 
 
 def test_local_project_path_ingests_csv_and_filters_seed_entries(
@@ -160,13 +169,7 @@ def test_local_project_path_ingests_csv_and_filters_seed_entries(
     ]
     source_code_manager.get_canonical_urls.assert_not_called()
     source_code_manager.get_code.assert_not_called()
-    mock_run_command.assert_called_once_with(
-        [
-            RUST_LICENSE_TOOL_COMMAND,
-            "dump",
-        ],
-        cwd="/tmp/rust-resolve/serde",
-    )
+    _assert_dump_called_once(mock_run_command, "/tmp/rust-resolve/serde")
     mock_path_join.assert_called_once_with("/tmp/rust-resolve/serde", "Cargo.toml")
     mock_path_exists.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
     mock_open_file.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
@@ -215,10 +218,7 @@ def test_local_project_path_preserves_root_when_tool_omits_root_row(
     ]
     source_code_manager.get_canonical_urls.assert_not_called()
     source_code_manager.get_code.assert_not_called()
-    mock_run_command.assert_called_once_with(
-        [RUST_LICENSE_TOOL_COMMAND, "dump"],
-        cwd="/tmp/rust-resolve/serde",
-    )
+    _assert_dump_called_once(mock_run_command, "/tmp/rust-resolve/serde")
     mock_path_join.assert_called_once_with("/tmp/rust-resolve/serde", "Cargo.toml")
     mock_path_exists.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
     mock_open_file.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
@@ -270,10 +270,7 @@ def test_rust_metadata_replaces_fallback_origin_without_duplicating_dependency(
     ]
     source_code_manager.get_canonical_urls.assert_not_called()
     source_code_manager.get_code.assert_not_called()
-    mock_run_command.assert_called_once_with(
-        [RUST_LICENSE_TOOL_COMMAND, "dump"],
-        cwd="/tmp/rust-resolve/root-crate",
-    )
+    _assert_dump_called_once(mock_run_command, "/tmp/rust-resolve/root-crate")
     mock_path_exists.assert_not_called()
     mock_open_file.assert_not_called()
     mock_path_join.assert_not_called()
@@ -323,10 +320,7 @@ def test_rust_metadata_keeps_same_name_non_rust_dependency_separate(
     assert is_rust_metadata(result[1])
     source_code_manager.get_canonical_urls.assert_not_called()
     source_code_manager.get_code.assert_not_called()
-    mock_run_command.assert_called_once_with(
-        [RUST_LICENSE_TOOL_COMMAND, "dump"],
-        cwd="/tmp/rust-resolve/root-crate",
-    )
+    _assert_dump_called_once(mock_run_command, "/tmp/rust-resolve/root-crate")
     mock_path_exists.assert_not_called()
     mock_open_file.assert_not_called()
     mock_path_join.assert_not_called()
@@ -374,13 +368,7 @@ def test_local_project_path_only_root_project_filters_to_requested_crate_and_set
         )
     ]
     source_code_manager.get_code.assert_not_called()
-    mock_run_command.assert_called_once_with(
-        [
-            RUST_LICENSE_TOOL_COMMAND,
-            "dump",
-        ],
-        cwd="/tmp/rust-resolve/serde",
-    )
+    _assert_dump_called_once(mock_run_command, "/tmp/rust-resolve/serde")
     mock_path_join.assert_called_once_with("/tmp/rust-resolve/serde", "Cargo.toml")
     mock_path_exists.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
     mock_open_file.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
@@ -420,13 +408,7 @@ def test_local_project_path_only_transitive_filters_requested_crate(
     assert [metadata.name for metadata in result] == ["anyhow", "blank-origin"]
     assert not any(metadata.name == "serde" for metadata in result)
     source_code_manager.get_code.assert_not_called()
-    mock_run_command.assert_called_once_with(
-        [
-            RUST_LICENSE_TOOL_COMMAND,
-            "dump",
-        ],
-        cwd="/tmp/rust-resolve/serde",
-    )
+    _assert_dump_called_once(mock_run_command, "/tmp/rust-resolve/serde")
     mock_path_join.assert_called_once_with("/tmp/rust-resolve/serde", "Cargo.toml")
     mock_path_exists.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
     mock_open_file.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
@@ -527,6 +509,7 @@ def test_github_mode_walks_sibling_cargo_projects_and_filters_roots_for_transiti
                     "dump",
                 ],
                 cwd="/cache/org_repo/crate-a",
+                timeout=RUST_LICENSE_TOOL_COMMAND_TIMEOUT_SECONDS,
             ),
             call(
                 [
@@ -534,6 +517,7 @@ def test_github_mode_walks_sibling_cargo_projects_and_filters_roots_for_transiti
                     "dump",
                 ],
                 cwd="/cache/org_repo/crate-b",
+                timeout=RUST_LICENSE_TOOL_COMMAND_TIMEOUT_SECONDS,
             ),
         ]
     )
@@ -729,7 +713,10 @@ def test_ensure_rust_license_tool_installed_runs_version_check(
 
     ensure_rust_license_tool_installed()
 
-    mock_run_command.assert_called_once_with([RUST_LICENSE_TOOL_COMMAND, "--version"])
+    mock_run_command.assert_called_once_with(
+        [RUST_LICENSE_TOOL_COMMAND, "--version"],
+        timeout=RUST_LICENSE_TOOL_COMMAND_TIMEOUT_SECONDS,
+    )
 
 
 def test_ensure_rust_license_tool_installed_raises_when_binary_is_missing(
@@ -744,7 +731,10 @@ def test_ensure_rust_license_tool_installed_raises_when_binary_is_missing(
         ensure_rust_license_tool_installed()
 
     assert str(exc_info.value) == RUST_LICENSE_TOOL_INSTALL_HINT
-    mock_run_command.assert_called_once_with([RUST_LICENSE_TOOL_COMMAND, "--version"])
+    mock_run_command.assert_called_once_with(
+        [RUST_LICENSE_TOOL_COMMAND, "--version"],
+        timeout=RUST_LICENSE_TOOL_COMMAND_TIMEOUT_SECONDS,
+    )
 
 
 def test_ensure_rust_license_tool_installed_raises_for_os_error(
@@ -759,7 +749,10 @@ def test_ensure_rust_license_tool_installed_raises_for_os_error(
         ensure_rust_license_tool_installed()
 
     assert str(exc_info.value) == RUST_LICENSE_TOOL_INSTALL_HINT
-    mock_run_command.assert_called_once_with([RUST_LICENSE_TOOL_COMMAND, "--version"])
+    mock_run_command.assert_called_once_with(
+        [RUST_LICENSE_TOOL_COMMAND, "--version"],
+        timeout=RUST_LICENSE_TOOL_COMMAND_TIMEOUT_SECONDS,
+    )
 
 
 def test_ensure_rust_license_tool_installed_raises_when_version_check_fails(
@@ -775,7 +768,10 @@ def test_ensure_rust_license_tool_installed_raises_when_version_check_fails(
 
     assert RUST_LICENSE_TOOL_INSTALL_HINT in str(exc_info.value)
     assert "stdout:\nversion stdout\nstderr:\nversion stderr" in str(exc_info.value)
-    mock_run_command.assert_called_once_with([RUST_LICENSE_TOOL_COMMAND, "--version"])
+    mock_run_command.assert_called_once_with(
+        [RUST_LICENSE_TOOL_COMMAND, "--version"],
+        timeout=RUST_LICENSE_TOOL_COMMAND_TIMEOUT_SECONDS,
+    )
 
 
 def test_missing_dd_rust_license_tool_raises_typed_error(
@@ -797,13 +793,7 @@ def test_missing_dd_rust_license_tool_raises_typed_error(
         strategy.augment_metadata([])
 
     assert str(exc_info.value) == RUST_LICENSE_TOOL_INSTALL_HINT
-    mock_run_command.assert_called_once_with(
-        [
-            RUST_LICENSE_TOOL_COMMAND,
-            "dump",
-        ],
-        cwd="/tmp/rust-resolve/serde",
-    )
+    _assert_dump_called_once(mock_run_command, "/tmp/rust-resolve/serde")
     mock_path_exists.assert_not_called()
     mock_open_file.assert_not_called()
 
@@ -830,13 +820,7 @@ def test_nonzero_missing_binary_output_raises_typed_error(
     with pytest.raises(RustLicenseToolNotInstalledError):
         strategy.augment_metadata([])
 
-    mock_run_command.assert_called_once_with(
-        [
-            RUST_LICENSE_TOOL_COMMAND,
-            "dump",
-        ],
-        cwd="/tmp/rust-resolve/serde",
-    )
+    _assert_dump_called_once(mock_run_command, "/tmp/rust-resolve/serde")
     mock_path_exists.assert_not_called()
     mock_open_file.assert_not_called()
 
@@ -916,13 +900,7 @@ def test_invalid_csv_keeps_non_seed_metadata(
             copyright=[],
         ),
     ]
-    mock_run_command.assert_called_once_with(
-        [
-            RUST_LICENSE_TOOL_COMMAND,
-            "dump",
-        ],
-        cwd="/tmp/rust-resolve/serde",
-    )
+    _assert_dump_called_once(mock_run_command, "/tmp/rust-resolve/serde")
     mock_path_join.assert_called_once_with("/tmp/rust-resolve/serde", "Cargo.toml")
     mock_path_exists.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
     mock_open_file.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
@@ -984,12 +962,9 @@ def test_empty_tool_output_keeps_non_seed_metadata(
             copyright=[],
         ),
     ]
-    mock_run_command.assert_called_once_with(
-        [
-            RUST_LICENSE_TOOL_COMMAND,
-            "dump",
-        ],
-        cwd="/tmp/rust-resolve/dd-rust-license-tool",
+    _assert_dump_called_once(
+        mock_run_command,
+        "/tmp/rust-resolve/dd-rust-license-tool",
     )
     mock_path_join.assert_called_once_with(
         "/tmp/rust-resolve/dd-rust-license-tool", "Cargo.toml"
@@ -1042,13 +1017,7 @@ def test_os_error_that_looks_like_missing_binary_raises_typed_error(
     with pytest.raises(RustLicenseToolNotInstalledError):
         strategy.augment_metadata([])
 
-    mock_run_command.assert_called_once_with(
-        [
-            RUST_LICENSE_TOOL_COMMAND,
-            "dump",
-        ],
-        cwd="/tmp/rust-resolve/serde",
-    )
+    _assert_dump_called_once(mock_run_command, "/tmp/rust-resolve/serde")
     mock_path_exists.assert_not_called()
     mock_open_file.assert_not_called()
 
@@ -1105,13 +1074,7 @@ def test_non_missing_os_error_returns_non_seed_metadata(
             copyright=[],
         ),
     ]
-    mock_run_command.assert_called_once_with(
-        [
-            RUST_LICENSE_TOOL_COMMAND,
-            "dump",
-        ],
-        cwd="/tmp/rust-resolve/serde",
-    )
+    _assert_dump_called_once(mock_run_command, "/tmp/rust-resolve/serde")
     mock_path_join.assert_called_once_with("/tmp/rust-resolve/serde", "Cargo.toml")
     mock_path_exists.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
     mock_open_file.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
@@ -1169,13 +1132,7 @@ def test_nonzero_tool_failure_returns_non_seed_metadata(
             copyright=[],
         ),
     ]
-    mock_run_command.assert_called_once_with(
-        [
-            RUST_LICENSE_TOOL_COMMAND,
-            "dump",
-        ],
-        cwd="/tmp/rust-resolve/serde",
-    )
+    _assert_dump_called_once(mock_run_command, "/tmp/rust-resolve/serde")
     mock_path_join.assert_called_once_with("/tmp/rust-resolve/serde", "Cargo.toml")
     mock_path_exists.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
     mock_open_file.assert_called_once_with("/tmp/rust-resolve/serde/Cargo.toml")
@@ -1315,137 +1272,3 @@ def test_ingest_preserves_existing_fields_when_already_present() -> None:
     ]
     source_code_manager.get_canonical_urls.assert_not_called()
 
-
-def test_read_cargo_package_name_returns_none_when_file_is_missing(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    source_code_manager = _mock_source_code_manager()
-    strategy = RustMetadataCollectionStrategy(
-        "https://github.com/org/repo",
-        source_code_manager,
-        ProjectScope.ALL,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.path_join",
-        return_value="/repo/Cargo.toml",
-    )
-    mock_path_exists = mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.path_exists",
-        return_value=False,
-    )
-    mock_open_file = mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.open_file"
-    )
-
-    result = strategy._read_cargo_package_name("/repo")
-
-    assert result is None
-    source_code_manager.get_canonical_urls.assert_called_once_with(
-        "https://github.com/org/repo"
-    )
-    mock_path_exists.assert_called_once_with("/repo/Cargo.toml")
-    mock_open_file.assert_not_called()
-
-
-def test_get_root_package_names_returns_empty_set_when_cargo_name_is_missing(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    source_code_manager = _mock_source_code_manager()
-    strategy = RustMetadataCollectionStrategy(
-        "https://github.com/org/repo",
-        source_code_manager,
-        ProjectScope.ALL,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.path_join",
-        return_value="/repo/Cargo.toml",
-    )
-    mock_path_exists = mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.path_exists",
-        return_value=False,
-    )
-    mock_open_file = mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.open_file"
-    )
-
-    result = strategy._get_root_package_names("/repo")
-
-    assert result == set()
-    source_code_manager.get_canonical_urls.assert_called_once_with(
-        "https://github.com/org/repo"
-    )
-    mock_path_exists.assert_called_once_with("/repo/Cargo.toml")
-    mock_open_file.assert_not_called()
-
-
-@pytest.mark.parametrize(
-    "cargo_toml",
-    [
-        "[package\n",
-        "[workspace]\nmembers = []\n",
-        "[package]\nname = 123\n",
-    ],
-)
-def test_read_cargo_package_name_returns_none_for_unsupported_toml(
-    mocker: pytest_mock.MockFixture,
-    cargo_toml: str,
-) -> None:
-    source_code_manager = _mock_source_code_manager()
-    strategy = RustMetadataCollectionStrategy(
-        "https://github.com/org/repo",
-        source_code_manager,
-        ProjectScope.ALL,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.path_join",
-        return_value="/repo/Cargo.toml",
-    )
-    mock_path_exists = mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.path_exists",
-        return_value=True,
-    )
-    mock_open_file = mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.open_file",
-        return_value=cargo_toml,
-    )
-
-    result = strategy._read_cargo_package_name("/repo")
-
-    assert result is None
-    source_code_manager.get_canonical_urls.assert_called_once_with(
-        "https://github.com/org/repo"
-    )
-    mock_path_exists.assert_called_once_with("/repo/Cargo.toml")
-    mock_open_file.assert_called_once_with("/repo/Cargo.toml")
-
-
-def test_read_cargo_package_name_returns_none_when_file_read_fails(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    source_code_manager = _mock_source_code_manager()
-    strategy = RustMetadataCollectionStrategy(
-        "https://github.com/org/repo",
-        source_code_manager,
-        ProjectScope.ALL,
-    )
-    mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.path_join",
-        return_value="/repo/Cargo.toml",
-    )
-    mock_path_exists = mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.path_exists",
-        return_value=True,
-    )
-    mock_open_file = mocker.patch(
-        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.open_file",
-        side_effect=OSError("permission denied"),
-    )
-
-    result = strategy._read_cargo_package_name("/repo")
-
-    assert result is None
-    source_code_manager.get_canonical_urls.assert_called_once_with(
-        "https://github.com/org/repo"
-    )
-    mock_path_exists.assert_called_once_with("/repo/Cargo.toml")
-    mock_open_file.assert_called_once_with("/repo/Cargo.toml")

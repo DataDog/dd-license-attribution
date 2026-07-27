@@ -21,6 +21,7 @@ DDLA_USER_AGENT = (
 DOWNLOAD_CHUNK_SIZE_BYTES = 1024 * 1024
 MAX_DOWNLOAD_BYTES = 100 * 1024 * 1024
 MAX_EXTRACTED_ARCHIVE_BYTES = 100 * 1024 * 1024
+MAX_ARCHIVE_MEMBERS = 10_000
 
 
 def _merge_env(extra: dict[str, str] | None) -> dict[str, str] | None:
@@ -124,6 +125,7 @@ def download_url(
     if max_bytes <= 0:
         raise ValueError("max_bytes must be greater than zero")
 
+    response: requests.Response | None = None
     try:
         response = requests.get(
             url,
@@ -158,7 +160,7 @@ def download_url(
     except requests.RequestException as e:
         raise OSError(f"Failed to download {url}: {e}") from e
     finally:
-        if "response" in locals():
+        if response is not None:
             response.close()
     return b"".join(chunks)
 
@@ -170,11 +172,12 @@ def _is_safe_tar_member(member: tarfile.TarInfo, destination: str) -> bool:
     if member.issym() or member.islnk():
         return False
 
-    if os.path.isabs(member.name) or ".." in member.name.split("/"):
+    member_name = member.name.replace("\\", "/")
+    if os.path.isabs(member_name) or ".." in member_name.split("/"):
         return False
 
     destination_abs = os.path.abspath(destination)
-    member_target = os.path.abspath(os.path.join(destination_abs, member.name))
+    member_target = os.path.abspath(os.path.join(destination_abs, member_name))
     return member_target == destination_abs or member_target.startswith(
         f"{destination_abs}{os.sep}"
     )
@@ -184,13 +187,20 @@ def extract_tar_gz(
     archive_content: bytes,
     destination: str,
     max_extracted_bytes: int = MAX_EXTRACTED_ARCHIVE_BYTES,
+    max_members: int = MAX_ARCHIVE_MEMBERS,
 ) -> list[str]:
     if max_extracted_bytes <= 0:
         raise ValueError("max_extracted_bytes must be greater than zero")
+    if max_members <= 0:
+        raise ValueError("max_members must be greater than zero")
 
     try:
         with tarfile.open(fileobj=io.BytesIO(archive_content), mode="r:gz") as archive:
             members = archive.getmembers()
+            if len(members) > max_members:
+                raise ValueError(
+                    f"Archive contains more than {max_members} members"
+                )
             unsafe_members = [
                 member.name
                 for member in members
@@ -213,7 +223,7 @@ def extract_tar_gz(
                         f"of {max_extracted_bytes} bytes"
                     )
 
-            archive.extractall(destination, members=members)
+            archive.extractall(destination, members=members, filter="data")
             return [member.name for member in members]
     except tarfile.TarError as e:
         raise ValueError(f"Malformed gzip tar archive: {e}") from e
