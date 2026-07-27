@@ -157,7 +157,9 @@ def _repository_has_cargo_project(
         return False
 
     for _, dirs, files in walk_directory(local_full_path):
-        dirs[:] = [directory for directory in dirs if directory not in {".git", "target"}]
+        dirs[:] = [
+            directory for directory in dirs if directory not in {".git", "target"}
+        ]
         if "Cargo.toml" in files:
             return True
     return False

@@ -11,7 +11,9 @@ from unittest.mock import ANY, Mock, patch
 import pytest
 from typer.testing import CliRunner
 
-from dd_license_attribution.artifact_management.artifact_manager import SourceCodeReference
+from dd_license_attribution.artifact_management.artifact_manager import (
+    SourceCodeReference,
+)
 from dd_license_attribution.cli.main_cli import app
 from dd_license_attribution.metadata_collector.strategies.rust_collection_strategy import (
     RUST_LICENSE_TOOL_INSTALL_HINT,

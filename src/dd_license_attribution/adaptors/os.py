@@ -198,9 +198,7 @@ def extract_tar_gz(
         with tarfile.open(fileobj=io.BytesIO(archive_content), mode="r:gz") as archive:
             members = archive.getmembers()
             if len(members) > max_members:
-                raise ValueError(
-                    f"Archive contains more than {max_members} members"
-                )
+                raise ValueError(f"Archive contains more than {max_members} members")
             unsafe_members = [
                 member.name
                 for member in members

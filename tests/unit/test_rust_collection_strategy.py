@@ -1271,4 +1271,3 @@ def test_ingest_preserves_existing_fields_when_already_present() -> None:
         )
     ]
     source_code_manager.get_canonical_urls.assert_not_called()
-
