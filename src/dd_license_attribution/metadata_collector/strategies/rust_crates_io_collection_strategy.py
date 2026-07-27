@@ -63,30 +63,35 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = metadata.copy()
         project_paths = self._get_project_paths()
-        crate_versions: dict[str, set[str]] = {}
+        locked_crate_versions: dict[str, set[str]] = {}
+        manifest_crate_versions: dict[str, set[str]] = {}
         for project_path in project_paths:
             self._merge_crate_versions(
-                crate_versions,
+                locked_crate_versions,
                 self._get_locked_crate_versions(project_path),
             )
             self._merge_crate_versions(
-                crate_versions,
+                manifest_crate_versions,
                 self._get_manifest_crate_versions(
                     project_path,
                     include_package_version=self.local_project_path is not None,
                 ),
             )
 
-        metadata_cache: dict[tuple[str, str | None], CrateMetadata | None] = {}
+        metadata_cache: dict[tuple[str, str | None, bool], CrateMetadata | None] = {}
         for package in updated_metadata:
-            if package.name is None or package.name not in crate_versions:
+            if package.name is None or (
+                package.name not in locked_crate_versions
+                and package.name not in manifest_crate_versions
+            ):
                 continue
             if not self._should_enrich_package(package):
                 continue
 
             requested_version = self._choose_requested_version(
                 package.version,
-                crate_versions[package.name],
+                locked_crate_versions.get(package.name, set()),
+                manifest_crate_versions.get(package.name, set()),
             )
             if package.version is None:
                 package.version = requested_version
@@ -99,12 +104,13 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
             ):
                 continue
 
-            cache_key = (package.name, requested_version)
+            include_authors = not package.copyright
+            cache_key = (package.name, requested_version, include_authors)
             if cache_key not in metadata_cache:
                 metadata_cache[cache_key] = self._get_crates_io_metadata(
                     package.name,
                     requested_version,
-                    include_authors=not package.copyright,
+                    include_authors=include_authors,
                 )
             crate_metadata = metadata_cache[cache_key]
             if crate_metadata is None:
@@ -312,24 +318,36 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
     def _choose_requested_version(
         self,
         metadata_version: str | None,
-        candidate_versions: set[str],
+        locked_candidate_versions: set[str],
+        manifest_candidate_versions: set[str],
     ) -> str | None:
+        locked_version = self._single_exact_version(locked_candidate_versions)
+        if locked_version is not None:
+            return locked_version
+        if len(self._exact_versions(locked_candidate_versions)) > 1:
+            return None
+
         if metadata_version is not None and ">=" not in metadata_version:
             preferred_version = self._preferred_crate_version(metadata_version)
             if preferred_version is not None:
                 return preferred_version
 
+        return self._single_exact_version(manifest_candidate_versions)
+
+    def _single_exact_version(self, candidate_versions: set[str]) -> str | None:
+        exact_versions = self._exact_versions(candidate_versions)
+        if len(exact_versions) == 1:
+            return str(max(exact_versions))
+        return None
+
+    def _exact_versions(self, candidate_versions: set[str]) -> list[semver.Version]:
         exact_versions: list[semver.Version] = []
         for version in candidate_versions:
             try:
                 exact_versions.append(semver.Version.parse(version))
             except ValueError:
                 continue
-        if len(exact_versions) == 1:
-            return str(max(exact_versions))
-        if len(exact_versions) > 1:
-            return None
-        return None
+        return exact_versions
 
     def _get_crates_io_metadata(
         self,

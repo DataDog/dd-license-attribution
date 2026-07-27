@@ -26,6 +26,7 @@ from dd_license_attribution.adaptors.os import (
     create_dirs,
     path_exists,
     path_join,
+    walk_directory,
     write_file,
 )
 from dd_license_attribution.artifact_management.artifact_manager import (
@@ -134,6 +135,32 @@ def _canonical_ecosystem(ecosystem: str | None) -> str | None:
     if ecosystem == "python":
         return "pypi"
     return ecosystem
+
+
+def _looks_like_repository_package(package: str) -> bool:
+    return package.startswith("git@") or "://" in package or "/" in package
+
+
+def _repository_has_cargo_project(
+    source_code_manager: SourceCodeManager,
+    package: str,
+) -> bool:
+    if not _looks_like_repository_package(package):
+        return False
+
+    source_code_ref = source_code_manager.get_code(package)
+    if source_code_ref is None:
+        return False
+
+    local_full_path = getattr(source_code_ref, "local_full_path", None)
+    if not isinstance(local_full_path, str):
+        return False
+
+    for _, dirs, files in walk_directory(local_full_path):
+        dirs[:] = [directory for directory in dirs if directory not in {".git", "target"}]
+        if "Cargo.toml" in files:
+            return True
+    return False
 
 
 def _build_writer(
@@ -782,6 +809,17 @@ def generate_sbom(
                 )
         else:
             # Standard GitHub repository mode
+            if enabled_strategies["RustMetadataCollectionStrategy"]:
+                try:
+                    if _repository_has_cargo_project(source_code_manager, package):
+                        ensure_rust_license_tool_installed()
+                except RustLicenseToolNotInstalledError as e:
+                    logger.error(str(e))
+                    sys.exit(1)
+                except (NonAccessibleRepository, UnauthorizedRepository) as e:
+                    logger.error(str(e))
+                    sys.exit(1)
+
             if enabled_strategies["GitHubSbomMetadataCollectionStrategy"]:
                 strategies.append(
                     GitHubSbomMetadataCollectionStrategy(

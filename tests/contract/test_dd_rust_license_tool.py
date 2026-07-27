@@ -40,3 +40,5 @@ def test_dd_rust_license_tool_dump_emits_expected_csv_header() -> None:
     assert output.splitlines()[0] == "Component,Origin,License,Copyright"
     assert "serde" in output
     assert "anyhow" in output
+    assert "itoa" not in output
+    assert "cc" not in output

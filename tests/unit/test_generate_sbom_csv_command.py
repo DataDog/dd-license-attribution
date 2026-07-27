@@ -11,6 +11,7 @@ from unittest.mock import ANY, Mock, patch
 import pytest
 from typer.testing import CliRunner
 
+from dd_license_attribution.artifact_management.artifact_manager import SourceCodeReference
 from dd_license_attribution.cli.main_cli import app
 from dd_license_attribution.metadata_collector.strategies.rust_collection_strategy import (
     RUST_LICENSE_TOOL_INSTALL_HINT,
@@ -144,6 +145,111 @@ def test_skip_all_strategies(
     assert "GitHubSbomMetadataCollectionStrategy" not in strategy_classes
     assert "RustMetadataCollectionStrategy" not in strategy_classes
     assert "ScanCodeToolkitMetadataCollectionStrategy" not in strategy_classes
+
+
+@patch(
+    "dd_license_attribution.cli.generate_sbom_command.ensure_rust_license_tool_installed"
+)
+@patch("dd_license_attribution.cli.generate_sbom_command.walk_directory")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_default_repository_rust_project_preflight_failure_exits_before_collection(
+    mock_metadata_collector: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_walk_directory: Mock,
+    mock_ensure_rust_license_tool_installed: Mock,
+) -> None:
+    source_code_ref = SourceCodeReference(
+        repo_url="https://github.com/org/rust-repo",
+        branch="main",
+        local_root_path="/cache/org-rust-repo",
+        local_full_path="/cache/org-rust-repo",
+    )
+    mock_source_code_manager.return_value.get_code.return_value = source_code_ref
+    mock_walk_directory.return_value = [
+        ("/cache/org-rust-repo", [".git", "target"], ["Cargo.toml"])
+    ]
+    mock_ensure_rust_license_tool_installed.side_effect = (
+        RustLicenseToolNotInstalledError(RUST_LICENSE_TOOL_INSTALL_HINT)
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "https://github.com/org/rust-repo",
+            "--no-gh-auth",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert RUST_LICENSE_TOOL_INSTALL_HINT in result.stderr
+    mock_source_code_manager.return_value.get_code.assert_called_once_with(
+        "https://github.com/org/rust-repo"
+    )
+    mock_walk_directory.assert_called_once_with("/cache/org-rust-repo")
+    mock_ensure_rust_license_tool_installed.assert_called_once_with()
+    mock_metadata_collector.assert_not_called()
+    mock_python_env_manager.assert_not_called()
+    mock_github.assert_called_once_with()
+
+
+@patch(
+    "dd_license_attribution.cli.generate_sbom_command.ensure_rust_license_tool_installed"
+)
+@patch("dd_license_attribution.cli.generate_sbom_command.walk_directory")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_default_repository_without_cargo_skips_rust_tool_preflight(
+    mock_metadata_collector: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_walk_directory: Mock,
+    mock_ensure_rust_license_tool_installed: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    source_code_ref = SourceCodeReference(
+        repo_url="https://github.com/org/python-repo",
+        branch="main",
+        local_root_path="/cache/org-python-repo",
+        local_full_path="/cache/org-python-repo",
+    )
+    mock_source_code_manager.return_value.get_code.return_value = source_code_ref
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/python-repo",
+        None,
+    )
+    mock_walk_directory.return_value = [
+        ("/cache/org-python-repo", [".git", "target"], ["pyproject.toml"])
+    ]
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "https://github.com/org/python-repo",
+            "--no-gh-auth",
+        ],
+    )
+
+    assert result.exit_code == 0
+    mock_source_code_manager.return_value.get_code.assert_called_once_with(
+        "https://github.com/org/python-repo"
+    )
+    mock_walk_directory.assert_called_once_with("/cache/org-python-repo")
+    mock_ensure_rust_license_tool_installed.assert_not_called()
+    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+        "https://github.com/org/python-repo"
+    )
+    mock_python_env_manager.assert_called_once_with(ANY, 86400)
+    mock_github.assert_called_once_with()
 
 
 def test_missing_package() -> None:

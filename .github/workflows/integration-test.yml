@@ -193,6 +193,8 @@ jobs:
           grep -q "regex" rust-ecosystem-output.txt || { echo "Expected regex root crate in output"; exit 1; }
           grep -q "aho-corasick" rust-ecosystem-output.txt || { echo "Expected aho-corasick dependency in output"; exit 1; }
           grep -q "memchr" rust-ecosystem-output.txt || { echo "Expected memchr dependency in output"; exit 1; }
+          ! grep -q "quickcheck" rust-ecosystem-output.txt || { echo "Unexpected dev dependency quickcheck in output"; exit 1; }
+          ! grep -q "lazy_static" rust-ecosystem-output.txt || { echo "Unexpected dev dependency lazy_static in output"; exit 1; }
           echo "Rust ecosystem test passed"
 
       - name: Upload rust ecosystem output on failure

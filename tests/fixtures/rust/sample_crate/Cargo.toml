@@ -5,5 +5,11 @@ edition = "2021"
 publish = false
 
 [dependencies]
-anyhow = "1.0.86"
-serde = "1.0.203"
+anyhow = "=1.0.86"
+serde = "=1.0.203"
+
+[dev-dependencies]
+itoa = "=1.0.15"
+
+[build-dependencies]
+cc = "=1.0.99"

@@ -763,6 +763,180 @@ def test_locked_crate_is_used_when_manifest_is_missing(
     mock_read_archive.assert_not_called()
 
 
+def test_locked_crate_version_takes_precedence_over_manifest_exact_pin(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=[True, True],
+    )
+    cargo_lock = (
+        '[[package]]\nname = "regex"\nversion = "1.13.0"\n'
+        'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
+    )
+    cargo_toml = '[dependencies]\nregex = "=1.12.0"\n'
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        side_effect=[cargo_lock, cargo_toml],
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_url",
+        return_value=_crate_response(
+            "regex",
+            "1.13.0",
+            repository="https://github.com/rust-lang/regex",
+        ),
+    )
+    mock_read_archive = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.read_tar_gz_text_file"
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "regex",
+        source_code_manager,
+        local_project_path="/project",
+    )
+
+    result = strategy.augment_metadata(
+        [_metadata("regex", None, copyright=["Existing Author"])]
+    )
+
+    assert result == [
+        _metadata(
+            "regex",
+            "1.13.0",
+            origin="https://github.com/rust-lang/regex",
+            license=["MIT OR Apache-2.0"],
+            copyright=["Existing Author"],
+        )
+    ]
+    mock_path_exists.assert_has_calls(
+        [call("/project/Cargo.lock"), call("/project/Cargo.toml")]
+    )
+    assert mock_path_exists.call_count == 2
+    mock_open_file.assert_has_calls(
+        [call("/project/Cargo.lock"), call("/project/Cargo.toml")]
+    )
+    assert mock_open_file.call_count == 2
+    mock_download.assert_called_once_with(
+        f"{CRATES_IO_API_BASE_URL}/regex",
+        user_agent=CRATES_IO_USER_AGENT,
+    )
+    mock_read_archive.assert_not_called()
+
+
+def test_crates_io_cache_distinguishes_author_fetches(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=[True, False],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        return_value=(
+            '[[package]]\nname = "regex"\nversion = "1.13.0"\n'
+            'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
+        ),
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_url",
+        side_effect=[
+            _crate_response(
+                "regex",
+                "1.13.0",
+                repository="https://github.com/rust-lang/regex",
+            ),
+            _crate_response(
+                "regex",
+                "1.13.0",
+                repository="https://github.com/rust-lang/regex",
+            ),
+            b"crate archive",
+        ],
+    )
+    mock_read_archive = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.read_tar_gz_text_file",
+        return_value='[package]\nname = "regex"\nauthors = ["The Rust Developers"]\n',
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "regex",
+        source_code_manager,
+        local_project_path="/project",
+    )
+
+    result = strategy.augment_metadata(
+        [
+            _metadata(
+                "regex",
+                None,
+                license=["MIT OR Apache-2.0"],
+                copyright=["Existing Author"],
+            ),
+            _metadata("regex", None),
+        ]
+    )
+
+    assert result == [
+        _metadata(
+            "regex",
+            "1.13.0",
+            origin="https://github.com/rust-lang/regex",
+            license=["MIT OR Apache-2.0"],
+            copyright=["Existing Author"],
+        ),
+        _metadata(
+            "regex",
+            "1.13.0",
+            origin="https://github.com/rust-lang/regex",
+            license=["MIT OR Apache-2.0"],
+            copyright=["The Rust Developers"],
+        ),
+    ]
+    mock_path_exists.assert_has_calls(
+        [call("/project/Cargo.lock"), call("/project/Cargo.toml")]
+    )
+    assert mock_path_exists.call_count == 2
+    mock_open_file.assert_called_once_with("/project/Cargo.lock")
+    mock_download.assert_has_calls(
+        [
+            call(
+                f"{CRATES_IO_API_BASE_URL}/regex",
+                user_agent=CRATES_IO_USER_AGENT,
+            ),
+            call(
+                f"{CRATES_IO_API_BASE_URL}/regex",
+                user_agent=CRATES_IO_USER_AGENT,
+            ),
+            call(
+                f"{CRATES_IO_API_BASE_URL}/regex/1.13.0/download",
+                user_agent=CRATES_IO_USER_AGENT,
+            ),
+        ]
+    )
+    assert mock_download.call_count == 3
+    mock_read_archive.assert_called_once_with(b"crate archive", "/Cargo.toml")
+
+
 @pytest.mark.parametrize(
     "metadata_version",
     [None, ">= 1.13.0,< 2.0.0"],
