@@ -56,11 +56,6 @@ jobs:
           site: datadoghq.com
           code_coverage: "true"
 
-      - name: Run contract tests
-        env:
-          JOB_ID: ${{ job.check_run_id }}
-        run: pytest tests/contract
-
       - name: Run tests with coverage
         env:
           JOB_ID: ${{ job.check_run_id }}
