@@ -7,7 +7,7 @@
 
 import pytest
 
-from dd_license_attribution.adaptors.os import run_command_with_check
+from dd_license_attribution.adaptors.os import get_env_var, run_command_with_check
 
 
 def _run_dd_rust_license_tool(
@@ -16,6 +16,8 @@ def _run_dd_rust_license_tool(
     try:
         return run_command_with_check(["dd-rust-license-tool", *args], cwd=cwd)
     except OSError:
+        if get_env_var("CI") == "true":
+            raise
         pytest.skip("dd-rust-license-tool not installed")
 
 

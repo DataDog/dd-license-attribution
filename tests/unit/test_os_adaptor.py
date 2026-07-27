@@ -18,6 +18,7 @@ from dd_license_attribution.adaptors.os import (
     DOWNLOAD_CHUNK_SIZE_BYTES,
     download_url,
     extract_tar_gz,
+    get_env_var,
     normalize_path,
     read_tar_gz_text_file,
     run_command,
@@ -154,6 +155,20 @@ def test_download_url_wraps_request_errors(mocker: pytest_mock.MockFixture) -> N
         "https://example.test/crate/download",
         "test-agent",
     )
+
+
+def test_get_env_var_returns_environment_value(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_environ_get = mocker.patch(
+        "dd_license_attribution.adaptors.os.os.environ.get",
+        return_value="true",
+    )
+
+    result = get_env_var("CI")
+
+    assert result == "true"
+    mock_environ_get.assert_called_once_with("CI")
 
 
 @pytest.mark.parametrize(

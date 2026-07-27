@@ -31,6 +31,10 @@ def _merge_env(extra: dict[str, str] | None) -> dict[str, str] | None:
     return merged
 
 
+def get_env_var(name: str) -> str | None:
+    return os.environ.get(name)
+
+
 def list_dir(path: str) -> list[str]:
     return os.listdir(path)
 
