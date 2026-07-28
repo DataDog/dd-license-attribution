@@ -396,21 +396,11 @@ class SourceCodeManager(ArtifactManager):
             git_env = None
 
         if api_url is None and not skip_canonical_lookup:
-            status, _ = self.get_repository_info(
-                original_parsed_url.owner, original_parsed_url.repo
-            )
-            if status not in {401, 403}:
-                logger.debug(
-                    "Could not resolve canonical URL for %s, not a GitHub repository",
-                    resource_url,
-                )
-                return None
             logger.debug(
-                "Could not resolve canonical API URL for %s due to GitHub API status %s; falling back to git clone",
+                "Could not resolve canonical URL for %s, not a GitHub repository",
                 resource_url,
-                status,
             )
-            git_env = NONINTERACTIVE_GIT_ENV
+            return None
 
         parsed_url = parse_git_url(canonical_url)
         if not parsed_url.valid or not parsed_url.github:
