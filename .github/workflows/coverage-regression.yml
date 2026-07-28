@@ -54,6 +54,7 @@ jobs:
       - name: Run coverage on target branch
         env:
           JOB_ID: ${{ job.check_run_id }}
+          DD_CIVISIBILITY_ITR_ENABLED: "false"
           PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -70,6 +71,7 @@ jobs:
       - name: Run coverage on PR branch
         env:
           JOB_ID: ${{ job.check_run_id }}
+          DD_CIVISIBILITY_ITR_ENABLED: "false"
         run: |
           pytest tests/unit/ --cov=src/dd_license_attribution --cov-report=xml:coverage-pr.xml -q
 
