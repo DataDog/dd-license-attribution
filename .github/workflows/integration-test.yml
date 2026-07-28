@@ -115,11 +115,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
-          if [ "${EVENT_NAME}" = "pull_request" ]; then
-            dd-license-attribution generate-sbom --format spdx --no-gh-auth --use-mirrors=mirrors.json https://github.com/DataDog/dd-license-attribution > ddla-spdx-output.json
-          else
-            dd-license-attribution generate-sbom --format spdx https://github.com/DataDog/dd-license-attribution > ddla-spdx-output.json
-          fi
+          dd-license-attribution generate-sbom --format spdx https://github.com/DataDog/dd-license-attribution > ddla-spdx-output.json
 
           python - <<'PY'
           import json
