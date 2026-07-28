@@ -71,10 +71,7 @@ jobs:
           # the matrix Python version; opt out of both by passing false.
           python-version: false
           go-version: false
-          # Pull requests execute code from the branch under test, so do not
-          # expose a token to their dependency-analysis subprocesses. Pushes to
-          # trusted branches keep authentication to avoid API rate limits.
-          github-token: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # The SPDX test below runs the CLI directly (not through the action), so
       # it still needs a mirror to scan the PR branch on pull_request events.
@@ -117,7 +114,7 @@ jobs:
         env:
           # The PR branch is untrusted input to dependency analysis. Authenticate
           # only on trusted events; public PR targets do not require a token.
-          GITHUB_TOKEN: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ "${EVENT_NAME}" = "pull_request" ]; then
