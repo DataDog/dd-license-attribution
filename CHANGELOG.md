@@ -34,9 +34,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `generate-sbom-csv` is deprecated in favor of `generate-sbom --format csv`; it still works and emits a deprecation warning.
 
 ### Fixed
-- Fixed Rust repository scans so missing `dd-rust-license-tool` is reported before dependency collection starts for repositories that contain Cargo projects.
-- Fixed Rust crate SBOM generation so root package fallback scanning uses the exact resolved crates.io source path.
-- Fixed source checkout for public GitHub repositories when GitHub API authentication is unavailable but `git clone` access still works.
 - Fixed repeated action invocations overwriting earlier SBOM outputs by creating a unique output file for each invocation.
 - Fixed the action's default tokenless mode failing before a scan because it did not pass `--no-gh-auth` when `github-token` was empty.
 - Fixed the action requiring `csv-path` to exist during structural-only validation with `compare: false`.
