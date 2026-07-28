@@ -405,7 +405,6 @@ def test_generate_sbom_defaults_to_csv(
             call("https://github.com/org/repo"),
             call("https://github.com/org/repo"),
             call("https://github.com/org/repo"),
-            call("https://github.com/org/repo"),
         ]
     )
     mock_python_env_manager.assert_called_once_with(ANY, 86400)
@@ -459,7 +458,6 @@ def test_generate_sbom_supports_spdx_format(
     )
     mock_source_code_manager.return_value.get_canonical_urls.assert_has_calls(
         [
-            call("https://github.com/org/repo"),
             call("https://github.com/org/repo"),
             call("https://github.com/org/repo"),
             call("https://github.com/org/repo"),
@@ -787,7 +785,6 @@ def test_generate_sbom_csv_deprecated_alias_uses_csv(
     )
     mock_source_code_manager.return_value.get_canonical_urls.assert_has_calls(
         [
-            call("https://github.com/org/repo"),
             call("https://github.com/org/repo"),
             call("https://github.com/org/repo"),
             call("https://github.com/org/repo"),

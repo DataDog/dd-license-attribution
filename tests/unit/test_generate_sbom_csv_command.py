@@ -242,11 +242,80 @@ def test_default_repository_without_cargo_skips_rust_tool_preflight(
     )
 
     assert result.exit_code == 0
+    strategies = mock_metadata_collector.call_args[0][0]
+    strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
+
     mock_source_code_manager.return_value.get_code.assert_called_once_with(
         "https://github.com/org/python-repo"
     )
     mock_walk_directory.assert_called_once_with("/cache/org-python-repo")
     mock_ensure_rust_license_tool_installed.assert_not_called()
+    assert "RustMetadataCollectionStrategy" not in strategy_classes
+    assert "RustCratesIoMetadataCollectionStrategy" not in strategy_classes
+    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+        "https://github.com/org/python-repo"
+    )
+    mock_python_env_manager.assert_called_once_with(ANY, 86400)
+    mock_github.assert_called_once_with()
+
+
+@patch(
+    "dd_license_attribution.cli.generate_sbom_command.ensure_rust_license_tool_installed"
+)
+@patch("dd_license_attribution.cli.generate_sbom_command.walk_directory")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_default_repository_ignores_cargo_files_in_test_fixtures(
+    mock_metadata_collector: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_walk_directory: Mock,
+    mock_ensure_rust_license_tool_installed: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    source_code_ref = SourceCodeReference(
+        repo_url="https://github.com/org/python-repo",
+        branch="main",
+        local_root_path="/cache/org-python-repo",
+        local_full_path="/cache/org-python-repo",
+    )
+    mock_source_code_manager.return_value.get_code.return_value = source_code_ref
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/python-repo",
+        None,
+    )
+    mock_walk_directory.return_value = [
+        ("/cache/org-python-repo", ["tests"], ["pyproject.toml"]),
+        (
+            "/cache/org-python-repo/tests/fixtures/rust/sample_crate",
+            [],
+            ["Cargo.toml"],
+        ),
+    ]
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "https://github.com/org/python-repo",
+            "--no-gh-auth",
+        ],
+    )
+
+    assert result.exit_code == 0
+    strategies = mock_metadata_collector.call_args[0][0]
+    strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
+
+    mock_source_code_manager.return_value.get_code.assert_called_once_with(
+        "https://github.com/org/python-repo"
+    )
+    mock_walk_directory.assert_called_once_with("/cache/org-python-repo")
+    mock_ensure_rust_license_tool_installed.assert_not_called()
+    assert "RustMetadataCollectionStrategy" not in strategy_classes
+    assert "RustCratesIoMetadataCollectionStrategy" not in strategy_classes
     mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
         "https://github.com/org/python-repo"
     )

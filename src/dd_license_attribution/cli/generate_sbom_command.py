@@ -12,6 +12,7 @@ import copy
 import inspect
 import json
 import logging
+import re
 import sys
 import tempfile
 from collections.abc import Callable
@@ -115,6 +116,7 @@ logger = logging.getLogger("dd_license_attribution")
 
 _OUTPUT_EXTENSIONS = {"csv": "csv", "spdx": "json", "markdown": "md"}
 _RESERVED_FILENAME_CHARS = '<>:"/\\|?*'
+_CARGO_PROJECT_SEARCH_IGNORED_DIRS = {".git", "target", "test", "tests", "fixtures"}
 
 
 def _report_document_name(package: str) -> str:
@@ -141,6 +143,24 @@ def _looks_like_repository_package(package: str) -> bool:
     return package.startswith("git@") or "://" in package or "/" in package
 
 
+def _cargo_project_root_is_ignored(source_root: str, candidate_root: str) -> bool:
+    normalized_source_root = source_root.rstrip("/\\")
+    normalized_candidate_root = candidate_root.rstrip("/\\")
+    if normalized_candidate_root.startswith(normalized_source_root):
+        relative_candidate_root = normalized_candidate_root[
+            len(normalized_source_root) :
+        ]
+    else:
+        relative_candidate_root = normalized_candidate_root
+
+    path_parts = [
+        part
+        for part in re.split(r"[/\\]+", relative_candidate_root.strip("/\\"))
+        if part
+    ]
+    return any(part in _CARGO_PROJECT_SEARCH_IGNORED_DIRS for part in path_parts)
+
+
 def _repository_has_cargo_project(
     source_code_manager: SourceCodeManager,
     package: str,
@@ -156,11 +176,15 @@ def _repository_has_cargo_project(
     if not isinstance(local_full_path, str):
         return False
 
-    for _, dirs, files in walk_directory(local_full_path):
+    for root, dirs, files in walk_directory(local_full_path):
         dirs[:] = [
-            directory for directory in dirs if directory not in {".git", "target"}
+            directory
+            for directory in dirs
+            if directory not in _CARGO_PROJECT_SEARCH_IGNORED_DIRS
         ]
-        if "Cargo.toml" in files:
+        if "Cargo.toml" in files and not _cargo_project_root_is_ignored(
+            local_full_path, root
+        ):
             return True
     return False
 
@@ -811,9 +835,13 @@ def generate_sbom(
                 )
         else:
             # Standard GitHub repository mode
+            repository_has_cargo_project = False
             if enabled_strategies["RustMetadataCollectionStrategy"]:
                 try:
-                    if _repository_has_cargo_project(source_code_manager, package):
+                    repository_has_cargo_project = _repository_has_cargo_project(
+                        source_code_manager, package
+                    )
+                    if repository_has_cargo_project:
                         ensure_rust_license_tool_installed()
                 except RustLicenseToolNotInstalledError as e:
                     logger.error(str(e))
@@ -855,7 +883,10 @@ def generate_sbom(
                     )
                 )
 
-            if enabled_strategies["RustMetadataCollectionStrategy"]:
+            if (
+                enabled_strategies["RustMetadataCollectionStrategy"]
+                and repository_has_cargo_project
+            ):
                 strategies.append(
                     RustMetadataCollectionStrategy(
                         package, source_code_manager, project_scope
