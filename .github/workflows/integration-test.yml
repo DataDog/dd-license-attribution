@@ -201,7 +201,7 @@ jobs:
       - name: Run dd-license-attribution with --ecosystem rust
         if: ${{ matrix.python-version == '3.14' }}
         run: |
-          dd-license-attribution generate-sbom-csv --ecosystem rust regex@1.10.5 > rust-ecosystem-output.txt
+          dd-license-attribution generate-sbom-csv --ecosystem rust --no-gh-auth regex@1.10.5 > rust-ecosystem-output.txt
           head -1 rust-ecosystem-output.txt | grep -iq "component.*origin.*license.*copyright"
           grep -q "regex" rust-ecosystem-output.txt || { echo "Expected regex root crate in output"; exit 1; }
           grep -q "aho-corasick" rust-ecosystem-output.txt || { echo "Expected aho-corasick dependency in output"; exit 1; }
