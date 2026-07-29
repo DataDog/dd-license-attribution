@@ -559,7 +559,7 @@ jobs:
 | `pypi-strategy` | `true` | Set to `false` to pass `--no-pypi-strategy`. |
 | `npm-strategy` | `true` | Set to `false` to pass `--no-npm-strategy`. Node.js, npm, and Yarn are still set up when `ecosystem` is `npm`. |
 | `scancode-strategy` | `true` | Set to `false` to pass `--no-scancode-strategy`. |
-| `rust-strategy` | `auto` | Controls Rust dependency analysis. `auto` enables Rust for `ecosystem: rust` and for checked-out repositories with a production `Cargo.toml`, while passing `--no-rust-strategy` for non-Rust repositories. Set to `true` to always install Rust and `dd-rust-license-tool`; set to `false` to always pass `--no-rust-strategy`. |
+| `rust-strategy` | `auto` | Controls Rust dependency analysis. `auto` enables Rust for `ecosystem: rust` and for checked-out repositories with a production `Cargo.toml`; for external `repository` targets, it keeps Rust enabled because the workflow checkout cannot prove the selected target is non-Rust. Set to `true` to always install Rust and `dd-rust-license-tool`; set to `false` to always pass `--no-rust-strategy`. |
 | `experimental-strategy` | `false` | Set to `true` to pass `--experimental-strategy`. |
 | `deep-scanning` | `false` | Set to `true` to pass `--deep-scanning`. |
 | `yarn-subdir` | _(empty)_ | Newline-separated subdirectory paths containing additional `yarn.lock` files. Each non-empty line is passed as a separate `--yarn-subdir` argument. |

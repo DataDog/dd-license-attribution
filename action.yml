@@ -88,7 +88,9 @@ inputs:
       --no-rust-strategy. Set to 'true' to always install Rust and
       dd-rust-license-tool. The default, 'auto', enables Rust analysis for
       `ecosystem: rust` and for checked-out repositories with a production
-      Cargo.toml, while disabling it for non-Rust repositories.
+      Cargo.toml. For external repository targets, auto keeps Rust enabled
+      because the workflow checkout cannot prove the selected target is
+      non-Rust.
     required: false
     default: "auto"
   rust-version:
@@ -208,6 +210,8 @@ runs:
       id: resolve-rust-strategy
       shell: bash
       env:
+        REPOSITORY: ${{ inputs.repository }}
+        SELF_REPOSITORY: ${{ github.repository }}
         ECOSYSTEM: ${{ inputs.ecosystem }}
         RUST_STRATEGY: ${{ inputs.rust-strategy }}
       run: |
@@ -228,6 +232,12 @@ runs:
             ;;
           auto|"")
             if [ "${ECOSYSTEM}" = "rust" ]; then
+              rust_strategy_enabled="true"
+              rust_toolchain_required="true"
+            elif [ "${REPOSITORY}" != "${SELF_REPOSITORY}" ]; then
+              # The checkout only represents github.repository. For external
+              # targets, leave Rust enabled so target Cargo projects are not
+              # silently skipped.
               rust_strategy_enabled="true"
               rust_toolchain_required="true"
             elif find . \
