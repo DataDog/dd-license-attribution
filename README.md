@@ -479,12 +479,13 @@ third-party license SBOM and validates it against a committed
 file drifts from what `dd-license-attribution` would produce.
 
 The action sets up its own Python and, when their strategies or ecosystems
-require them, Go and Node.js toolchains. The Node.js setup also provides npm and
-Yarn Classic. It installs the exact version of `dd-license-attribution` shipped
-with the `@ref` you pin, so no additional setup steps are required. If your
-workflow already provides any of these toolchains, opt out of the corresponding
-internal setup by passing `python-version: false`, `go-version: false`, or
-`node-version: false`. When `compare` is enabled, your repository must be
+require them, Go, Node.js, and Rust toolchains. The Node.js setup also provides
+npm and Yarn Classic; the Rust setup installs `dd-rust-license-tool`. It
+installs the exact version of `dd-license-attribution` shipped with the `@ref`
+you pin, so no additional setup steps are required. If your workflow already
+provides any of these toolchains, opt out of the corresponding internal setup by
+passing `python-version: false`, `go-version: false`, `node-version: false`, or
+`rust-version: false`. When `compare` is enabled, your repository must be
 checked out so the action can read the committed `LICENSE-3rdparty.csv`.
 
 The action always assumes github.com as the host and takes the target as an
@@ -548,7 +549,7 @@ jobs:
 | Input | Default | Description |
 | --- | --- | --- |
 | `repository` | `${{ github.repository }}` | GitHub repository to analyze, as `owner/name`. Ignored when `ecosystem` is set. Use GitHub's canonical `owner/name` casing — the auto-built mirror is matched case-sensitively against the canonical URL, so mismatched casing silently disables it. The default is already canonical. |
-| `ecosystem` | _(empty)_ | Value for `--ecosystem` (`npm`, `python`, `pypi`, or `go`). When set, `package` is analyzed instead of `repository` (and no mirror is built). |
+| `ecosystem` | _(empty)_ | Value for `--ecosystem` (`npm`, `python`, `pypi`, `go`, or `rust`). When set, `package` is analyzed instead of `repository` (and no mirror is built). |
 | `package` | _(empty)_ | Package name to analyze. Only used (and required) when `ecosystem` is set. |
 | `csv-path` | `LICENSE-3rdparty.csv` | Path (in the checked-out workspace) of the committed file to validate against. Required only when `compare` is `true`. |
 | `override-spec` | _(empty)_ | Value for `--override-spec` (a JSON file of override rules). |
@@ -558,6 +559,7 @@ jobs:
 | `pypi-strategy` | `true` | Set to `false` to pass `--no-pypi-strategy`. |
 | `npm-strategy` | `true` | Set to `false` to pass `--no-npm-strategy`. Node.js, npm, and Yarn are still set up when `ecosystem` is `npm`. |
 | `scancode-strategy` | `true` | Set to `false` to pass `--no-scancode-strategy`. |
+| `rust-strategy` | `auto` | Controls Rust dependency analysis. `auto` enables Rust for `ecosystem: rust` and for checked-out repositories with a production `Cargo.toml`, while passing `--no-rust-strategy` for non-Rust repositories. Set to `true` to always install Rust and `dd-rust-license-tool`; set to `false` to always pass `--no-rust-strategy`. |
 | `experimental-strategy` | `false` | Set to `true` to pass `--experimental-strategy`. |
 | `deep-scanning` | `false` | Set to `true` to pass `--deep-scanning`. |
 | `yarn-subdir` | _(empty)_ | Newline-separated subdirectory paths containing additional `yarn.lock` files. Each non-empty line is passed as a separate `--yarn-subdir` argument. |
@@ -567,6 +569,7 @@ jobs:
 | `python-version` | `3.14` | Python version to set up and run the tool with. Set to `false` to skip the internal Python setup and use the `python` already on `PATH`. |
 | `go-version` | `1.23` | Go version to set up when `gopkg-strategy` is enabled or `ecosystem` is `go`. Set to `false` to skip the internal Go setup and use the calling workflow's Go toolchain. |
 | `node-version` | `24` | Node.js version to set up when `npm-strategy` is enabled or `ecosystem` is `npm`; npm and Yarn Classic are also installed. Set to `false` to use the calling workflow's JavaScript toolchain. |
+| `rust-version` | `stable` | Rust toolchain to install when Rust crate resolution or analysis requires Cargo; `dd-rust-license-tool` is installed with Cargo when `rust-strategy` is enabled. Set to `false` to use the calling workflow's Rust toolchain and existing `dd-rust-license-tool` installation. |
 
 ### Outputs
 
