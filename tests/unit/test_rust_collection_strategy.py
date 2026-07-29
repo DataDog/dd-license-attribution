@@ -536,6 +536,118 @@ def test_github_mode_walks_sibling_cargo_projects_and_filters_roots_for_transiti
     assert mock_path_join.call_count == 2
 
 
+def test_github_mode_virtual_workspace_filters_members_for_transitive_scope(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _mock_source_code_manager()
+    source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/repo",
+        branch="main",
+        local_root_path="/cache/org_repo",
+        local_full_path="/cache/org_repo",
+    )
+
+    def fake_walk_directory(
+        source_root: str,
+    ) -> Iterator[tuple[str, list[str], list[str]]]:
+        root_dirs = ["crates"]
+        yield source_root, root_dirs, ["Cargo.toml"]
+        if "crates" in root_dirs:
+            yield f"{source_root}/crates/member-a", [], ["Cargo.toml"]
+            yield f"{source_root}/crates/member-b", [], ["Cargo.toml"]
+
+    mock_walk_directory = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.walk_directory",
+        side_effect=fake_walk_directory,
+    )
+
+    def fake_path_join(*args: str) -> str:
+        return "/".join(args)
+
+    mock_path_join = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.path_exists",
+        return_value=True,
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.open_file",
+        return_value='[workspace]\nmembers = ["crates/member-a", "crates/member-b"]\n',
+    )
+    mock_run_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.rust_collection_strategy.run_command_with_check",
+        side_effect=[
+            (
+                0,
+                "Component,Origin,License,Copyright\n"
+                "member-a,https://github.com/org/repo/tree/main/crates/member-a,"
+                "Apache-2.0,Datadog\n"
+                "member-b,https://github.com/org/repo/tree/main/crates/member-b,"
+                "Apache-2.0,Datadog\n"
+                "dep,https://github.com/org/dep,MIT,Alice\n",
+                "",
+            ),
+            (
+                0,
+                (
+                    '{"workspace_members":["path+file:///cache/org_repo#member-a@1.0.0",'
+                    '"path+file:///cache/org_repo#member-b@2.0.0"],"packages":['
+                    '{"id":"path+file:///cache/org_repo#member-a@1.0.0",'
+                    '"name":"member-a","version":"1.0.0"},'
+                    '{"id":"path+file:///cache/org_repo#member-b@2.0.0",'
+                    '"name":"member-b","version":"2.0.0"},'
+                    '{"id":"registry+https://github.com/rust-lang/crates.io-index#dep@0.1.0",'
+                    '"name":"dep","version":"0.1.0"}]}'
+                ),
+                "",
+            ),
+        ],
+    )
+    strategy = RustMetadataCollectionStrategy(
+        "https://github.com/org/repo",
+        source_code_manager,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/repo",
+            origin="https://github.com/org/repo",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        )
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert [metadata.name for metadata in result] == ["dep"]
+    source_code_manager.get_canonical_urls.assert_called_once_with(
+        "https://github.com/org/repo"
+    )
+    source_code_manager.get_code.assert_called_once_with("https://github.com/org/repo")
+    mock_walk_directory.assert_called_once_with("/cache/org_repo")
+    mock_run_command.assert_has_calls(
+        [
+            call(
+                [RUST_LICENSE_TOOL_COMMAND, "dump"],
+                cwd="/cache/org_repo",
+                timeout=RUST_LICENSE_TOOL_COMMAND_TIMEOUT_SECONDS,
+            ),
+            call(
+                ["cargo", "metadata", "--no-deps", "--format-version", "1"],
+                cwd="/cache/org_repo",
+                timeout=RUST_LICENSE_TOOL_COMMAND_TIMEOUT_SECONDS,
+            ),
+        ]
+    )
+    mock_path_join.assert_called_once_with("/cache/org_repo", "Cargo.toml")
+    mock_path_exists.assert_called_once_with("/cache/org_repo/Cargo.toml")
+    mock_open_file.assert_called_once_with("/cache/org_repo/Cargo.toml")
+
+
 def test_github_mode_transitive_scope_removes_seed_when_no_code_available(
     mocker: pytest_mock.MockFixture,
 ) -> None:

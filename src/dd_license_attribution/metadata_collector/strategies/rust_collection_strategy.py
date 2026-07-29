@@ -7,8 +7,10 @@
 
 import csv
 import io
+import json
 import logging
 import tomllib
+from typing import Any
 
 from dd_license_attribution.adaptors.os import (
     format_command_output,
@@ -404,28 +406,23 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
     def _get_root_package_metadata(
         self, project_path: str
     ) -> tuple[set[str], dict[str, str]]:
-        package_name, package_version = self._read_cargo_package_info(project_path)
+        cargo_toml = self._read_cargo_toml(project_path)
+        if cargo_toml is None:
+            return set(), {}
+
+        package_name, package_version = self._read_cargo_package_info(cargo_toml)
         if package_name is None:
+            workspace = cargo_toml.get("workspace")
+            if isinstance(workspace, dict):
+                return self._read_workspace_member_package_info(project_path)
             return set(), {}
         if package_version is None:
             return {package_name}, {}
         return {package_name}, {package_name: package_version}
 
     def _read_cargo_package_info(
-        self, project_path: str
+        self, cargo_toml: dict[str, Any]
     ) -> tuple[str | None, str | None]:
-        cargo_toml_path = path_join(project_path, "Cargo.toml")
-        if not path_exists(cargo_toml_path):
-            return None, None
-
-        try:
-            cargo_toml = tomllib.loads(open_file(cargo_toml_path))
-        except (OSError, tomllib.TOMLDecodeError) as e:
-            logger.warning(  # pragma: no mutate
-                "Failed to parse Cargo.toml at %s: %s", cargo_toml_path, e
-            )
-            return None, None
-
         package_data = cargo_toml.get("package")
         if not isinstance(package_data, dict):
             return None, None
@@ -436,6 +433,91 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
             name if isinstance(name, str) else None,
             version if isinstance(version, str) else None,
         )
+
+    def _read_cargo_toml(self, project_path: str) -> dict[str, Any] | None:
+        cargo_toml_path = path_join(project_path, "Cargo.toml")
+        if not path_exists(cargo_toml_path):
+            return None
+
+        try:
+            cargo_toml = tomllib.loads(open_file(cargo_toml_path))
+        except (OSError, tomllib.TOMLDecodeError) as e:
+            logger.warning(  # pragma: no mutate
+                "Failed to parse Cargo.toml at %s: %s", cargo_toml_path, e
+            )
+            return None
+
+        return cargo_toml
+
+    def _read_workspace_member_package_info(
+        self, project_path: str
+    ) -> tuple[set[str], dict[str, str]]:
+        try:
+            exit_code, output, error_output = run_command_with_check(
+                ["cargo", "metadata", "--no-deps", "--format-version", "1"],
+                cwd=project_path,
+                timeout=RUST_LICENSE_TOOL_COMMAND_TIMEOUT_SECONDS,
+            )
+        except OSError as e:
+            logger.warning(  # pragma: no mutate
+                "Failed to run cargo metadata in %s: %s", project_path, e
+            )
+            return set(), {}
+
+        command_output = format_command_output(output, error_output)
+        if exit_code != 0:
+            logger.warning(  # pragma: no mutate
+                "cargo metadata failed in %s: %s",
+                project_path,
+                command_output,
+            )
+            return set(), {}
+
+        try:
+            metadata = json.loads(output)
+        except json.JSONDecodeError as e:
+            logger.warning(  # pragma: no mutate
+                "Failed to parse cargo metadata output in %s: %s", project_path, e
+            )
+            return set(), {}
+
+        if not isinstance(metadata, dict):
+            logger.warning(  # pragma: no mutate
+                "cargo metadata output in %s was not a JSON object", project_path
+            )
+            return set(), {}
+
+        workspace_members_raw = metadata.get("workspace_members")
+        packages_raw = metadata.get("packages")
+        if not isinstance(workspace_members_raw, list) or not isinstance(
+            packages_raw, list
+        ):
+            logger.warning(  # pragma: no mutate
+                "cargo metadata output in %s did not contain workspace packages",
+                project_path,
+            )
+            return set(), {}
+
+        workspace_member_ids = {
+            member for member in workspace_members_raw if isinstance(member, str)
+        }
+        package_names: set[str] = set()
+        package_versions: dict[str, str] = {}
+        for package in packages_raw:
+            if not isinstance(package, dict):
+                continue
+            package_id = package.get("id")
+            if package_id not in workspace_member_ids:
+                continue
+            name = package.get("name")
+            if not isinstance(name, str):
+                continue
+            package_names.add(name)
+            version = package.get("version")
+            if isinstance(version, str):
+                package_versions[name] = version
+
+        return package_names, package_versions
 
     def _parse_crate_name(self, spec: str) -> str:
         return spec.split("@", 1)[0]
