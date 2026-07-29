@@ -231,9 +231,13 @@ runs:
               rust_strategy_enabled="true"
               rust_toolchain_required="true"
             elif find . \
-              -path "*/.git" -prune -o \
-              -path "*/target" -prune -o \
-              -path "*/tests/fixtures" -prune -o \
+              -type d \( \
+                -name .git -o \
+                -name target -o \
+                -name test -o \
+                -name tests -o \
+                -name fixtures \
+              \) -prune -o \
               -name Cargo.toml -print -quit | grep -q .; then
               rust_strategy_enabled="true"
               rust_toolchain_required="true"
