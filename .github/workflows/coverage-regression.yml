@@ -44,7 +44,7 @@ jobs:
 
       - name: Configure Datadog Test Optimization
         if: steps.dd-sts.outcome == 'success'
-        uses: DataDog/test-visibility-github-action@4e7afb05b464fd349275e41e65a7f4de83e7f46b # v2.10.0
+        uses: DataDog/test-visibility-github-action@d6d648d87563e713b3d396bb3bfebb5e3cc93707 # v3.0.0
         with:
           languages: python
           api_key: ${{ steps.dd-sts.outputs.api_key }}
