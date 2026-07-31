@@ -1991,6 +1991,133 @@ def test_augment_metadata_with_multiple_subdirectories(
     assert "axios" in names
 
 
+def test_augment_metadata_with_mixed_npm_and_yarn_subdirectories(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = create_source_code_manager_mock()
+    package_json = {
+        "name": "test-package",
+        "version": "1.0.0",
+        "license": "MIT",
+    }
+    root_package_lock = {
+        "packages": {
+            "": {"dependencies": {"lodash": "^4.17.21"}},
+            "node_modules/lodash": {"version": "4.17.21"},
+        }
+    }
+    npm_subdir_package_lock = {
+        "packages": {
+            "": {"dependencies": {"axios": "^1.0.0"}},
+            "node_modules/axios": {"version": "1.0.0"},
+        }
+    }
+    root_npm_output = json.dumps({"dependencies": {"lodash": {"version": "4.17.21"}}})
+    npm_subdir_output = json.dumps({"dependencies": {"axios": {"version": "1.0.0"}}})
+    yarn_subdir_output = '{"type":"tree","data":{"trees":[{"name":"react@17.0.0"}]}}\n'
+
+    def fake_exists(path: str) -> bool:
+        if path.endswith("yarn.lock"):
+            return "yarn-subdir" in path
+        if path.endswith("package.json"):
+            return True
+        if "yarn-subdir" in path or "npm-subdir" in path:
+            return True
+        return False
+
+    def fake_path_join(*args: Any) -> str:
+        return "/".join(args)
+
+    def fake_open(path: str) -> str:
+        if path.endswith("package.json"):
+            return json.dumps(package_json)
+        if path.endswith("yarn.lock"):
+            return ""
+        if "npm-subdir" in path:
+            return json.dumps(npm_subdir_package_lock)
+        if path.endswith("package-lock.json"):
+            return json.dumps(root_package_lock)
+        return ""
+
+    def fake_output(
+        args: list[str], cwd: str | None = None, env: dict[str, str] | None = None
+    ) -> str:
+        if args == ["yarn", "--version"]:
+            return "1.22.0"
+        if args == ["yarn", "list", "--production", "--json", "--non-interactive"]:
+            return yarn_subdir_output
+        return ""
+
+    def fake_run_command(
+        args: list[str],
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+    ) -> tuple[int, str, str]:
+        if args == ["npm", "list", "--json", "--omit=dev", "--all"]:
+            output = (
+                npm_subdir_output if cwd and "npm-subdir" in cwd else root_npm_output
+            )
+            return 0, output, ""
+        return 0, "npm install completed", ""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_exists",
+        side_effect=fake_exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.path_join",
+        side_effect=fake_path_join,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.open_file",
+        side_effect=fake_open,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.output_from_command",
+        side_effect=fake_output,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.run_command_with_check",
+        side_effect=fake_run_command,
+    )
+    mock_get = mocker.patch("requests.get")
+    mock_response = mock.Mock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"license": "MIT"}
+    mock_get.return_value = mock_response
+
+    strategy = NpmMetadataCollectionStrategy(
+        "package1",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+        lockfile_subdirs=["yarn-subdir", "npm-subdir"],
+    )
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert {item.name for item in result} == {
+        "test-package",
+        "lodash",
+        "react",
+        "axios",
+    }
+
+
 def test_augment_metadata_with_missing_subdirectory(
     mocker: pytest_mock.MockFixture,
     caplog: LogCaptureFixture,
