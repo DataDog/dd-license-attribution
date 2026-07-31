@@ -14,9 +14,9 @@
 
 Datadog License Attribution Tracker is a tool that collects license and copyright information for third party dependencies of a project and returns a list of said dependencies and their licenses and copyright attributions, if found.
 
-As of today, Datadog License Attribution Tracker supports Go, Python, and NodeJS projects. It will be extended in the future to support more languages. You can also pass a Go module path directly using the `--ecosystem go` option, an npm package name using `--ecosystem npm`, or a PyPI package using `--ecosystem python` (or `--ecosystem pypi`).
+As of today, Datadog License Attribution Tracker supports Go, Python, NodeJS, and Rust projects. You can also pass a Go module path directly using the `--ecosystem go` option, an npm package name using `--ecosystem npm`, a PyPI package using `--ecosystem python` (or `--ecosystem pypi`), or a Rust crate using `--ecosystem rust`.
 
-The tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, the go-pkg list command output, and metadata collected from PyPI and NPM.
+The tool collects license and other metadata information using multiple sources, including the GitHub API, pulled source code, package-manager output, and metadata collected from PyPI, NPM, Cargo, and crates.io.
 It supports gathering data from various repositories to generate a comprehensive list of third party dependencies.
 
 Runs may take minutes or hours depending on the size of the project dependency tree and the depth of the scanning.
@@ -46,6 +46,10 @@ dd-license-attribution generate-sbom --ecosystem python --no-gh-auth requests==2
 ```bash
 dd-license-attribution generate-sbom --ecosystem go --no-gh-auth github.com/stretchr/testify@v1.9.0 > LICENSE-3rdparty.csv
 ```
+8. Or run on a Rust crate directly:
+```bash
+dd-license-attribution generate-sbom --ecosystem rust --no-gh-auth serde@1.0 > LICENSE-3rdparty.csv
+```
 
 For more advanced usage, see the sections below.
 
@@ -74,6 +78,7 @@ Run `dd-license-attribution --help` to see all available commands.
 
 - gopkg - [GoLang and GoPkg install instructions](https://go.dev/doc/install). Required for `--ecosystem go` and when using the GoPkg strategy (can be skipped with --no-gopkg-strategy)
 - Node.js (v14 or newer) and npm (v7 or newer) - [Node.js install instructions](https://nodejs.org/en/download/). Not required when skipping the NPM strategy (--no-npm-strategy)
+- Rust/Cargo and dd-rust-license-tool - install Rust from [rustup](https://rustup.rs/) or your system package manager, then run `cargo install dd-rust-license-tool`. Required for `--ecosystem rust` and when the Rust strategy is enabled against a Rust project (can be skipped with --no-rust-strategy). A `license-tool.toml` file in the target repository is honored automatically.
 
 ### Usage
 
@@ -108,7 +113,7 @@ The following optional parameters are available for `generate-sbom`:
 - `--only-root-project`: Extracts information from the licenses and copyright of the passed package, not its dependencies.
 
 ##### Ecosystem Mode
-- `--ecosystem <name>`: Treat the package argument as a package name in the given ecosystem instead of a GitHub repository URL. Supported ecosystems: `go`, `npm`, `python` (alias: `pypi`). Both `python` and `pypi` are equivalent and produce identical output. Example: `--ecosystem go github.com/stretchr/testify@v1.9.0`, `--ecosystem npm express`, `--ecosystem python requests==2.31.0`, `--ecosystem pypi requests==2.31.0`.
+- `--ecosystem <name>`: Treat the package argument as a package name in the given ecosystem instead of a GitHub repository URL. Supported ecosystems: `go`, `npm`, `python` (alias: `pypi`), `rust`. Both `python` and `pypi` are equivalent and produce identical output. Example: `--ecosystem go github.com/stretchr/testify@v1.9.0`, `--ecosystem npm express`, `--ecosystem python requests==2.31.0`, `--ecosystem pypi requests==2.31.0`, `--ecosystem rust serde@1.0`. Rust ecosystem mode uses Cargo to select the exact crate version, then analyzes that version's published crates.io source archive for both library and binary-only crates. A `Cargo.lock` included in the published archive is preserved for reproducible, release-specific attribution.
 
 ##### Strategy Selection
 - `--deep-scanning`: Enables intensive source code analysis using [scancode-toolkit](https://scancode-toolkit.readthedocs.io/en/latest/getting-started/home.html). This will parse license and copyright information from full package source code. Note: This is a resource-intensive task that may take hours or days to process depending on package size.
@@ -116,6 +121,7 @@ The following optional parameters are available for `generate-sbom`:
 - `--no-gopkg-strategy`: Skips the strategy that collects dependencies from GoPkg.
 - `--no-github-sbom-strategy`: Skips the strategy that gets the dependency tree from GitHub.
 - `--no-npm-strategy`: Skips the strategy that collects dependencies from NPM.
+- `--no-rust-strategy`: Skips the strategy that collects dependencies from Cargo projects using dd-rust-license-tool.
 - `--no-scancode-strategy`: Skips the strategy that gets licenses and copyright attribution using ScanCode Toolkit.
 
 ##### Experimental Three-Phase Collection
@@ -413,6 +419,22 @@ dd-license-attribution generate-sbom --ecosystem python --no-gh-auth "requests==
 dd-license-attribution generate-sbom --ecosystem pypi --no-gh-auth Flask > LICENSE-3rdparty.csv
 ```
 
+#### Analyzing Rust Crates by Name
+```bash
+# Analyze a Rust crate without needing a GitHub URL
+dd-license-attribution generate-sbom --ecosystem rust --no-gh-auth serde > LICENSE-3rdparty.csv
+
+# Analyze a specific Rust crate version
+dd-license-attribution generate-sbom --ecosystem rust --no-gh-auth serde@1.0 > LICENSE-3rdparty.csv
+
+# Binary-only crates use the same published-source analysis path
+dd-license-attribution generate-sbom --ecosystem rust --no-gh-auth dd-rust-license-tool > LICENSE-3rdparty.csv
+```
+
+Direct Rust crate analysis uses a temporary Cargo project only to resolve the requested version. Dependency attribution runs from the exact source archive published on crates.io. If the crate declares a repository, a root `license-tool.toml` from that repository is applied to the published source before running `dd-rust-license-tool`.
+
+For Rust repository scans, `dd-rust-license-tool` remains the primary metadata source. If Cargo or GitHub dependency data contains a confirmed crates.io dependency with missing fields, the tool fills only those gaps from the selected crates.io release and its published manifest. Existing license and copyright information is never overwritten. Some crates publish no author information; in that case, the repository URL is still supplied so the normal source-scanning strategies can continue attribution discovery.
+
 #### Deep Scanning with Caching
 ```bash
 dd-license-attribution generate-sbom --deep-scanning --cache-dir ./cache https://github.com/owner/repo > LICENSE-3rdparty.csv
@@ -457,12 +479,13 @@ third-party license SBOM and validates it against a committed
 file drifts from what `dd-license-attribution` would produce.
 
 The action sets up its own Python and, when their strategies or ecosystems
-require them, Go and Node.js toolchains. The Node.js setup also provides npm and
-Yarn Classic. It installs the exact version of `dd-license-attribution` shipped
-with the `@ref` you pin, so no additional setup steps are required. If your
-workflow already provides any of these toolchains, opt out of the corresponding
-internal setup by passing `python-version: false`, `go-version: false`, or
-`node-version: false`. When `compare` is enabled, your repository must be
+require them, Go, Node.js, and Rust toolchains. The Node.js setup also provides
+npm and Yarn Classic; the Rust setup installs `dd-rust-license-tool`. It
+installs the exact version of `dd-license-attribution` shipped with the `@ref`
+you pin, so no additional setup steps are required. If your workflow already
+provides any of these toolchains, opt out of the corresponding internal setup by
+passing `python-version: false`, `go-version: false`, `node-version: false`, or
+`rust-version: false`. When `compare` is enabled, your repository must be
 checked out so the action can read the committed `LICENSE-3rdparty.csv`.
 
 The action always assumes github.com as the host and takes the target as an
@@ -526,7 +549,7 @@ jobs:
 | Input | Default | Description |
 | --- | --- | --- |
 | `repository` | `${{ github.repository }}` | GitHub repository to analyze, as `owner/name`. Ignored when `ecosystem` is set. Use GitHub's canonical `owner/name` casing — the auto-built mirror is matched case-sensitively against the canonical URL, so mismatched casing silently disables it. The default is already canonical. |
-| `ecosystem` | _(empty)_ | Value for `--ecosystem` (`npm`, `python`, `pypi`, or `go`). When set, `package` is analyzed instead of `repository` (and no mirror is built). |
+| `ecosystem` | _(empty)_ | Value for `--ecosystem` (`npm`, `python`, `pypi`, `go`, or `rust`). When set, `package` is analyzed instead of `repository` (and no mirror is built). |
 | `package` | _(empty)_ | Package name to analyze. Only used (and required) when `ecosystem` is set. |
 | `csv-path` | `LICENSE-3rdparty.csv` | Path (in the checked-out workspace) of the committed file to validate against. Required only when `compare` is `true`. |
 | `override-spec` | _(empty)_ | Value for `--override-spec` (a JSON file of override rules). |
@@ -536,6 +559,7 @@ jobs:
 | `pypi-strategy` | `true` | Set to `false` to pass `--no-pypi-strategy`. |
 | `npm-strategy` | `true` | Set to `false` to pass `--no-npm-strategy`. Node.js, npm, and Yarn are still set up when `ecosystem` is `npm`. |
 | `scancode-strategy` | `true` | Set to `false` to pass `--no-scancode-strategy`. |
+| `rust-strategy` | `auto` | Controls Rust dependency analysis. `auto` enables Rust for `ecosystem: rust` and for checked-out repositories with a production `Cargo.toml`; for external `repository` targets, it keeps Rust enabled because the workflow checkout cannot prove the selected target is non-Rust. Set to `true` to always install Rust and `dd-rust-license-tool`; set to `false` to always pass `--no-rust-strategy`. |
 | `experimental-strategy` | `false` | Set to `true` to pass `--experimental-strategy`. |
 | `deep-scanning` | `false` | Set to `true` to pass `--deep-scanning`. |
 | `yarn-subdir` | _(empty)_ | Newline-separated subdirectory paths containing additional `yarn.lock` files. Each non-empty line is passed as a separate `--yarn-subdir` argument. |
@@ -545,6 +569,7 @@ jobs:
 | `python-version` | `3.14` | Python version to set up and run the tool with. Set to `false` to skip the internal Python setup and use the `python` already on `PATH`. |
 | `go-version` | `1.23` | Go version to set up when `gopkg-strategy` is enabled or `ecosystem` is `go`. Set to `false` to skip the internal Go setup and use the calling workflow's Go toolchain. |
 | `node-version` | `24` | Node.js version to set up when `npm-strategy` is enabled or `ecosystem` is `npm`; npm and Yarn Classic are also installed. Set to `false` to use the calling workflow's JavaScript toolchain. |
+| `rust-version` | `stable` | Rust toolchain to install when Rust crate resolution or analysis requires Cargo; `dd-rust-license-tool` is installed with Cargo when `rust-strategy` is enabled. Set to `false` to use the calling workflow's Rust toolchain and existing `dd-rust-license-tool` installation. |
 
 ### Outputs
 

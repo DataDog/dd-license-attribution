@@ -6,12 +6,19 @@
 # Copyright 2024-present Datadog, Inc.
 
 import os
-from unittest.mock import Mock, patch
+from unittest.mock import ANY, Mock, patch
 
 import pytest
 from typer.testing import CliRunner
 
+from dd_license_attribution.artifact_management.artifact_manager import (
+    SourceCodeReference,
+)
 from dd_license_attribution.cli.main_cli import app
+from dd_license_attribution.metadata_collector.strategies.rust_collection_strategy import (
+    RUST_LICENSE_TOOL_INSTALL_HINT,
+    RustLicenseToolNotInstalledError,
+)
 
 runner = CliRunner()
 
@@ -66,6 +73,7 @@ def test_github_auth_env() -> None:
         (["--no-pypi-strategy"], "PythonPipMetadataCollectionStrategy"),
         (["--no-gopkg-strategy"], "GoPkgsMetadataCollectionStrategy"),
         (["--no-github-sbom-strategy"], "GitHubSbomMetadataCollectionStrategy"),
+        (["--no-rust-strategy"], "RustMetadataCollectionStrategy"),
         (["--no-scancode-strategy"], "ScanCodeToolkitMetadataCollectionStrategy"),
     ],
 )
@@ -125,6 +133,7 @@ def test_skip_all_strategies(
             "--no-pypi-strategy",
             "--no-gopkg-strategy",
             "--no-github-sbom-strategy",
+            "--no-rust-strategy",
             "--no-scancode-strategy",
         ],
     )
@@ -136,13 +145,189 @@ def test_skip_all_strategies(
     assert "PythonPipMetadataCollectionStrategy" not in strategy_classes
     assert "GoPkgsMetadataCollectionStrategy" not in strategy_classes
     assert "GitHubSbomMetadataCollectionStrategy" not in strategy_classes
+    assert "RustMetadataCollectionStrategy" not in strategy_classes
     assert "ScanCodeToolkitMetadataCollectionStrategy" not in strategy_classes
+
+
+@patch(
+    "dd_license_attribution.cli.generate_sbom_command.ensure_rust_license_tool_installed"
+)
+@patch("dd_license_attribution.cli.generate_sbom_command.walk_directory")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_default_repository_rust_project_preflight_failure_exits_before_collection(
+    mock_metadata_collector: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_walk_directory: Mock,
+    mock_ensure_rust_license_tool_installed: Mock,
+) -> None:
+    source_code_ref = SourceCodeReference(
+        repo_url="https://github.com/org/rust-repo",
+        branch="main",
+        local_root_path="/cache/org-rust-repo",
+        local_full_path="/cache/org-rust-repo",
+    )
+    mock_source_code_manager.return_value.get_code.return_value = source_code_ref
+    mock_walk_directory.return_value = [
+        ("/cache/org-rust-repo", [".git", "target"], ["Cargo.toml"])
+    ]
+    mock_ensure_rust_license_tool_installed.side_effect = (
+        RustLicenseToolNotInstalledError(RUST_LICENSE_TOOL_INSTALL_HINT)
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "https://github.com/org/rust-repo",
+            "--no-gh-auth",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert RUST_LICENSE_TOOL_INSTALL_HINT in result.stderr
+    mock_source_code_manager.return_value.get_code.assert_called_once_with(
+        "https://github.com/org/rust-repo"
+    )
+    mock_walk_directory.assert_called_once_with("/cache/org-rust-repo")
+    mock_ensure_rust_license_tool_installed.assert_called_once_with()
+    mock_metadata_collector.assert_not_called()
+    mock_python_env_manager.assert_not_called()
+    mock_github.assert_called_once_with()
+
+
+@patch(
+    "dd_license_attribution.cli.generate_sbom_command.ensure_rust_license_tool_installed"
+)
+@patch("dd_license_attribution.cli.generate_sbom_command.walk_directory")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_default_repository_without_cargo_skips_rust_tool_preflight(
+    mock_metadata_collector: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_walk_directory: Mock,
+    mock_ensure_rust_license_tool_installed: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    source_code_ref = SourceCodeReference(
+        repo_url="https://github.com/org/python-repo",
+        branch="main",
+        local_root_path="/cache/org-python-repo",
+        local_full_path="/cache/org-python-repo",
+    )
+    mock_source_code_manager.return_value.get_code.return_value = source_code_ref
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/python-repo",
+        None,
+    )
+    mock_walk_directory.return_value = [
+        ("/cache/org-python-repo", [".git", "target"], ["pyproject.toml"])
+    ]
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "https://github.com/org/python-repo",
+            "--no-gh-auth",
+        ],
+    )
+
+    assert result.exit_code == 0
+    strategies = mock_metadata_collector.call_args[0][0]
+    strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
+
+    mock_source_code_manager.return_value.get_code.assert_called_once_with(
+        "https://github.com/org/python-repo"
+    )
+    mock_walk_directory.assert_called_once_with("/cache/org-python-repo")
+    mock_ensure_rust_license_tool_installed.assert_not_called()
+    assert "RustMetadataCollectionStrategy" not in strategy_classes
+    assert "RustCratesIoMetadataCollectionStrategy" not in strategy_classes
+    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+        "https://github.com/org/python-repo"
+    )
+    mock_python_env_manager.assert_called_once_with(ANY, 86400)
+    mock_github.assert_called_once_with()
+
+
+@patch(
+    "dd_license_attribution.cli.generate_sbom_command.ensure_rust_license_tool_installed"
+)
+@patch("dd_license_attribution.cli.generate_sbom_command.walk_directory")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_default_repository_ignores_cargo_files_in_test_fixtures(
+    mock_metadata_collector: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_walk_directory: Mock,
+    mock_ensure_rust_license_tool_installed: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    source_code_ref = SourceCodeReference(
+        repo_url="https://github.com/org/python-repo",
+        branch="main",
+        local_root_path="/cache/org-python-repo",
+        local_full_path="/cache/org-python-repo",
+    )
+    mock_source_code_manager.return_value.get_code.return_value = source_code_ref
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/python-repo",
+        None,
+    )
+    mock_walk_directory.return_value = [
+        ("/cache/org-python-repo", ["tests"], ["pyproject.toml"]),
+        (
+            "/cache/org-python-repo/tests/fixtures/rust/sample_crate",
+            [],
+            ["Cargo.toml"],
+        ),
+    ]
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "https://github.com/org/python-repo",
+            "--no-gh-auth",
+        ],
+    )
+
+    assert result.exit_code == 0
+    strategies = mock_metadata_collector.call_args[0][0]
+    strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
+
+    mock_source_code_manager.return_value.get_code.assert_called_once_with(
+        "https://github.com/org/python-repo"
+    )
+    mock_walk_directory.assert_called_once_with("/cache/org-python-repo")
+    mock_ensure_rust_license_tool_installed.assert_not_called()
+    assert "RustMetadataCollectionStrategy" not in strategy_classes
+    assert "RustCratesIoMetadataCollectionStrategy" not in strategy_classes
+    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+        "https://github.com/org/python-repo"
+    )
+    mock_python_env_manager.assert_called_once_with(ANY, 86400)
+    mock_github.assert_called_once_with()
 
 
 def test_missing_package() -> None:
     result = runner.invoke(app, ["generate-sbom-csv"], color=False)
     assert result.exit_code == 2
-    assert "Missing argument 'package'." in result.stderr
+    assert "Missing argument" in result.stderr
+    assert "package" in result.stderr.lower()
 
 
 @patch("dd_license_attribution.config.json_config_parser.open_file")
@@ -613,6 +798,320 @@ def test_ecosystem_go_passes_local_project_path_to_strategy(
         gopkg_strategy.local_project_path
         == "/tmp/go_resolve/github_com_stretchr_testify"
     )
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.RustPackageResolver")
+@patch(
+    "dd_license_attribution.cli.generate_sbom_command.ensure_rust_license_tool_installed"
+)
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_ecosystem_rust_builds_correct_strategy_pipeline(
+    mock_metadata_collector: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_ensure_rust_license_tool_installed: Mock,
+    mock_rust_resolver: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_rust_resolver.return_value.resolve_package.return_value = (
+        "/tmp/rust_resolve/serde"
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "serde@1.0",
+            "--ecosystem",
+            "rust",
+            "--no-gh-auth",
+        ],
+    )
+    assert result.exit_code == 0
+
+    strategies = mock_metadata_collector.call_args[0][0]
+    strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
+
+    assert "RustMetadataCollectionStrategy" in strategy_classes
+    assert "RustCratesIoMetadataCollectionStrategy" in strategy_classes
+    assert "ScanCodeToolkitMetadataCollectionStrategy" in strategy_classes
+    assert "GitHubRepositoryMetadataCollectionStrategy" in strategy_classes
+    assert "CleanupCopyrightMetadataStrategy" in strategy_classes
+
+    assert "GitHubSbomMetadataCollectionStrategy" not in strategy_classes
+    assert "GoPkgMetadataCollectionStrategy" not in strategy_classes
+    assert "NpmMetadataCollectionStrategy" not in strategy_classes
+    assert "PypiMetadataCollectionStrategy" not in strategy_classes
+
+    mock_rust_resolver.assert_called_once_with(
+        ANY,
+        mock_source_code_manager.return_value,
+    )
+    mock_rust_resolver.return_value.resolve_package.assert_called_once_with("serde@1.0")
+    mock_ensure_rust_license_tool_installed.assert_called_once_with()
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.RustPackageResolver")
+@patch(
+    "dd_license_attribution.cli.generate_sbom_command.ensure_rust_license_tool_installed"
+)
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_ecosystem_rust_resolver_failure_exits(
+    mock_metadata_collector: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_ensure_rust_license_tool_installed: Mock,
+    mock_rust_resolver: Mock,
+) -> None:
+    mock_rust_resolver.return_value.resolve_package.return_value = None
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "missing-crate",
+            "--ecosystem",
+            "rust",
+            "--no-gh-auth",
+        ],
+    )
+
+    assert result.exit_code == 1
+    mock_rust_resolver.return_value.resolve_package.assert_called_once_with(
+        "missing-crate"
+    )
+    mock_ensure_rust_license_tool_installed.assert_called_once_with()
+    mock_metadata_collector.assert_not_called()
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.RustPackageResolver")
+@patch(
+    "dd_license_attribution.cli.generate_sbom_command.ensure_rust_license_tool_installed"
+)
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_ecosystem_rust_passes_local_project_path_to_strategy(
+    mock_metadata_collector: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_ensure_rust_license_tool_installed: Mock,
+    mock_rust_resolver: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_rust_resolver.return_value.resolve_package.return_value = (
+        "/tmp/rust_resolve/serde"
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "serde@1.0",
+            "--ecosystem",
+            "rust",
+            "--no-gh-auth",
+        ],
+    )
+    assert result.exit_code == 0
+
+    strategies = mock_metadata_collector.call_args[0][0]
+    rust_strategy = next(
+        s
+        for s in strategies
+        if s.__class__.__name__ == "RustMetadataCollectionStrategy"
+    )
+    assert rust_strategy.local_project_path == "/tmp/rust_resolve/serde"
+    crates_io_strategy = next(
+        s
+        for s in strategies
+        if s.__class__.__name__ == "RustCratesIoMetadataCollectionStrategy"
+    )
+    assert crates_io_strategy.local_project_path == "/tmp/rust_resolve/serde"
+    mock_ensure_rust_license_tool_installed.assert_called_once_with()
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.RustPackageResolver")
+@patch(
+    "dd_license_attribution.cli.generate_sbom_command.ensure_rust_license_tool_installed"
+)
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_ecosystem_rust_binary_fallback_passes_source_path_to_strategy(
+    mock_metadata_collector: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_ensure_rust_license_tool_installed: Mock,
+    mock_rust_resolver: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_rust_resolver.return_value.resolve_package.return_value = (
+        "/tmp/rust_resolve/dd-rust-license-tool/crate-source/"
+        "dd-rust-license-tool-1.0.6"
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "dd-rust-license-tool",
+            "--ecosystem",
+            "rust",
+            "--no-gh-auth",
+        ],
+    )
+    assert result.exit_code == 0
+
+    strategies = mock_metadata_collector.call_args[0][0]
+    rust_strategy = next(
+        s
+        for s in strategies
+        if s.__class__.__name__ == "RustMetadataCollectionStrategy"
+    )
+    assert (
+        rust_strategy.local_project_path
+        == "/tmp/rust_resolve/dd-rust-license-tool/crate-source/"
+        "dd-rust-license-tool-1.0.6"
+    )
+    crates_io_strategy = next(
+        s
+        for s in strategies
+        if s.__class__.__name__ == "RustCratesIoMetadataCollectionStrategy"
+    )
+    assert (
+        crates_io_strategy.local_project_path
+        == "/tmp/rust_resolve/dd-rust-license-tool/crate-source/"
+        "dd-rust-license-tool-1.0.6"
+    )
+    mock_rust_resolver.return_value.resolve_package.assert_called_once_with(
+        "dd-rust-license-tool"
+    )
+    mock_ensure_rust_license_tool_installed.assert_called_once_with()
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.RustPackageResolver")
+@patch(
+    "dd_license_attribution.cli.generate_sbom_command.ensure_rust_license_tool_installed"
+)
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_ecosystem_rust_no_rust_strategy_skips_tool_preflight(
+    mock_metadata_collector: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_ensure_rust_license_tool_installed: Mock,
+    mock_rust_resolver: Mock,
+) -> None:
+    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_rust_resolver.return_value.resolve_package.return_value = (
+        "/tmp/rust_resolve/serde"
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "serde@1.0",
+            "--ecosystem",
+            "rust",
+            "--no-rust-strategy",
+            "--no-gh-auth",
+        ],
+    )
+    assert result.exit_code == 0
+
+    strategies = mock_metadata_collector.call_args[0][0]
+    strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
+
+    assert "RustMetadataCollectionStrategy" not in strategy_classes
+    assert "RustCratesIoMetadataCollectionStrategy" not in strategy_classes
+    assert "ScanCodeToolkitMetadataCollectionStrategy" in strategy_classes
+    assert "GitHubRepositoryMetadataCollectionStrategy" in strategy_classes
+    mock_rust_resolver.return_value.resolve_package.assert_called_once_with("serde@1.0")
+    mock_ensure_rust_license_tool_installed.assert_not_called()
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.RustPackageResolver")
+@patch(
+    "dd_license_attribution.cli.generate_sbom_command.ensure_rust_license_tool_installed"
+)
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_ecosystem_rust_missing_tool_error_exits_cleanly(
+    mock_metadata_collector: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_ensure_rust_license_tool_installed: Mock,
+    mock_rust_resolver: Mock,
+) -> None:
+    mock_rust_resolver.return_value.resolve_package.return_value = (
+        "/tmp/rust_resolve/serde"
+    )
+    mock_metadata_collector.return_value.collect_metadata.side_effect = (
+        RustLicenseToolNotInstalledError(RUST_LICENSE_TOOL_INSTALL_HINT)
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "serde@1.0",
+            "--ecosystem",
+            "rust",
+            "--no-gh-auth",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert RUST_LICENSE_TOOL_INSTALL_HINT in result.stderr
+    mock_rust_resolver.return_value.resolve_package.assert_called_once_with("serde@1.0")
+    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+        "serde@1.0"
+    )
+    mock_ensure_rust_license_tool_installed.assert_called_once_with()
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.RustPackageResolver")
+@patch(
+    "dd_license_attribution.cli.generate_sbom_command.ensure_rust_license_tool_installed"
+)
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+def test_ecosystem_rust_preflight_failure_exits_before_resolver(
+    mock_metadata_collector: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_ensure_rust_license_tool_installed: Mock,
+    mock_rust_resolver: Mock,
+) -> None:
+    mock_ensure_rust_license_tool_installed.side_effect = (
+        RustLicenseToolNotInstalledError(RUST_LICENSE_TOOL_INSTALL_HINT)
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom-csv",
+            "serde@1.0",
+            "--ecosystem",
+            "rust",
+            "--no-gh-auth",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert RUST_LICENSE_TOOL_INSTALL_HINT in result.stderr
+    mock_ensure_rust_license_tool_installed.assert_called_once_with()
+    mock_rust_resolver.assert_not_called()
+    mock_metadata_collector.assert_not_called()
 
 
 # NOTE: test_cache_ttl_without_cache_dir and test_transitive_root_same_time must

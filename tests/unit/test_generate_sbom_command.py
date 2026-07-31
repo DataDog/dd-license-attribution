@@ -19,6 +19,7 @@ _SKIP_DEPENDENCY_STRATEGIES = [
     "--no-gopkg-strategy",
     "--no-github-sbom-strategy",
     "--no-npm-strategy",
+    "--no-rust-strategy",
     "--no-scancode-strategy",
 ]
 
@@ -743,7 +744,8 @@ def test_generate_sbom_missing_package_with_option_shows_usage_error() -> None:
     )
 
     assert result.exit_code == 2
-    assert "Missing argument 'package'." in result.stderr
+    assert "Missing argument" in result.stderr
+    assert "package" in result.stderr.lower()
     assert "Traceback" not in result.stderr
 
 

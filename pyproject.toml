@@ -36,7 +36,7 @@ dependencies = [
 lint = [
     "black==26.5.1",
     "isort==8.0.1",
-    "ruff",
+    "ruff==0.15.21",
 ]
 dev = [
     "pytest",
@@ -45,6 +45,7 @@ dev = [
     "mypy",
     "black==26.5.1",
     "isort==8.0.1",
+    "ruff==0.15.21",
     "mutmut",
     "pytest-timeout",
     "types-pytz",
@@ -67,7 +68,11 @@ filterwarnings = [
 [tool.mutmut]
 paths_to_mutate = ["src/"]
 tests_dir = ["tests/unit/"]
-do_not_mutate = ["src/dd_license_attribution/cli/*", "src/dd_license_attribution/adaptors/*", "src/dd_license_attribution/config/*"]
+do_not_mutate = [
+    "src/dd_license_attribution/cli/*",
+    "src/dd_license_attribution/adaptors/*",
+    "src/dd_license_attribution/config/*",
+]
 mutate_only_covered_lines = false
 pytest_add_cli_args = ["--timeout=30", "--ignore=tests/unit/test_clean_spdx_id_command.py", "--ignore=tests/unit/test_generate_sbom_csv_command.py", "--ignore=tests/unit/test_generate_overrides_command.py"]
 

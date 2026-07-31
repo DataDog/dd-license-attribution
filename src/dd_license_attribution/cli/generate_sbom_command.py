@@ -12,6 +12,7 @@ import copy
 import inspect
 import json
 import logging
+import re
 import sys
 import tempfile
 from collections.abc import Callable
@@ -26,6 +27,7 @@ from dd_license_attribution.adaptors.os import (
     create_dirs,
     path_exists,
     path_join,
+    walk_directory,
     write_file,
 )
 from dd_license_attribution.artifact_management.artifact_manager import (
@@ -43,6 +45,9 @@ from dd_license_attribution.artifact_management.pypi_package_resolver import (
 from dd_license_attribution.artifact_management.python_env_manager import (
     PyEnvRuntimeError,
     PythonEnvManager,
+)
+from dd_license_attribution.artifact_management.rust_package_resolver import (
+    RustPackageResolver,
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
     NonAccessibleRepository,
@@ -80,6 +85,14 @@ from dd_license_attribution.metadata_collector.strategies.override_strategy impo
 from dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy import (
     PypiMetadataCollectionStrategy,
 )
+from dd_license_attribution.metadata_collector.strategies.rust_collection_strategy import (
+    RustLicenseToolNotInstalledError,
+    RustMetadataCollectionStrategy,
+    ensure_rust_license_tool_installed,
+)
+from dd_license_attribution.metadata_collector.strategies.rust_crates_io_collection_strategy import (
+    RustCratesIoMetadataCollectionStrategy,
+)
 from dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
     ScanCodeToolkitMetadataCollectionStrategy,
 )
@@ -103,6 +116,7 @@ logger = logging.getLogger("dd_license_attribution")
 
 _OUTPUT_EXTENSIONS = {"csv": "csv", "spdx": "json", "markdown": "md"}
 _RESERVED_FILENAME_CHARS = '<>:"/\\|?*'
+_CARGO_PROJECT_SEARCH_IGNORED_DIRS = {".git", "target", "test", "tests", "fixtures"}
 
 
 def _report_document_name(package: str) -> str:
@@ -123,6 +137,56 @@ def _canonical_ecosystem(ecosystem: str | None) -> str | None:
     if ecosystem == "python":
         return "pypi"
     return ecosystem
+
+
+def _looks_like_repository_package(package: str) -> bool:
+    return package.startswith("git@") or "://" in package or "/" in package
+
+
+def _cargo_project_root_is_ignored(source_root: str, candidate_root: str) -> bool:
+    normalized_source_root = source_root.rstrip("/\\")
+    normalized_candidate_root = candidate_root.rstrip("/\\")
+    if normalized_candidate_root.startswith(normalized_source_root):
+        relative_candidate_root = normalized_candidate_root[
+            len(normalized_source_root) :
+        ]
+    else:
+        relative_candidate_root = normalized_candidate_root
+
+    path_parts = [
+        part
+        for part in re.split(r"[/\\]+", relative_candidate_root.strip("/\\"))
+        if part
+    ]
+    return any(part in _CARGO_PROJECT_SEARCH_IGNORED_DIRS for part in path_parts)
+
+
+def _repository_has_cargo_project(
+    source_code_manager: SourceCodeManager,
+    package: str,
+) -> bool:
+    if not _looks_like_repository_package(package):
+        return False
+
+    source_code_ref = source_code_manager.get_code(package)
+    if source_code_ref is None:
+        return False
+
+    local_full_path = getattr(source_code_ref, "local_full_path", None)
+    if not isinstance(local_full_path, str):
+        return False
+
+    for root, dirs, files in walk_directory(local_full_path):
+        dirs[:] = [
+            directory
+            for directory in dirs
+            if directory not in _CARGO_PROJECT_SEARCH_IGNORED_DIRS
+        ]
+        if "Cargo.toml" in files and not _cargo_project_root_is_ignored(
+            local_full_path, root
+        ):
+            return True
+    return False
 
 
 def _build_writer(
@@ -272,7 +336,7 @@ def generate_sbom(
         str | None,
         typer.Option(
             "--ecosystem",
-            help="Treat the package argument as a package name in the given ecosystem instead of a GitHub repository URL. Supported: 'npm', 'python' (or 'pypi'), 'go'.",
+            help="Treat the package argument as a package name in the given ecosystem instead of a GitHub repository URL. Supported: 'npm', 'python' (or 'pypi'), 'go', 'rust'.",
             rich_help_panel="Scanning Options",
         ),
     ] = None,
@@ -331,6 +395,14 @@ def generate_sbom(
         typer.Option(
             "--no-npm-strategy",
             help="Skip the NPM collection strategy.",
+            rich_help_panel="Scanning Options",
+        ),
+    ] = False,
+    skip_rust: Annotated[
+        bool,
+        typer.Option(
+            "--no-rust-strategy",
+            help="Skip the Rust collection strategy.",
             rich_help_panel="Scanning Options",
         ),
     ] = False,
@@ -488,7 +560,7 @@ def generate_sbom(
     if output_dir is None and len(requested_output_formats) > 1:
         raise typer.BadParameter("Multiple --format values require --output-dir.")
 
-    supported_ecosystems = ["npm", "python", "pypi", "go"]
+    supported_ecosystems = ["npm", "python", "pypi", "go", "rust"]
     if ecosystem is not None and ecosystem not in supported_ecosystems:
         raise typer.BadParameter(
             f"Unsupported ecosystem: '{ecosystem}'. Supported ecosystems: {', '.join(supported_ecosystems)}."
@@ -506,6 +578,7 @@ def generate_sbom(
         "GoPkgsMetadataCollectionStrategy": True,
         "PythonPipMetadataCollectionStrategy": True,
         "NpmMetadataCollectionStrategy": True,
+        "RustMetadataCollectionStrategy": True,
         "ScanCodeToolkitMetadataCollectionStrategy": True,
         "GitHubRepositoryMetadataCollectionStrategy": True,
         "CleanupCopyrightMetadataStrategy": True,
@@ -560,6 +633,9 @@ def generate_sbom(
         if skip_npm:
             enabled_strategies["NpmMetadataCollectionStrategy"] = False
 
+        if skip_rust:
+            enabled_strategies["RustMetadataCollectionStrategy"] = False
+
         if skip_scancode:
             enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"] = False
 
@@ -596,6 +672,58 @@ def generate_sbom(
                         package,
                         source_code_manager,
                         project_scope,
+                        local_project_path=local_project_path,
+                    )
+                )
+
+            if enabled_strategies["ScanCodeToolkitMetadataCollectionStrategy"]:
+                if deep_scanning:
+                    strategies.append(
+                        ScanCodeToolkitMetadataCollectionStrategy(source_code_manager)
+                    )
+                else:
+                    strategies.append(
+                        ScanCodeToolkitMetadataCollectionStrategy(
+                            source_code_manager,
+                            cli_config.default_config.preset_license_file_locations,
+                            cli_config.default_config.preset_copyright_file_locations,
+                        )
+                    )
+
+            if enabled_strategies["GitHubRepositoryMetadataCollectionStrategy"]:
+                strategies.append(
+                    GitHubRepositoryMetadataCollectionStrategy(
+                        github_client, source_code_manager
+                    )
+                )
+        elif ecosystem == "rust":
+            if enabled_strategies["RustMetadataCollectionStrategy"]:
+                try:
+                    ensure_rust_license_tool_installed()
+                except RustLicenseToolNotInstalledError as e:
+                    logger.error(str(e))
+                    sys.exit(1)
+
+            rust_temp_dir = cleanup_stack.enter_context(tempfile.TemporaryDirectory())
+            rust_resolver = RustPackageResolver(rust_temp_dir, source_code_manager)
+            local_project_path = rust_resolver.resolve_package(package)
+            if local_project_path is None:
+                logger.error("Failed to resolve Rust crate: %s", package)
+                sys.exit(1)
+
+            if enabled_strategies["RustMetadataCollectionStrategy"]:
+                strategies.append(
+                    RustMetadataCollectionStrategy(
+                        package,
+                        source_code_manager,
+                        project_scope,
+                        local_project_path=local_project_path,
+                    )
+                )
+                strategies.append(
+                    RustCratesIoMetadataCollectionStrategy(
+                        package,
+                        source_code_manager,
                         local_project_path=local_project_path,
                     )
                 )
@@ -707,6 +835,21 @@ def generate_sbom(
                 )
         else:
             # Standard GitHub repository mode
+            repository_has_cargo_project = False
+            if enabled_strategies["RustMetadataCollectionStrategy"]:
+                try:
+                    repository_has_cargo_project = _repository_has_cargo_project(
+                        source_code_manager, package
+                    )
+                    if repository_has_cargo_project:
+                        ensure_rust_license_tool_installed()
+                except RustLicenseToolNotInstalledError as e:
+                    logger.error(str(e))
+                    sys.exit(1)
+                except (NonAccessibleRepository, UnauthorizedRepository) as e:
+                    logger.error(str(e))
+                    sys.exit(1)
+
             if enabled_strategies["GitHubSbomMetadataCollectionStrategy"]:
                 strategies.append(
                     GitHubSbomMetadataCollectionStrategy(
@@ -737,6 +880,22 @@ def generate_sbom(
                         source_code_manager,
                         project_scope,
                         yarn_subdirs=yarn_subdirs or [],
+                    )
+                )
+
+            if (
+                enabled_strategies["RustMetadataCollectionStrategy"]
+                and repository_has_cargo_project
+            ):
+                strategies.append(
+                    RustMetadataCollectionStrategy(
+                        package, source_code_manager, project_scope
+                    )
+                )
+                strategies.append(
+                    RustCratesIoMetadataCollectionStrategy(
+                        package,
+                        source_code_manager,
                     )
                 )
 
@@ -832,6 +991,9 @@ def generate_sbom(
             logger.error(
                 "When skipping this strategy, the tool will not try to extract dependencies or metadata from PyPI."
             )
+            sys.exit(1)
+        except RustLicenseToolNotInstalledError as e:
+            logger.error(str(e))
             sys.exit(1)
 
         checker = LicenseChecker(
