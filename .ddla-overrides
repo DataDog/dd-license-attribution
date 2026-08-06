@@ -165,6 +165,23 @@
   {
     "override_type": "replace",
     "target": {
+      "component": "ruff",
+      "origin": "ruff"
+    },
+    "replacement": {
+      "name": "ruff",
+      "origin": "ruff",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "Charles Marsh"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
       "origin": "https://www.crummy.com/software/BeautifulSoup/bs4/"
     },
     "replacement": {
