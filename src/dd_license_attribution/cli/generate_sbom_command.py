@@ -78,6 +78,7 @@ from dd_license_attribution.metadata_collector.strategies.gopkg_collection_strat
 )
 from dd_license_attribution.metadata_collector.strategies.npm_collection_strategy import (
     NpmMetadataCollectionStrategy,
+    NpmRegistryMetadataError,
 )
 from dd_license_attribution.metadata_collector.strategies.override_strategy import (
     OverrideCollectionStrategy,
@@ -980,7 +981,11 @@ def generate_sbom(
             metadata_collector = MetadataCollector(strategies)
         try:
             metadata = metadata_collector.collect_metadata(package)
-        except (NonAccessibleRepository, UnauthorizedRepository) as e:
+        except (
+            NonAccessibleRepository,
+            NpmRegistryMetadataError,
+            UnauthorizedRepository,
+        ) as e:
             logger.error(str(e))
             sys.exit(1)
         except PyEnvRuntimeError as e:

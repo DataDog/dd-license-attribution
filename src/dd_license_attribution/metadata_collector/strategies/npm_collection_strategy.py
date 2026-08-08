@@ -10,6 +10,8 @@
 import json
 import logging
 import re
+from random import uniform
+from time import sleep
 from typing import Any
 
 import requests
@@ -39,6 +41,15 @@ from dd_license_attribution.metadata_collector.strategies.abstract_collection_st
 
 # Get application-specific logger
 logger = logging.getLogger("dd_license_attribution")
+
+_NPM_REGISTRY_MAX_ATTEMPTS = 3
+_NPM_REGISTRY_RETRYABLE_STATUS_CODES = {408, 429}
+_NPM_REGISTRY_TIMEOUT_SECONDS = 5
+_NPM_REGISTRY_MAX_RETRY_DELAY_SECONDS = _NPM_REGISTRY_TIMEOUT_SECONDS
+
+
+class NpmRegistryMetadataError(RuntimeError):
+    """Raised when npm registry metadata cannot be fetched."""
 
 
 def _semver_sort_key(version: str) -> semver.Version:
@@ -413,32 +424,74 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
     def _fetch_npm_registry_metadata(
         self, dep_name: str, version: str
     ) -> tuple[list[str], list[str], dict[str, Any] | None]:
-        license = []
-        copyright = []
-        pkg_data = None
+        url = f"https://registry.npmjs.org/{dep_name}/{version}"
+        attempt = 1
 
-        try:
-            resp = requests.get(
-                f"https://registry.npmjs.org/{dep_name}/{version}",
-                timeout=5,
-            )
-            if resp.status_code == 200:
-                pkg_data = resp.json()
-                license = self._extract_license_from_pkg_data(pkg_data)
-                copyright = self._extract_copyright_from_pkg_data(pkg_data)
+        while True:
+            retry_after: str | None = None
+            try:
+                response = requests.get(url, timeout=_NPM_REGISTRY_TIMEOUT_SECONDS)
+            except (
+                requests.ConnectionError,
+                requests.Timeout,
+                requests.exceptions.ChunkedEncodingError,
+            ) as error:
+                failure = str(error)
+            except requests.RequestException as error:
+                raise NpmRegistryMetadataError(
+                    f"Failed to fetch npm registry metadata for "
+                    f"{dep_name}@{version}: {error}"
+                ) from error
             else:
-                logger.warning(
-                    "Failed to fetch npm registry metadata for "
-                    f"{dep_name}@{version}: {resp.status_code}, "
-                    f"{resp.text}"
-                )
-        except requests.RequestException as e:
-            logger.warning(
-                "Failed to fetch npm registry metadata for "
-                f"{dep_name}@{version}: {e}"
-            )
+                if response.status_code == 200:
+                    package_data = response.json()
+                    return (
+                        self._extract_license_from_pkg_data(package_data),
+                        self._extract_copyright_from_pkg_data(package_data),
+                        package_data,
+                    )
 
-        return license, copyright, pkg_data
+                failure = f"{response.status_code}, {response.text}"
+                if (
+                    response.status_code not in _NPM_REGISTRY_RETRYABLE_STATUS_CODES
+                    and not 500 <= response.status_code < 600
+                ):
+                    raise NpmRegistryMetadataError(
+                        f"Failed to fetch npm registry metadata for "
+                        f"{dep_name}@{version}: {failure}"
+                    )
+
+                retry_after = response.headers.get("Retry-After")
+
+            if attempt == _NPM_REGISTRY_MAX_ATTEMPTS:
+                raise NpmRegistryMetadataError(
+                    f"Failed to fetch npm registry metadata for "
+                    f"{dep_name}@{version} after {attempt} attempts: {failure}"
+                )
+
+            if isinstance(retry_after, str) and retry_after.strip().isdecimal():
+                delay = int(retry_after)
+                if delay > _NPM_REGISTRY_MAX_RETRY_DELAY_SECONDS:
+                    raise NpmRegistryMetadataError(
+                        f"Failed to fetch npm registry metadata for "
+                        f"{dep_name}@{version}: Retry-After value {delay} exceeds "
+                        f"the maximum retry delay of "
+                        f"{_NPM_REGISTRY_MAX_RETRY_DELAY_SECONDS} seconds"
+                    )
+            else:
+                delay = 2 ** (attempt - 1) + uniform(0, 1)
+            logger.warning(
+                "Failed to fetch npm registry metadata for %s@%s "
+                "(attempt %d/%d): %s; retrying in %.2f seconds",
+                dep_name,
+                version,
+                attempt,
+                _NPM_REGISTRY_MAX_ATTEMPTS,
+                failure,
+                delay,
+            )
+            sleep(delay)
+            attempt += 1
 
     def _determine_origin(
         self,
