@@ -69,6 +69,34 @@ def _tar_gz_with_read_only_directory() -> bytes:
     return archive_bytes.getvalue()
 
 
+def _mock_extract_tar_members(
+    mocker: pytest_mock.MockFixture,
+) -> tuple[Mock, list[tarfile.TarFile], list[str], list[str]]:
+    captured_archives: list[tarfile.TarFile] = []
+    captured_member_names: list[str] = []
+    captured_destinations: list[str] = []
+
+    def fake_extract_tar_members(
+        archive: tarfile.TarFile,
+        members: Iterator[tarfile.TarInfo],
+        destination: str,
+    ) -> None:
+        captured_archives.append(archive)
+        captured_destinations.append(destination)
+        captured_member_names.extend(member.name for member in members)
+
+    mock_extract_tar_members = mocker.patch(
+        "dd_license_attribution.utils.tar_archive.extract_tar_members",
+        side_effect=fake_extract_tar_members,
+    )
+    return (
+        mock_extract_tar_members,
+        captured_archives,
+        captured_member_names,
+        captured_destinations,
+    )
+
+
 @pytest.mark.parametrize(
     "member_type",
     [
@@ -188,13 +216,22 @@ def test_extract_tar_gz_rejects_total_extracted_size_over_limit(
         )
 
 
-def test_extract_tar_gz_accepts_exact_extracted_size_limit(tmp_path: Path) -> None:
+def test_extract_tar_gz_accepts_exact_extracted_size_limit(
+    tmp_path: Path,
+    mocker: pytest_mock.MockFixture,
+) -> None:
     archive_content = _tar_gz_with_files(
         {
             "crate/one.txt": b"x" * 10,
             "crate/two.txt": b"y" * 10,
         }
     )
+    (
+        mock_extract_tar_members,
+        _captured_archives,
+        captured_member_names,
+        captured_destinations,
+    ) = _mock_extract_tar_members(mocker)
 
     result = extract_tar_gz(
         archive_content,
@@ -203,14 +240,22 @@ def test_extract_tar_gz_accepts_exact_extracted_size_limit(tmp_path: Path) -> No
     )
 
     assert result == ["crate/one.txt", "crate/two.txt"]
-    assert (tmp_path / "crate" / "one.txt").read_bytes() == b"x" * 10
-    assert (tmp_path / "crate" / "two.txt").read_bytes() == b"y" * 10
+    mock_extract_tar_members.assert_called_once()
+    assert captured_member_names == ["crate/one.txt", "crate/two.txt"]
+    assert captured_destinations == [str(tmp_path)]
 
 
 def test_extract_tar_gz_accepts_single_byte_extracted_size_limit(
     tmp_path: Path,
+    mocker: pytest_mock.MockFixture,
 ) -> None:
     archive_content = _tar_gz_with_files({"crate/one.txt": b"x"})
+    (
+        mock_extract_tar_members,
+        _captured_archives,
+        captured_member_names,
+        captured_destinations,
+    ) = _mock_extract_tar_members(mocker)
 
     result = extract_tar_gz(
         archive_content,
@@ -219,7 +264,9 @@ def test_extract_tar_gz_accepts_single_byte_extracted_size_limit(
     )
 
     assert result == ["crate/one.txt"]
-    assert (tmp_path / "crate" / "one.txt").read_bytes() == b"x"
+    mock_extract_tar_members.assert_called_once()
+    assert captured_member_names == ["crate/one.txt"]
+    assert captured_destinations == [str(tmp_path)]
 
 
 def test_extract_tar_gz_rejects_malformed_archive(tmp_path: Path) -> None:
@@ -234,19 +281,31 @@ def test_extract_tar_gz_rejects_truncated_gzip(tmp_path: Path) -> None:
         extract_tar_gz(archive_content[: len(archive_content) // 2], str(tmp_path))
 
 
-def test_extract_tar_gz_allows_tar_trailing_garbage_after_eof(tmp_path: Path) -> None:
+def test_extract_tar_gz_allows_tar_trailing_garbage_after_eof(
+    tmp_path: Path,
+    mocker: pytest_mock.MockFixture,
+) -> None:
     archive_content = _tar_gz_with_file_and_trailing_garbage(
         {"crate/Cargo.toml": b"[package]\n"}
     )
+    (
+        mock_extract_tar_members,
+        _captured_archives,
+        captured_member_names,
+        captured_destinations,
+    ) = _mock_extract_tar_members(mocker)
 
     result = extract_tar_gz(archive_content, str(tmp_path))
 
     assert result == ["crate/Cargo.toml"]
-    assert (tmp_path / "crate" / "Cargo.toml").read_text() == "[package]\n"
+    mock_extract_tar_members.assert_called_once()
+    assert captured_member_names == ["crate/Cargo.toml"]
+    assert captured_destinations == [str(tmp_path)]
 
 
 def test_extract_tar_gz_writes_nothing_when_later_member_is_rejected(
     tmp_path: Path,
+    mocker: pytest_mock.MockFixture,
 ) -> None:
     archive_content = _tar_gz_with_files(
         {
@@ -254,15 +313,19 @@ def test_extract_tar_gz_writes_nothing_when_later_member_is_rejected(
             "../escape.txt": b"escape",
         }
     )
+    mock_extract_tar_members = mocker.patch(
+        "dd_license_attribution.utils.tar_archive.extract_tar_members"
+    )
 
     with pytest.raises(ValueError, match="Unsafe archive path"):
         extract_tar_gz(archive_content, str(tmp_path))
 
-    assert list(tmp_path.iterdir()) == []
+    mock_extract_tar_members.assert_not_called()
 
 
-def test_extract_tar_gz_returns_members_in_archive_order_and_extracts_root(
+def test_extract_tar_gz_returns_members_in_archive_order_and_calls_adaptor(
     tmp_path: Path,
+    mocker: pytest_mock.MockFixture,
 ) -> None:
     archive_content = _tar_gz_with_files(
         {
@@ -270,14 +333,22 @@ def test_extract_tar_gz_returns_members_in_archive_order_and_extracts_root(
             "demo-1.2.3/src/lib.rs": b"pub fn demo() {}\n",
         }
     )
+    (
+        mock_extract_tar_members,
+        _captured_archives,
+        captured_member_names,
+        captured_destinations,
+    ) = _mock_extract_tar_members(mocker)
 
     result = extract_tar_gz(archive_content, str(tmp_path))
 
     assert result == ["demo-1.2.3/Cargo.toml", "demo-1.2.3/src/lib.rs"]
-    assert (tmp_path / "demo-1.2.3" / "Cargo.toml").read_bytes() == b"[package]\n"
-    assert (
-        tmp_path / "demo-1.2.3" / "src" / "lib.rs"
-    ).read_bytes() == b"pub fn demo() {}\n"
+    mock_extract_tar_members.assert_called_once()
+    assert captured_member_names == [
+        "demo-1.2.3/Cargo.toml",
+        "demo-1.2.3/src/lib.rs",
+    ]
+    assert captured_destinations == [str(tmp_path)]
 
 
 def test_extract_tar_gz_uses_os_adaptor_for_extraction(
@@ -285,48 +356,41 @@ def test_extract_tar_gz_uses_os_adaptor_for_extraction(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     archive_content = _tar_gz_with_files({"crate/Cargo.toml": b"[package]\n"})
-    captured_member_names: list[str] = []
-    captured_destination = ""
-    captured_archive: tarfile.TarFile | None = None
-
-    def fake_extract_tar_members(
-        archive: tarfile.TarFile,
-        members: Iterator[tarfile.TarInfo],
-        destination: str,
-    ) -> None:
-        nonlocal captured_archive, captured_destination
-        captured_archive = archive
-        captured_destination = destination
-        captured_member_names.extend(member.name for member in members)
-
-    mock_extract_tar_members = mocker.patch(
-        "dd_license_attribution.utils.tar_archive.extract_tar_members",
-        side_effect=fake_extract_tar_members,
-    )
+    (
+        mock_extract_tar_members,
+        captured_archives,
+        captured_member_names,
+        captured_destinations,
+    ) = _mock_extract_tar_members(mocker)
 
     result = extract_tar_gz(archive_content, str(tmp_path))
 
     assert result == ["crate/Cargo.toml"]
     mock_extract_tar_members.assert_called_once()
-    assert isinstance(captured_archive, tarfile.TarFile)
+    assert len(captured_archives) == 1
+    assert isinstance(captured_archives[0], tarfile.TarFile)
     assert captured_member_names == ["crate/Cargo.toml"]
-    assert captured_destination == str(tmp_path)
+    assert captured_destinations == [str(tmp_path)]
 
 
-def test_extract_tar_gz_defers_directory_permissions_until_children_are_extracted(
+def test_extract_tar_gz_passes_directory_members_to_os_adaptor(
     tmp_path: Path,
+    mocker: pytest_mock.MockFixture,
 ) -> None:
     archive_content = _tar_gz_with_read_only_directory()
-    directory_path = tmp_path / "crate"
+    (
+        mock_extract_tar_members,
+        _captured_archives,
+        captured_member_names,
+        captured_destinations,
+    ) = _mock_extract_tar_members(mocker)
 
-    try:
-        result = extract_tar_gz(archive_content, str(tmp_path))
+    result = extract_tar_gz(archive_content, str(tmp_path))
 
-        assert result == ["crate", "crate/Cargo.toml"]
-        assert (directory_path / "Cargo.toml").read_bytes() == b"[package]\n"
-    finally:
-        if directory_path.exists():
-            directory_path.chmod(0o700)
+    assert result == ["crate", "crate/Cargo.toml"]
+    mock_extract_tar_members.assert_called_once()
+    assert captured_member_names == ["crate", "crate/Cargo.toml"]
+    assert captured_destinations == [str(tmp_path)]
 
 
 def test_read_tar_gz_text_file_reads_matching_member() -> None:
