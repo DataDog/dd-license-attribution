@@ -10,7 +10,8 @@
 import contextlib
 import os
 import subprocess
-from collections.abc import Iterator, Mapping
+import tarfile
+from collections.abc import Iterable, Iterator, Mapping
 
 import requests
 
@@ -108,6 +109,14 @@ def open_file(file_path: str) -> str:
 def write_file(file_path: str, content: str) -> None:
     with open(file_path, "w", encoding="utf-8") as file:
         file.write(content)
+
+
+def extract_tar_members(
+    archive: tarfile.TarFile,
+    members: Iterable[tarfile.TarInfo],
+    destination: str,
+) -> None:
+    archive.extractall(destination, members=members, filter="data")
 
 
 def absolute_path(path: str) -> str:

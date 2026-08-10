@@ -6,6 +6,7 @@
 # Copyright 2026-present Datadog, Inc.
 
 import subprocess
+import tarfile
 from collections.abc import Iterator
 from unittest.mock import Mock
 
@@ -15,6 +16,7 @@ import requests
 
 from dd_license_attribution.adaptors.os import (
     absolute_path,
+    extract_tar_members,
     get_env_var,
     is_absolute_path,
     normalize_path,
@@ -137,6 +139,19 @@ def test_get_env_var_returns_environment_value(
 
     assert result == "true"
     mock_environ_get.assert_called_once_with("CI")
+
+
+def test_extract_tar_members_delegates_to_extractall() -> None:
+    archive = Mock(spec=tarfile.TarFile)
+    members = [tarfile.TarInfo("crate")]
+
+    extract_tar_members(archive, members, "/destination")
+
+    archive.extractall.assert_called_once_with(
+        "/destination",
+        members=members,
+        filter="data",
+    )
 
 
 def test_absolute_path_returns_os_absolute_path(

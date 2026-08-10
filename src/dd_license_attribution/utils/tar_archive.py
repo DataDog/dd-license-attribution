@@ -14,6 +14,7 @@ from collections.abc import Iterator
 from dd_license_attribution.adaptors.os import (
     PATH_SEPARATOR,
     absolute_path,
+    extract_tar_members,
     is_absolute_path,
     path_join,
 )
@@ -187,13 +188,16 @@ def extract_tar_gz(
         ]
 
     with _open_bounded_tar_gz(archive_content, budget, max_extracted_bytes) as archive:
-        for member in _iter_validated_members(
+        extract_tar_members(
             archive,
+            _iter_validated_members(
+                archive,
+                destination,
+                max_extracted_bytes,
+                max_members,
+            ),
             destination,
-            max_extracted_bytes,
-            max_members,
-        ):
-            archive.extract(member, destination, filter="data")
+        )
 
     return member_names
 

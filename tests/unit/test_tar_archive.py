@@ -8,9 +8,11 @@
 import gzip
 import io
 import tarfile
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+import pytest_mock
 
 from dd_license_attribution.utils.tar_archive import (
     MAX_ARCHIVE_MEMBERS,
@@ -49,6 +51,21 @@ def _tar_gz_with_file_and_trailing_garbage(files: dict[str, bytes]) -> bytes:
             archive.addfile(member, io.BytesIO(content))
     tar_with_garbage = archive_bytes.getvalue() + b"trailing garbage"
     return gzip.compress(tar_with_garbage)
+
+
+def _tar_gz_with_read_only_directory() -> bytes:
+    archive_bytes = io.BytesIO()
+    with tarfile.open(fileobj=archive_bytes, mode="w:gz") as archive:
+        directory = tarfile.TarInfo("crate")
+        directory.type = tarfile.DIRTYPE
+        directory.mode = 0o500
+        archive.addfile(directory)
+
+        member = tarfile.TarInfo("crate/Cargo.toml")
+        content = b"[package]\n"
+        member.size = len(content)
+        archive.addfile(member, io.BytesIO(content))
+    return archive_bytes.getvalue()
 
 
 @pytest.mark.parametrize(
@@ -246,6 +263,55 @@ def test_extract_tar_gz_returns_members_in_archive_order_and_extracts_root(
     assert (
         tmp_path / "demo-1.2.3" / "src" / "lib.rs"
     ).read_bytes() == b"pub fn demo() {}\n"
+
+
+def test_extract_tar_gz_uses_os_adaptor_for_extraction(
+    tmp_path: Path,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    archive_content = _tar_gz_with_files({"crate/Cargo.toml": b"[package]\n"})
+    captured_member_names: list[str] = []
+    captured_destination = ""
+    captured_archive: tarfile.TarFile | None = None
+
+    def fake_extract_tar_members(
+        archive: tarfile.TarFile,
+        members: Iterator[tarfile.TarInfo],
+        destination: str,
+    ) -> None:
+        nonlocal captured_archive, captured_destination
+        captured_archive = archive
+        captured_destination = destination
+        captured_member_names.extend(member.name for member in members)
+
+    mock_extract_tar_members = mocker.patch(
+        "dd_license_attribution.utils.tar_archive.extract_tar_members",
+        side_effect=fake_extract_tar_members,
+    )
+
+    result = extract_tar_gz(archive_content, str(tmp_path))
+
+    assert result == ["crate/Cargo.toml"]
+    mock_extract_tar_members.assert_called_once()
+    assert isinstance(captured_archive, tarfile.TarFile)
+    assert captured_member_names == ["crate/Cargo.toml"]
+    assert captured_destination == str(tmp_path)
+
+
+def test_extract_tar_gz_defers_directory_permissions_until_children_are_extracted(
+    tmp_path: Path,
+) -> None:
+    archive_content = _tar_gz_with_read_only_directory()
+    directory_path = tmp_path / "crate"
+
+    try:
+        result = extract_tar_gz(archive_content, str(tmp_path))
+
+        assert result == ["crate", "crate/Cargo.toml"]
+        assert (directory_path / "Cargo.toml").read_bytes() == b"[package]\n"
+    finally:
+        if directory_path.exists():
+            directory_path.chmod(0o700)
 
 
 def test_read_tar_gz_text_file_reads_matching_member() -> None:
