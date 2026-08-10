@@ -10,6 +10,7 @@ import io
 import tarfile
 from collections.abc import Iterator
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
 import pytest_mock
@@ -136,16 +137,15 @@ def test_extract_tar_gz_rejects_too_many_members(tmp_path: Path) -> None:
 
 
 def test_extract_tar_gz_rejects_invalid_member_limit(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="max_members must be greater than zero"):
+    with pytest.raises(ValueError) as exc_info:
         extract_tar_gz(b"archive", str(tmp_path), max_members=0)
+    assert str(exc_info.value) == "max_members must be greater than zero"
 
 
 def test_extract_tar_gz_rejects_invalid_extracted_size_limit(tmp_path: Path) -> None:
-    with pytest.raises(
-        ValueError,
-        match="max_extracted_bytes must be greater than zero",
-    ):
+    with pytest.raises(ValueError) as exc_info:
         extract_tar_gz(b"archive", str(tmp_path), max_extracted_bytes=0)
+    assert str(exc_info.value) == "max_extracted_bytes must be greater than zero"
 
 
 def test_extract_tar_gz_rejects_file_over_extracted_size_limit(
@@ -205,6 +205,21 @@ def test_extract_tar_gz_accepts_exact_extracted_size_limit(tmp_path: Path) -> No
     assert result == ["crate/one.txt", "crate/two.txt"]
     assert (tmp_path / "crate" / "one.txt").read_bytes() == b"x" * 10
     assert (tmp_path / "crate" / "two.txt").read_bytes() == b"y" * 10
+
+
+def test_extract_tar_gz_accepts_single_byte_extracted_size_limit(
+    tmp_path: Path,
+) -> None:
+    archive_content = _tar_gz_with_files({"crate/one.txt": b"x"})
+
+    result = extract_tar_gz(
+        archive_content,
+        str(tmp_path),
+        max_extracted_bytes=1,
+    )
+
+    assert result == ["crate/one.txt"]
+    assert (tmp_path / "crate" / "one.txt").read_bytes() == b"x"
 
 
 def test_extract_tar_gz_rejects_malformed_archive(tmp_path: Path) -> None:
@@ -358,14 +373,28 @@ def test_read_tar_gz_text_file_accepts_exact_size_limit() -> None:
     assert result == "x" * 20
 
 
+def test_read_tar_gz_text_file_accepts_single_byte_size_limit() -> None:
+    archive_content = _tar_gz_with_files({"crate/Cargo.toml": b"x"})
+
+    result = read_tar_gz_text_file(
+        archive_content,
+        "/Cargo.toml",
+        max_bytes=1,
+    )
+
+    assert result == "x"
+
+
 def test_read_tar_gz_text_file_rejects_invalid_size_limit() -> None:
-    with pytest.raises(ValueError, match="max_bytes must be greater than zero"):
+    with pytest.raises(ValueError) as exc_info:
         read_tar_gz_text_file(b"archive", "/Cargo.toml", max_bytes=0)
+    assert str(exc_info.value) == "max_bytes must be greater than zero"
 
 
 def test_read_tar_gz_text_file_rejects_invalid_member_limit() -> None:
-    with pytest.raises(ValueError, match="max_members must be greater than zero"):
+    with pytest.raises(ValueError) as exc_info:
         read_tar_gz_text_file(b"archive", "/Cargo.toml", max_members=0)
+    assert str(exc_info.value) == "max_members must be greater than zero"
 
 
 def test_read_tar_gz_text_file_rejects_too_many_members_before_match() -> None:
@@ -433,6 +462,22 @@ def test_bounded_reader_caps_large_requested_read_before_delegating() -> None:
         assert gzip_stream.tell() == 21
 
 
+def test_bounded_reader_caps_large_read_after_partial_consumption() -> None:
+    compressed_content = gzip.compress(b"0123456789")
+
+    with gzip.GzipFile(fileobj=io.BytesIO(compressed_content)) as gzip_stream:
+        reader = _BoundedGzipReader(gzip_stream, max_bytes=5, max_content_bytes=5)
+
+        assert reader.read(3) == b"012"
+        with pytest.raises(
+            ValueError,
+            match="Archive exceeds maximum extracted size of 5 bytes",
+        ):
+            reader.read(10)
+
+        assert gzip_stream.tell() == 6
+
+
 def test_bounded_reader_rejects_when_already_over_budget() -> None:
     compressed_content = gzip.compress(b"x" * 10)
 
@@ -476,6 +521,18 @@ def test_bounded_reader_supports_small_forward_and_backward_seeks() -> None:
         assert reader.tell() == 10
         assert reader.seek(2) == 2
         assert reader.tell() == 2
+
+
+def test_bounded_reader_seek_to_current_position_does_not_touch_raw_stream() -> None:
+    raw = Mock(spec=gzip.GzipFile)
+    raw.tell.return_value = 5
+    reader = _BoundedGzipReader(raw, max_bytes=20, max_content_bytes=20)
+
+    assert reader.seek(5) == 5
+
+    raw.tell.assert_called()
+    raw.seek.assert_not_called()
+    raw.read.assert_not_called()
 
 
 def test_bounded_reader_stops_forward_seek_at_eof() -> None:

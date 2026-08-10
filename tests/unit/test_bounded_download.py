@@ -136,9 +136,34 @@ def test_download_bounded_rejects_cumulative_stream_over_limit(
     assert consumed.call_count == 2
 
 
+def test_download_bounded_accepts_single_byte_limit(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    chunks, consumed = _tracked_chunks([b"x"])
+    mock_stream_url = mocker.patch(
+        "dd_license_attribution.utils.bounded_download.stream_url",
+        return_value=contextlib.nullcontext(({}, chunks)),
+    )
+
+    result = download_bounded(
+        "https://example.test/crate/download",
+        user_agent="test-agent",
+        max_bytes=1,
+    )
+
+    assert result == b"x"
+    mock_stream_url.assert_called_once_with(
+        "https://example.test/crate/download",
+        {"User-Agent": "test-agent"},
+        DOWNLOAD_CHUNK_SIZE_BYTES,
+    )
+    consumed.assert_called_once_with(b"x")
+
+
 def test_download_bounded_rejects_invalid_size_limit() -> None:
-    with pytest.raises(ValueError, match="max_bytes must be greater than zero"):
+    with pytest.raises(ValueError) as exc_info:
         download_bounded("https://example.test/crate/download", max_bytes=0)
+    assert str(exc_info.value) == "max_bytes must be greater than zero"
 
 
 def test_download_bounded_propagates_stream_url_oserror(
