@@ -12,16 +12,11 @@ import tomllib
 import semver
 
 from dd_license_attribution.adaptors.os import (
-    download_url,
     normalize_path,
     open_file,
     path_exists,
     path_join,
-    read_tar_gz_text_file,
     walk_directory,
-)
-from dd_license_attribution.artifact_management.rust_package_resolver import (
-    CRATES_IO_USER_AGENT,
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
@@ -33,6 +28,11 @@ from dd_license_attribution.metadata_collector.strategies.abstract_collection_st
 from dd_license_attribution.metadata_collector.strategies.rust_collection_strategy import (
     is_rust_metadata,
 )
+from dd_license_attribution.utils.bounded_download import (
+    DDLA_USER_AGENT,
+    download_bounded,
+)
+from dd_license_attribution.utils.tar_archive import read_tar_gz_text_file
 
 logger = logging.getLogger("dd_license_attribution")
 
@@ -358,9 +358,9 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         metadata_url = f"{CRATES_IO_API_BASE_URL}/{crate_name}"
         try:
             response = json.loads(
-                download_url(
+                download_bounded(
                     metadata_url,
-                    user_agent=CRATES_IO_USER_AGENT,
+                    user_agent=DDLA_USER_AGENT,
                 ).decode("utf-8")
             )
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as e:
@@ -426,9 +426,9 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
     def _get_crate_authors(self, crate_name: str, version: str) -> list[str]:
         download_endpoint = f"{CRATES_IO_API_BASE_URL}/{crate_name}/{version}/download"
         try:
-            archive_content = download_url(
+            archive_content = download_bounded(
                 download_endpoint,
-                user_agent=CRATES_IO_USER_AGENT,
+                user_agent=DDLA_USER_AGENT,
             )
             cargo_toml_content = read_tar_gz_text_file(
                 archive_content,

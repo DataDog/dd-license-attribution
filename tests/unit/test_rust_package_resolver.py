@@ -5,9 +5,12 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2026-present Datadog, Inc.
 
+import io
 import json
 import logging
+import tarfile
 import tomllib
+from pathlib import Path
 from typing import Any
 from unittest.mock import Mock, call
 
@@ -18,7 +21,6 @@ from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
 from dd_license_attribution.artifact_management.rust_package_resolver import (
-    CRATES_IO_USER_AGENT,
     RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
     SYNTHETIC_PACKAGE_NAME,
     RustPackageResolver,
@@ -26,6 +28,17 @@ from dd_license_attribution.artifact_management.rust_package_resolver import (
 from dd_license_attribution.artifact_management.source_code_manager import (
     NonAccessibleRepository,
 )
+from dd_license_attribution.utils.bounded_download import DDLA_USER_AGENT
+
+
+def _tar_gz_with_files(files: dict[str, bytes]) -> bytes:
+    archive_bytes = io.BytesIO()
+    with tarfile.open(fileobj=archive_bytes, mode="w:gz") as archive:
+        for name, content in files.items():
+            member = tarfile.TarInfo(name)
+            member.size = len(content)
+            archive.addfile(member, io.BytesIO(content))
+    return archive_bytes.getvalue()
 
 
 class TestParseRustSpec:
@@ -165,8 +178,8 @@ class TestResolvePackage:
             "dd_license_attribution.artifact_management.rust_package_resolver.open_file",
             return_value=cargo_lock_content,
         )
-        mock_download_url = mocker.patch(
-            "dd_license_attribution.artifact_management.rust_package_resolver.download_url",
+        mock_download_bounded = mocker.patch(
+            "dd_license_attribution.artifact_management.rust_package_resolver.download_bounded",
             return_value=b"crate archive",
         )
         mock_extract_tar_gz = mocker.patch(
@@ -188,7 +201,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         )
 
@@ -213,7 +226,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(mocker)
 
@@ -264,9 +277,9 @@ class TestResolvePackage:
         )
         assert mock_path_exists.call_count == 2
         mock_open_file.assert_called_once_with("/cache/serde/Cargo.lock")
-        mock_download_url.assert_called_once_with(
+        mock_download_bounded.assert_called_once_with(
             "https://crates.io/api/v1/crates/serde/1.0.0/download",
-            user_agent=CRATES_IO_USER_AGENT,
+            user_agent=DDLA_USER_AGENT,
         )
         mock_extract_tar_gz.assert_called_once_with(
             b"crate archive",
@@ -311,7 +324,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -391,9 +404,9 @@ class TestResolvePackage:
             ]
         )
         assert mock_open_file.call_count == 2
-        mock_download_url.assert_called_once_with(
+        mock_download_bounded.assert_called_once_with(
             "https://crates.io/api/v1/crates/datadog-api-client/1.0.0/download",
-            user_agent=CRATES_IO_USER_AGENT,
+            user_agent=DDLA_USER_AGENT,
         )
         mock_extract_tar_gz.assert_called_once_with(
             b"crate archive",
@@ -411,7 +424,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -430,7 +443,7 @@ class TestResolvePackage:
         assert mock_run_command.call_count == 2
         assert mock_path_exists.call_count == 2
         mock_open_file.assert_called_once_with("/cache/serde/Cargo.lock")
-        mock_download_url.assert_called_once()
+        mock_download_bounded.assert_called_once()
         mock_extract_tar_gz.assert_called_once()
 
     def test_inaccessible_crate_repository_skips_license_tool_config(
@@ -457,7 +470,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -477,7 +490,7 @@ class TestResolvePackage:
         assert mock_run_command.call_count == 2
         assert mock_path_exists.call_count == 2
         mock_open_file.assert_called_once_with("/cache/serde/Cargo.lock")
-        mock_download_url.assert_called_once()
+        mock_download_bounded.assert_called_once()
         mock_extract_tar_gz.assert_called_once()
 
     def test_repository_without_license_tool_config_is_ignored(
@@ -507,7 +520,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -533,7 +546,7 @@ class TestResolvePackage:
         )
         assert mock_path_exists.call_count == 3
         mock_open_file.assert_called_once_with("/cache/serde/Cargo.lock")
-        mock_download_url.assert_called_once()
+        mock_download_bounded.assert_called_once()
         mock_extract_tar_gz.assert_called_once()
 
     def test_license_tool_config_read_failure_does_not_fail_resolution(
@@ -563,7 +576,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -595,7 +608,7 @@ class TestResolvePackage:
             ]
         )
         assert mock_open_file.call_count == 2
-        mock_download_url.assert_called_once()
+        mock_download_bounded.assert_called_once()
         mock_extract_tar_gz.assert_called_once()
 
     def test_unavailable_repository_checkout_skips_license_tool_config(self) -> None:
@@ -640,7 +653,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -675,7 +688,7 @@ class TestResolvePackage:
         assert mock_run_command.call_count == 2
         assert mock_path_exists.call_count == 2
         mock_open_file.assert_called_once_with("/cache/anyhow/Cargo.lock")
-        mock_download_url.assert_called_once()
+        mock_download_bounded.assert_called_once()
         mock_extract_tar_gz.assert_called_once()
 
     def test_package_name_sanitizes_dir_name(
@@ -687,7 +700,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -726,7 +739,7 @@ class TestResolvePackage:
         assert mock_run_command.call_count == 2
         assert mock_path_exists.call_count == 2
         mock_open_file.assert_called_once_with("/cache/serde-json/Cargo.lock")
-        mock_download_url.assert_called_once()
+        mock_download_bounded.assert_called_once()
         mock_extract_tar_gz.assert_called_once()
 
     def test_cargo_failure_returns_none(
@@ -738,7 +751,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -760,7 +773,7 @@ class TestResolvePackage:
         )
         mock_path_exists.assert_not_called()
         mock_open_file.assert_not_called()
-        mock_download_url.assert_not_called()
+        mock_download_bounded.assert_not_called()
         mock_extract_tar_gz.assert_not_called()
 
     def test_cargo_exception_returns_none(
@@ -772,7 +785,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(mocker)
         mock_run_command.side_effect = OSError("cargo not found")
@@ -787,7 +800,7 @@ class TestResolvePackage:
         )
         mock_path_exists.assert_not_called()
         mock_open_file.assert_not_called()
-        mock_download_url.assert_not_called()
+        mock_download_bounded.assert_not_called()
         mock_extract_tar_gz.assert_not_called()
 
     def test_missing_cargo_lock_returns_none(
@@ -799,7 +812,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -816,7 +829,7 @@ class TestResolvePackage:
         )
         mock_path_exists.assert_called_once_with("/cache/serde/Cargo.lock")
         mock_open_file.assert_not_called()
-        mock_download_url.assert_not_called()
+        mock_download_bounded.assert_not_called()
         mock_extract_tar_gz.assert_not_called()
 
     def test_write_file_exception_returns_none(
@@ -828,7 +841,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(mocker)
         mock_write_file.side_effect = OSError("read-only")
@@ -841,7 +854,7 @@ class TestResolvePackage:
         mock_run_command.assert_not_called()
         mock_path_exists.assert_not_called()
         mock_open_file.assert_not_called()
-        mock_download_url.assert_not_called()
+        mock_download_bounded.assert_not_called()
         mock_extract_tar_gz.assert_not_called()
 
     def test_binary_only_crate_falls_back_to_published_source(
@@ -853,7 +866,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -906,13 +919,56 @@ class TestResolvePackage:
         )
         assert mock_path_exists.call_count == 2
         mock_open_file.assert_called_once_with("/cache/dd-rust-license-tool/Cargo.lock")
-        mock_download_url.assert_called_once_with(
+        mock_download_bounded.assert_called_once_with(
             "https://crates.io/api/v1/crates/dd-rust-license-tool/1.0.6/download",
-            user_agent=CRATES_IO_USER_AGENT,
+            user_agent=DDLA_USER_AGENT,
         )
         mock_extract_tar_gz.assert_called_once_with(
             b"crate archive",
             "/cache/dd-rust-license-tool/crate-source",
+        )
+
+    def test_crate_source_resolution_extracts_downloaded_archive(
+        self,
+        mocker: pytest_mock.MockFixture,
+        tmp_path: Path,
+    ) -> None:
+        resolver = RustPackageResolver(str(tmp_path))
+        archive_content = _tar_gz_with_files(
+            {
+                "binary-only-1.0.0/Cargo.toml": (
+                    b'[package]\nname = "binary-only"\nversion = "1.0.0"\n'
+                ),
+                "binary-only-1.0.0/src/main.rs": b"fn main() {}\n",
+            }
+        )
+        mock_download_bounded = mocker.patch(
+            "dd_license_attribution.artifact_management.rust_package_resolver.download_bounded",
+            return_value=archive_content,
+        )
+
+        result = resolver._resolve_crate_from_source(
+            "binary-only",
+            "binary-only@1.0.0",
+            str(tmp_path / "binary-only"),
+            str(tmp_path / "binary-only" / "Cargo.lock"),
+            repository=None,
+            resolved_version="1.0.0",
+        )
+
+        assert result == str(
+            tmp_path / "binary-only" / "crate-source" / "binary-only-1.0.0"
+        )
+        assert (
+            tmp_path
+            / "binary-only"
+            / "crate-source"
+            / "binary-only-1.0.0"
+            / "Cargo.toml"
+        ).read_text() == '[package]\nname = "binary-only"\nversion = "1.0.0"\n'
+        mock_download_bounded.assert_called_once_with(
+            "https://crates.io/api/v1/crates/binary-only/1.0.0/download",
+            user_agent=DDLA_USER_AGENT,
         )
 
     def test_binary_only_crate_copies_repository_license_tool_config(
@@ -941,7 +997,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -951,7 +1007,7 @@ class TestResolvePackage:
             extracted_members=["dd-rust-license-tool-1.0.6/Cargo.toml"],
         )
         mock_open_file.side_effect = [cargo_lock_content, config_content]
-        mock_download_url.side_effect = [
+        mock_download_bounded.side_effect = [
             json.dumps(
                 {
                     "version": {
@@ -1016,19 +1072,19 @@ class TestResolvePackage:
             ]
         )
         assert mock_open_file.call_count == 2
-        mock_download_url.assert_has_calls(
+        mock_download_bounded.assert_has_calls(
             [
                 call(
                     "https://crates.io/api/v1/crates/dd-rust-license-tool/1.0.6",
-                    user_agent=CRATES_IO_USER_AGENT,
+                    user_agent=DDLA_USER_AGENT,
                 ),
                 call(
                     "https://crates.io/api/v1/crates/dd-rust-license-tool/1.0.6/download",
-                    user_agent=CRATES_IO_USER_AGENT,
+                    user_agent=DDLA_USER_AGENT,
                 ),
             ]
         )
-        assert mock_download_url.call_count == 2
+        assert mock_download_bounded.call_count == 2
         mock_extract_tar_gz.assert_called_once_with(
             b"crate archive",
             "/cache/dd-rust-license-tool/crate-source",
@@ -1037,8 +1093,8 @@ class TestResolvePackage:
     def test_crates_io_repository_metadata_failure_returns_none(
         self, mocker: pytest_mock.MockFixture, caplog: LogCaptureFixture
     ) -> None:
-        mock_download_url = mocker.patch(
-            "dd_license_attribution.artifact_management.rust_package_resolver.download_url",
+        mock_download_bounded = mocker.patch(
+            "dd_license_attribution.artifact_management.rust_package_resolver.download_bounded",
             side_effect=OSError("network unavailable"),
         )
 
@@ -1047,16 +1103,16 @@ class TestResolvePackage:
 
         assert result is None
         assert "Could not retrieve crates.io metadata" in caplog.text
-        mock_download_url.assert_called_once_with(
+        mock_download_bounded.assert_called_once_with(
             "https://crates.io/api/v1/crates/serde/1.0.0",
-            user_agent=CRATES_IO_USER_AGENT,
+            user_agent=DDLA_USER_AGENT,
         )
 
     def test_crates_io_repository_falls_back_to_crate_metadata(
         self, mocker: pytest_mock.MockFixture
     ) -> None:
-        mock_download_url = mocker.patch(
-            "dd_license_attribution.artifact_management.rust_package_resolver.download_url",
+        mock_download_bounded = mocker.patch(
+            "dd_license_attribution.artifact_management.rust_package_resolver.download_bounded",
             return_value=json.dumps(
                 {
                     "crate": {"repository": "https://github.com/serde-rs/serde"},
@@ -1068,9 +1124,9 @@ class TestResolvePackage:
         result = self.resolver._get_crates_io_repository("serde", "1.0.0")
 
         assert result == "https://github.com/serde-rs/serde"
-        mock_download_url.assert_called_once_with(
+        mock_download_bounded.assert_called_once_with(
             "https://crates.io/api/v1/crates/serde/1.0.0",
-            user_agent=CRATES_IO_USER_AGENT,
+            user_agent=DDLA_USER_AGENT,
         )
 
     def test_get_resolved_crate_version_reads_cargo_lock(
@@ -1168,7 +1224,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -1199,7 +1255,7 @@ class TestResolvePackage:
         assert mock_run_command.call_count == 2
         mock_path_exists.assert_called_once_with("/cache/serde/Cargo.lock")
         mock_open_file.assert_not_called()
-        mock_download_url.assert_not_called()
+        mock_download_bounded.assert_not_called()
         mock_extract_tar_gz.assert_not_called()
 
     def test_metadata_exception_returns_none(
@@ -1211,7 +1267,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(mocker)
         mock_run_command.side_effect = [
@@ -1244,7 +1300,7 @@ class TestResolvePackage:
         assert mock_run_command.call_count == 2
         mock_path_exists.assert_called_once_with("/cache/serde/Cargo.lock")
         mock_open_file.assert_not_called()
-        mock_download_url.assert_not_called()
+        mock_download_bounded.assert_not_called()
         mock_extract_tar_gz.assert_not_called()
 
     def test_invalid_metadata_json_returns_none(
@@ -1256,7 +1312,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -1288,7 +1344,7 @@ class TestResolvePackage:
         assert mock_run_command.call_count == 2
         mock_path_exists.assert_called_once_with("/cache/serde/Cargo.lock")
         mock_open_file.assert_not_called()
-        mock_download_url.assert_not_called()
+        mock_download_bounded.assert_not_called()
         mock_extract_tar_gz.assert_not_called()
 
     def test_metadata_non_object_returns_none(self, caplog: LogCaptureFixture) -> None:
@@ -1324,7 +1380,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -1360,7 +1416,7 @@ class TestResolvePackage:
         assert mock_run_command.call_count == 2
         mock_path_exists.assert_called_once_with("/cache/serde/Cargo.lock")
         mock_open_file.assert_not_called()
-        mock_download_url.assert_not_called()
+        mock_download_bounded.assert_not_called()
         mock_extract_tar_gz.assert_not_called()
 
     def test_missing_lib_target_warning_detection_requires_all_terms(self) -> None:
@@ -1414,7 +1470,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -1449,7 +1505,7 @@ class TestResolvePackage:
             "/cache/dd-rust-license-tool/Cargo.lock"
         )
         mock_open_file.assert_called_once_with("/cache/dd-rust-license-tool/Cargo.lock")
-        mock_download_url.assert_not_called()
+        mock_download_bounded.assert_not_called()
         mock_extract_tar_gz.assert_not_called()
 
     def test_lockfile_read_failure_returns_none(
@@ -1570,7 +1626,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -1580,7 +1636,7 @@ class TestResolvePackage:
                 "1.0.6",
             ),
         )
-        mock_download_url.side_effect = OSError("network unavailable")
+        mock_download_bounded.side_effect = OSError("network unavailable")
 
         with caplog.at_level(logging.ERROR):
             result = self.resolver.resolve_package("dd-rust-license-tool")
@@ -1609,9 +1665,9 @@ class TestResolvePackage:
             "/cache/dd-rust-license-tool/Cargo.lock"
         )
         mock_open_file.assert_called_once_with("/cache/dd-rust-license-tool/Cargo.lock")
-        mock_download_url.assert_called_once_with(
+        mock_download_bounded.assert_called_once_with(
             "https://crates.io/api/v1/crates/dd-rust-license-tool/1.0.6/download",
-            user_agent=CRATES_IO_USER_AGENT,
+            user_agent=DDLA_USER_AGENT,
         )
         mock_extract_tar_gz.assert_not_called()
 
@@ -1624,7 +1680,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -1660,9 +1716,9 @@ class TestResolvePackage:
             "/cache/dd-rust-license-tool/Cargo.lock"
         )
         mock_open_file.assert_called_once_with("/cache/dd-rust-license-tool/Cargo.lock")
-        mock_download_url.assert_called_once_with(
+        mock_download_bounded.assert_called_once_with(
             "https://crates.io/api/v1/crates/dd-rust-license-tool/1.0.6/download",
-            user_agent=CRATES_IO_USER_AGENT,
+            user_agent=DDLA_USER_AGENT,
         )
         mock_extract_tar_gz.assert_called_once_with(
             b"crate archive",
@@ -1678,7 +1734,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -1717,9 +1773,9 @@ class TestResolvePackage:
             "/cache/dd-rust-license-tool/Cargo.lock"
         )
         mock_open_file.assert_called_once_with("/cache/dd-rust-license-tool/Cargo.lock")
-        mock_download_url.assert_called_once_with(
+        mock_download_bounded.assert_called_once_with(
             "https://crates.io/api/v1/crates/dd-rust-license-tool/1.0.6/download",
-            user_agent=CRATES_IO_USER_AGENT,
+            user_agent=DDLA_USER_AGENT,
         )
         mock_extract_tar_gz.assert_called_once_with(
             b"crate archive",
@@ -1775,7 +1831,7 @@ class TestResolvePackage:
             mock_run_command,
             mock_path_exists,
             mock_open_file,
-            mock_download_url,
+            mock_download_bounded,
             mock_extract_tar_gz,
         ) = self._setup_mocks(
             mocker,
@@ -1821,9 +1877,9 @@ class TestResolvePackage:
         )
         assert mock_path_exists.call_count == 2
         mock_open_file.assert_called_once_with("/cache/dd-rust-license-tool/Cargo.lock")
-        mock_download_url.assert_called_once_with(
+        mock_download_bounded.assert_called_once_with(
             "https://crates.io/api/v1/crates/dd-rust-license-tool/1.0.6/download",
-            user_agent=CRATES_IO_USER_AGENT,
+            user_agent=DDLA_USER_AGENT,
         )
         mock_extract_tar_gz.assert_called_once_with(
             b"crate archive",

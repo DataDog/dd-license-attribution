@@ -16,9 +16,6 @@ from pytest import LogCaptureFixture
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
-from dd_license_attribution.artifact_management.rust_package_resolver import (
-    CRATES_IO_USER_AGENT,
-)
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.rust_collection_strategy import (
     mark_rust_metadata,
@@ -27,6 +24,7 @@ from dd_license_attribution.metadata_collector.strategies.rust_crates_io_collect
     CRATES_IO_API_BASE_URL,
     RustCratesIoMetadataCollectionStrategy,
 )
+from dd_license_attribution.utils.bounded_download import DDLA_USER_AGENT
 
 
 def _metadata(
@@ -195,7 +193,7 @@ helper = { path = "." }
 
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url",
+        "rust_crates_io_collection_strategy.download_bounded",
         side_effect=download,
     )
     mock_read_archive = mocker.patch(
@@ -286,23 +284,23 @@ helper = { path = "." }
         [
             call(
                 f"{CRATES_IO_API_BASE_URL}/regex",
-                user_agent=CRATES_IO_USER_AGENT,
+                user_agent=DDLA_USER_AGENT,
             ),
             call(
                 f"{CRATES_IO_API_BASE_URL}/regex/1.13.0/download",
-                user_agent=CRATES_IO_USER_AGENT,
+                user_agent=DDLA_USER_AGENT,
             ),
             call(
                 f"{CRATES_IO_API_BASE_URL}/tracing-subscriber",
-                user_agent=CRATES_IO_USER_AGENT,
+                user_agent=DDLA_USER_AGENT,
             ),
             call(
                 f"{CRATES_IO_API_BASE_URL}/tracing-subscriber/0.3.20/download",
-                user_agent=CRATES_IO_USER_AGENT,
+                user_agent=DDLA_USER_AGENT,
             ),
             call(
                 f"{CRATES_IO_API_BASE_URL}/explicit-crates-io",
-                user_agent=CRATES_IO_USER_AGENT,
+                user_agent=DDLA_USER_AGENT,
             ),
         ]
     )
@@ -339,7 +337,7 @@ def test_complete_metadata_still_receives_locked_version_and_repository_origin(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url",
+        "rust_crates_io_collection_strategy.download_bounded",
         return_value=_crate_response(
             "serde",
             "1.0.0",
@@ -380,7 +378,7 @@ def test_complete_metadata_still_receives_locked_version_and_repository_origin(
     mock_open_file.assert_called_once_with("/project/Cargo.lock")
     mock_download.assert_called_once_with(
         f"{CRATES_IO_API_BASE_URL}/serde",
-        user_agent=CRATES_IO_USER_AGENT,
+        user_agent=DDLA_USER_AGENT,
     )
 
 
@@ -405,7 +403,7 @@ def test_direct_root_package_is_enriched_from_manifest_version(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url",
+        "rust_crates_io_collection_strategy.download_bounded",
         side_effect=[
             _crate_response(
                 "serde",
@@ -447,11 +445,11 @@ def test_direct_root_package_is_enriched_from_manifest_version(
         [
             call(
                 f"{CRATES_IO_API_BASE_URL}/serde",
-                user_agent=CRATES_IO_USER_AGENT,
+                user_agent=DDLA_USER_AGENT,
             ),
             call(
                 f"{CRATES_IO_API_BASE_URL}/serde/1.0.0/download",
-                user_agent=CRATES_IO_USER_AGENT,
+                user_agent=DDLA_USER_AGENT,
             ),
         ]
     )
@@ -489,7 +487,7 @@ def test_repository_mode_ignores_manifest_ranges_without_lockfile(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url"
+        "rust_crates_io_collection_strategy.download_bounded"
     )
     mock_read_archive = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
@@ -557,7 +555,7 @@ def test_repository_mode_does_not_enrich_unmarked_same_name_metadata(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url"
+        "rust_crates_io_collection_strategy.download_bounded"
     )
     strategy = RustCratesIoMetadataCollectionStrategy(
         "https://github.com/org/project",
@@ -618,7 +616,7 @@ def test_repository_mode_enriches_marked_rust_metadata(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url",
+        "rust_crates_io_collection_strategy.download_bounded",
         side_effect=[
             _crate_response(
                 "serde",
@@ -665,11 +663,11 @@ def test_repository_mode_enriches_marked_rust_metadata(
         [
             call(
                 f"{CRATES_IO_API_BASE_URL}/serde",
-                user_agent=CRATES_IO_USER_AGENT,
+                user_agent=DDLA_USER_AGENT,
             ),
             call(
                 f"{CRATES_IO_API_BASE_URL}/serde/1.0.228/download",
-                user_agent=CRATES_IO_USER_AGENT,
+                user_agent=DDLA_USER_AGENT,
             ),
         ]
     )
@@ -719,7 +717,7 @@ def test_locked_crate_is_used_when_manifest_is_missing(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url",
+        "rust_crates_io_collection_strategy.download_bounded",
         return_value=json.dumps(
             {
                 "crate": {"default_version": "1.0.0", "repository": 1},
@@ -758,7 +756,7 @@ def test_locked_crate_is_used_when_manifest_is_missing(
     mock_open_file.assert_called_once_with("/project/Cargo.lock")
     mock_download.assert_called_once_with(
         f"{CRATES_IO_API_BASE_URL}/regex",
-        user_agent=CRATES_IO_USER_AGENT,
+        user_agent=DDLA_USER_AGENT,
     )
     mock_read_archive.assert_not_called()
 
@@ -789,7 +787,7 @@ def test_locked_crate_version_takes_precedence_over_manifest_exact_pin(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url",
+        "rust_crates_io_collection_strategy.download_bounded",
         return_value=_crate_response(
             "regex",
             "1.13.0",
@@ -829,7 +827,7 @@ def test_locked_crate_version_takes_precedence_over_manifest_exact_pin(
     assert mock_open_file.call_count == 2
     mock_download.assert_called_once_with(
         f"{CRATES_IO_API_BASE_URL}/regex",
-        user_agent=CRATES_IO_USER_AGENT,
+        user_agent=DDLA_USER_AGENT,
     )
     mock_read_archive.assert_not_called()
 
@@ -858,7 +856,7 @@ def test_crates_io_cache_distinguishes_author_fetches(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url",
+        "rust_crates_io_collection_strategy.download_bounded",
         side_effect=[
             _crate_response(
                 "regex",
@@ -921,15 +919,15 @@ def test_crates_io_cache_distinguishes_author_fetches(
         [
             call(
                 f"{CRATES_IO_API_BASE_URL}/regex",
-                user_agent=CRATES_IO_USER_AGENT,
+                user_agent=DDLA_USER_AGENT,
             ),
             call(
                 f"{CRATES_IO_API_BASE_URL}/regex",
-                user_agent=CRATES_IO_USER_AGENT,
+                user_agent=DDLA_USER_AGENT,
             ),
             call(
                 f"{CRATES_IO_API_BASE_URL}/regex/1.13.0/download",
-                user_agent=CRATES_IO_USER_AGENT,
+                user_agent=DDLA_USER_AGENT,
             ),
         ]
     )
@@ -963,7 +961,7 @@ def test_unparseable_manifest_version_is_ignored(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url",
+        "rust_crates_io_collection_strategy.download_bounded",
         side_effect=[
             _crate_response(
                 "regex",
@@ -1023,7 +1021,7 @@ def test_ambiguous_locked_versions_do_not_set_version_or_enrich(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url"
+        "rust_crates_io_collection_strategy.download_bounded"
     )
     strategy = RustCratesIoMetadataCollectionStrategy(
         "project",
@@ -1068,7 +1066,7 @@ def test_manifest_requirement_without_exact_version_is_not_enriched(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url"
+        "rust_crates_io_collection_strategy.download_bounded"
     )
     strategy = RustCratesIoMetadataCollectionStrategy(
         "project",
@@ -1129,7 +1127,7 @@ def test_invalid_crates_io_metadata_is_ignored(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url",
+        "rust_crates_io_collection_strategy.download_bounded",
     )
     if isinstance(metadata_response, OSError):
         mock_download.side_effect = metadata_response
@@ -1159,7 +1157,7 @@ def test_invalid_crates_io_metadata_is_ignored(
     mock_open_file.assert_called_once_with("/project/Cargo.toml")
     mock_download.assert_called_once_with(
         f"{CRATES_IO_API_BASE_URL}/regex",
-        user_agent=CRATES_IO_USER_AGENT,
+        user_agent=DDLA_USER_AGENT,
     )
     mock_read_archive.assert_not_called()
 
@@ -1199,7 +1197,7 @@ def test_author_metadata_failures_preserve_other_crate_metadata(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url",
+        "rust_crates_io_collection_strategy.download_bounded",
         side_effect=[
             _crate_response(
                 "regex",
@@ -1288,7 +1286,7 @@ def test_invalid_cargo_file_is_ignored(
     )
     mock_download = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies."
-        "rust_crates_io_collection_strategy.download_url"
+        "rust_crates_io_collection_strategy.download_bounded"
     )
     strategy = RustCratesIoMetadataCollectionStrategy(
         "project",

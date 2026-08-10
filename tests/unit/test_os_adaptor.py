@@ -5,9 +5,8 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2026-present Datadog, Inc.
 
-import io
 import subprocess
-import tarfile
+from collections.abc import Iterator
 from unittest.mock import Mock
 
 import pytest
@@ -15,145 +14,114 @@ import pytest_mock
 import requests
 
 from dd_license_attribution.adaptors.os import (
-    DOWNLOAD_CHUNK_SIZE_BYTES,
-    download_url,
-    extract_tar_gz,
+    absolute_path,
     get_env_var,
+    is_absolute_path,
     normalize_path,
-    read_tar_gz_text_file,
     run_command,
     run_command_with_check,
+    stream_url,
 )
 
 
 def _mock_response(chunks: list[bytes], headers: dict[str, str] | None = None) -> Mock:
     response = Mock()
     response.headers = headers or {}
-    response.iter_content.return_value = chunks
+    response.iter_content.return_value = iter(chunks)
     return response
 
 
-def _assert_download_request(mock_get: Mock, url: str, user_agent: str) -> None:
+def _assert_stream_request(mock_get: Mock, url: str, headers: dict[str, str]) -> None:
     mock_get.assert_called_once_with(
         url,
         allow_redirects=True,
-        headers={"User-Agent": user_agent},
+        headers=headers,
         stream=True,
         timeout=30,
     )
 
 
-def _tar_gz_with_member(member: tarfile.TarInfo) -> bytes:
-    archive_bytes = io.BytesIO()
-    with tarfile.open(fileobj=archive_bytes, mode="w:gz") as archive:
-        archive.addfile(member)
-    return archive_bytes.getvalue()
-
-
-def _tar_gz_with_files(files: dict[str, bytes]) -> bytes:
-    archive_bytes = io.BytesIO()
-    with tarfile.open(fileobj=archive_bytes, mode="w:gz") as archive:
-        for name, content in files.items():
-            member = tarfile.TarInfo(name)
-            member.size = len(content)
-            archive.addfile(member, io.BytesIO(content))
-    return archive_bytes.getvalue()
-
-
-def test_download_url_streams_response_and_closes(
+def test_stream_url_yields_headers_and_chunks_then_closes(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    response = _mock_response([b"crate", b"", b" archive"])
+    response = _mock_response(
+        [b"crate", b" archive"],
+        headers={"Content-Length": "13"},
+    )
     mock_get = mocker.patch(
         "dd_license_attribution.adaptors.os.requests.get",
         return_value=response,
     )
 
-    result = download_url(
+    with stream_url(
         "https://example.test/crate/download",
-        user_agent="test-agent",
-        max_bytes=20,
-    )
+        {"User-Agent": "test-agent"},
+        1024,
+    ) as (headers, chunks):
+        result = b"".join(chunks)
 
+    assert headers == {"Content-Length": "13"}
     assert result == b"crate archive"
-    _assert_download_request(
+    _assert_stream_request(
         mock_get,
         "https://example.test/crate/download",
-        "test-agent",
+        {"User-Agent": "test-agent"},
     )
     response.raise_for_status.assert_called_once_with()
-    response.iter_content.assert_called_once_with(chunk_size=DOWNLOAD_CHUNK_SIZE_BYTES)
+    response.iter_content.assert_called_once_with(chunk_size=1024)
     response.close.assert_called_once_with()
 
 
-def test_download_url_rejects_content_length_over_limit(
+def test_stream_url_closes_response_when_body_iteration_fails(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    response = _mock_response([], headers={"Content-Length": "21"})
+    def failing_chunks() -> Iterator[bytes]:
+        raise requests.ConnectionError("connection lost")
+        yield b"unreachable"
+
+    response = _mock_response([])
+    response.iter_content.return_value = failing_chunks()
     mock_get = mocker.patch(
         "dd_license_attribution.adaptors.os.requests.get",
         return_value=response,
     )
 
-    with pytest.raises(OSError, match="exceeds maximum size"):
-        download_url(
+    with pytest.raises(OSError, match="Failed to download"):
+        with stream_url(
             "https://example.test/crate/download",
-            user_agent="test-agent",
-            max_bytes=20,
-        )
+            {"User-Agent": "test-agent"},
+            1024,
+        ) as (_, chunks):
+            b"".join(chunks)
 
-    _assert_download_request(
+    _assert_stream_request(
         mock_get,
         "https://example.test/crate/download",
-        "test-agent",
+        {"User-Agent": "test-agent"},
     )
     response.raise_for_status.assert_called_once_with()
-    response.iter_content.assert_not_called()
+    response.iter_content.assert_called_once_with(chunk_size=1024)
     response.close.assert_called_once_with()
 
 
-def test_download_url_rejects_stream_over_limit(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    response = _mock_response([b"crate", b" archive"])
-    mock_get = mocker.patch(
-        "dd_license_attribution.adaptors.os.requests.get",
-        return_value=response,
-    )
-
-    with pytest.raises(OSError, match="exceeds maximum size"):
-        download_url(
-            "https://example.test/crate/download",
-            user_agent="test-agent",
-            max_bytes=10,
-        )
-
-    _assert_download_request(
-        mock_get,
-        "https://example.test/crate/download",
-        "test-agent",
-    )
-    response.raise_for_status.assert_called_once_with()
-    response.iter_content.assert_called_once_with(chunk_size=DOWNLOAD_CHUNK_SIZE_BYTES)
-    response.close.assert_called_once_with()
-
-
-def test_download_url_wraps_request_errors(mocker: pytest_mock.MockFixture) -> None:
+def test_stream_url_wraps_request_errors(mocker: pytest_mock.MockFixture) -> None:
     mock_get = mocker.patch(
         "dd_license_attribution.adaptors.os.requests.get",
         side_effect=requests.Timeout("timed out"),
     )
 
     with pytest.raises(OSError, match="Failed to download"):
-        download_url(
+        with stream_url(
             "https://example.test/crate/download",
-            user_agent="test-agent",
-        )
+            {"User-Agent": "test-agent"},
+            1024,
+        ):
+            pass
 
-    _assert_download_request(
+    _assert_stream_request(
         mock_get,
         "https://example.test/crate/download",
-        "test-agent",
+        {"User-Agent": "test-agent"},
     )
 
 
@@ -171,150 +139,30 @@ def test_get_env_var_returns_environment_value(
     mock_environ_get.assert_called_once_with("CI")
 
 
-@pytest.mark.parametrize(
-    "member_type",
-    [
-        tarfile.FIFOTYPE,
-        tarfile.CHRTYPE,
-        tarfile.BLKTYPE,
-    ],
-)
-def test_extract_tar_gz_rejects_special_members(member_type: bytes) -> None:
-    member = tarfile.TarInfo("crate/special")
-    member.type = member_type
-    archive_content = _tar_gz_with_member(member)
-
-    with pytest.raises(ValueError, match="Unsafe archive path: crate/special"):
-        extract_tar_gz(archive_content, "/destination")
-
-
-@pytest.mark.parametrize(
-    "member_name",
-    [
-        "../escape.txt",
-        "crate/../../escape.txt",
-        "/tmp/escape.txt",
-        "crate\\..\\escape.txt",
-    ],
-)
-def test_extract_tar_gz_rejects_unsafe_member_paths(member_name: str) -> None:
-    member = tarfile.TarInfo(member_name)
-    member.size = 0
-    archive_content = _tar_gz_with_member(member)
-
-    with pytest.raises(ValueError, match="Unsafe archive path"):
-        extract_tar_gz(archive_content, "/destination")
-
-
-@pytest.mark.parametrize("member_type", [tarfile.SYMTYPE, tarfile.LNKTYPE])
-def test_extract_tar_gz_rejects_link_members(member_type: bytes) -> None:
-    member = tarfile.TarInfo("crate/link")
-    member.type = member_type
-    member.linkname = "../escape.txt"
-    archive_content = _tar_gz_with_member(member)
-
-    with pytest.raises(ValueError, match="Unsafe archive path: crate/link"):
-        extract_tar_gz(archive_content, "/destination")
-
-
-def test_extract_tar_gz_rejects_too_many_members() -> None:
-    archive_content = _tar_gz_with_files(
-        {
-            "crate/one.txt": b"one",
-            "crate/two.txt": b"two",
-        }
+def test_absolute_path_returns_os_absolute_path(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_abspath = mocker.patch(
+        "dd_license_attribution.adaptors.os.os.path.abspath",
+        return_value="/project/file.txt",
     )
 
-    with pytest.raises(ValueError, match="Archive contains more than 1 members"):
-        extract_tar_gz(archive_content, "/destination", max_members=1)
+    result = absolute_path("file.txt")
+
+    assert result == "/project/file.txt"
+    mock_abspath.assert_called_once_with("file.txt")
 
 
-def test_extract_tar_gz_rejects_invalid_member_limit() -> None:
-    with pytest.raises(ValueError, match="max_members must be greater than zero"):
-        extract_tar_gz(b"archive", "/destination", max_members=0)
-
-
-def test_extract_tar_gz_rejects_file_over_extracted_size_limit() -> None:
-    archive_content = _tar_gz_with_files({"crate/large.txt": b"x" * 21})
-
-    with pytest.raises(
-        ValueError,
-        match=(
-            "Archive member crate/large.txt exceeds maximum extracted size "
-            "of 20 bytes"
-        ),
-    ):
-        extract_tar_gz(
-            archive_content,
-            "/destination",
-            max_extracted_bytes=20,
-        )
-
-
-def test_extract_tar_gz_rejects_total_extracted_size_over_limit() -> None:
-    archive_content = _tar_gz_with_files(
-        {
-            "crate/one.txt": b"x" * 10,
-            "crate/two.txt": b"y" * 11,
-        }
+def test_is_absolute_path_returns_os_result(mocker: pytest_mock.MockFixture) -> None:
+    mock_isabs = mocker.patch(
+        "dd_license_attribution.adaptors.os.os.path.isabs",
+        return_value=True,
     )
 
-    with pytest.raises(
-        ValueError,
-        match="Archive exceeds maximum extracted size of 20 bytes",
-    ):
-        extract_tar_gz(
-            archive_content,
-            "/destination",
-            max_extracted_bytes=20,
-        )
+    result = is_absolute_path("/project/file.txt")
 
-
-def test_extract_tar_gz_rejects_malformed_archive() -> None:
-    with pytest.raises(ValueError, match="Malformed gzip tar archive"):
-        extract_tar_gz(b"not a gzip tar archive", "/destination")
-
-
-def test_read_tar_gz_text_file_reads_matching_member() -> None:
-    archive_content = _tar_gz_with_files(
-        {
-            "crate/README.md": b"readme",
-            "crate/Cargo.toml": b'[package]\nname = "crate"\n',
-        }
-    )
-
-    result = read_tar_gz_text_file(archive_content, "/Cargo.toml")
-
-    assert result == '[package]\nname = "crate"\n'
-
-
-def test_read_tar_gz_text_file_returns_none_without_matching_member() -> None:
-    archive_content = _tar_gz_with_files({"crate/README.md": b"readme"})
-
-    result = read_tar_gz_text_file(archive_content, "/Cargo.toml")
-
-    assert result is None
-
-
-def test_read_tar_gz_text_file_rejects_oversized_member() -> None:
-    archive_content = _tar_gz_with_files({"crate/Cargo.toml": b"x" * 21})
-
-    with pytest.raises(ValueError, match="exceeds maximum size of 20 bytes"):
-        read_tar_gz_text_file(
-            archive_content,
-            "/Cargo.toml",
-            max_bytes=20,
-        )
-
-
-def test_read_tar_gz_text_file_rejects_invalid_size_limit() -> None:
-    with pytest.raises(ValueError, match="max_bytes must be greater than zero"):
-        read_tar_gz_text_file(b"archive", "/Cargo.toml", max_bytes=0)
-
-
-def test_read_tar_gz_text_file_rejects_malformed_archive() -> None:
-    with pytest.raises(ValueError, match="Malformed gzip tar archive"):
-        read_tar_gz_text_file(b"not a gzip tar archive", "/Cargo.toml")
+    assert result is True
+    mock_isabs.assert_called_once_with("/project/file.txt")
 
 
 def test_normalize_path_collapses_relative_segments() -> None:
