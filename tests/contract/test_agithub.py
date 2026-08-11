@@ -16,9 +16,31 @@ Consider marking them to run separately from unit tests if needed.
 """
 
 import os
+from typing import Protocol
 
 import pytest
 from agithub.GitHub import GitHub
+
+
+class _GitHubGetEndpoint(Protocol):
+    def get(self) -> tuple[int, object]: ...
+
+
+def _get_from_github_api(endpoint: _GitHubGetEndpoint) -> tuple[int, object]:
+    try:
+        return endpoint.get()
+    except OSError as exc:
+        pytest.skip("GitHub API is unavailable: {error}".format(error=exc))
+
+
+def _skip_if_github_api_unavailable(status: int, result: object) -> None:
+    if 500 <= status < 600:
+        pytest.skip(
+            "GitHub API returned server error {status}: {result}".format(
+                status=status,
+                result=result,
+            )
+        )
 
 
 @pytest.fixture
@@ -39,7 +61,10 @@ def test_repos_get_returns_expected_structure(github_client: GitHub) -> None:
     We depend on: owner, license, html_url, url fields from the API response.
     """
     # Use DataDog/dd-license-attribution as a known public repository
-    status, result = github_client.repos["DataDog"]["dd-license-attribution"].get()
+    status, result = _get_from_github_api(
+        github_client.repos["DataDog"]["dd-license-attribution"]
+    )
+    _skip_if_github_api_unavailable(status, result)
 
     # Validate successful response
     assert status == 200, f"Expected status 200, got {status}"
@@ -73,7 +98,8 @@ def test_repos_get_handles_redirects(github_client: GitHub) -> None:
     from urllib.parse import urlparse
 
     # Test with DataDog/ospo-tools which was renamed to DataDog/dd-license-attribution
-    status, result = github_client.repos["DataDog"]["ospo-tools"].get()
+    status, result = _get_from_github_api(github_client.repos["DataDog"]["ospo-tools"])
+    _skip_if_github_api_unavailable(status, result)
 
     # Should receive a 301 redirect
     assert status == 301, f"Expected status 301 for renamed repo, got {status}"
@@ -93,7 +119,10 @@ def test_repos_get_handles_redirects(github_client: GitHub) -> None:
 
 def test_repos_get_handles_404_error(github_client: GitHub) -> None:
     """Ensure repos.get() returns 404 for non-existent repositories."""
-    status, result = github_client.repos["NonExistentOwner"]["NonExistentRepo"].get()
+    status, result = _get_from_github_api(
+        github_client.repos["NonExistentOwner"]["NonExistentRepo"]
+    )
+    _skip_if_github_api_unavailable(status, result)
 
     assert status == 404, f"Expected status 404 for non-existent repo, got {status}"
 
@@ -106,9 +135,13 @@ def test_dependency_graph_sbom_get_returns_expected_structure(
     We depend on: sbom.packages field with name, SPDXID in package data.
     """
     # Use DataDog/dd-license-attribution as a known public repository with dependencies
-    status, result = github_client.repos["DataDog"]["dd-license-attribution"][
-        "dependency-graph"
-    ].sbom.get()
+    status, result = _get_from_github_api(
+        github_client.repos["DataDog"]["dd-license-attribution"][
+            "dependency-graph"
+        ].sbom
+    )
+
+    _skip_if_github_api_unavailable(status, result)
 
     if status == 404:
         pytest.skip(
@@ -143,9 +176,12 @@ def test_dependency_graph_sbom_get_returns_expected_structure(
 def test_dependency_graph_sbom_get_handles_404(github_client: GitHub) -> None:
     """Ensure dependency-graph.sbom.get() returns 404 for repos without access/SBOM."""
     # Use a non-existent repository
-    status, result = github_client.repos["NonExistentOwner"]["NonExistentRepo"][
-        "dependency-graph"
-    ].sbom.get()
+    status, result = _get_from_github_api(
+        github_client.repos["NonExistentOwner"]["NonExistentRepo"][
+            "dependency-graph"
+        ].sbom
+    )
+    _skip_if_github_api_unavailable(status, result)
 
     assert status == 404, f"Expected status 404 for non-existent repo, got {status}"
 

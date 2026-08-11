@@ -14,8 +14,6 @@ from urllib.parse import quote
 
 from dd_license_attribution.adaptors.os import (
     create_dirs,
-    download_url,
-    extract_tar_gz,
     format_command_output,
     open_file,
     path_exists,
@@ -28,14 +26,16 @@ from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
     UnauthorizedRepository,
 )
+from dd_license_attribution.utils.bounded_download import (
+    DDLA_USER_AGENT,
+    download_bounded,
+)
+from dd_license_attribution.utils.tar_archive import extract_tar_gz
 
 logger = logging.getLogger("dd_license_attribution")
 
 SYNTHETIC_PACKAGE_NAME = "ddla-rust-resolve"
 LICENSE_TOOL_CONFIG_NAME = "license-tool.toml"
-CRATES_IO_USER_AGENT = (
-    "dd-license-attribution (https://github.com/DataDog/dd-license-attribution)"
-)
 RUST_CARGO_COMMAND_TIMEOUT_SECONDS = 120
 EXACT_VERSION_PATTERN = re.compile(
     r"\d+(?:\.\d+){0,2}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?"
@@ -330,9 +330,9 @@ class RustPackageResolver:
         )
         try:
             crates_io_metadata: Any = json.loads(
-                download_url(
+                download_bounded(
                     metadata_endpoint,
-                    user_agent=CRATES_IO_USER_AGENT,
+                    user_agent=DDLA_USER_AGENT,
                 )
             )
         except (json.JSONDecodeError, OSError, UnicodeDecodeError) as e:
@@ -402,9 +402,9 @@ class RustPackageResolver:
         create_dirs(source_parent_dir)
 
         try:
-            archive_content = download_url(
+            archive_content = download_bounded(
                 download_endpoint,
-                user_agent=CRATES_IO_USER_AGENT,
+                user_agent=DDLA_USER_AGENT,
             )
             extracted_members = extract_tar_gz(archive_content, source_parent_dir)
         except (OSError, ValueError) as e:

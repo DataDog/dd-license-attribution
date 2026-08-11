@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `generate-sbom-csv` is deprecated in favor of `generate-sbom --format csv`; it still works and emits a deprecation warning.
 
 ### Fixed
+- Fixed Rust crates.io source archive handling by moving download and extraction logic out of OS adaptors and enforcing bounded decompression before extraction.
 - Fixed repeated action invocations overwriting earlier SBOM outputs by creating a unique output file for each invocation.
 - Fixed the action's default tokenless mode failing before a scan because it did not pass `--no-gh-auth` when `github-token` was empty.
 - Fixed the action requiring `csv-path` to exist during structural-only validation with `compare: false`.
