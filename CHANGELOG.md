@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - The minimum supported Typer version is now 0.27.0.
 - Markdown `generate-sbom` reports now show the root package version explicitly, exclude the root package from the dependency table, and include root license and copyright in the summary.
 - PyPI collection strategy now performs case-insensitive key matching for project_urls dictionary to better handle different key capitalizations from PyPI metadata
+- PyPI package name is now `datadog-license-attribution` to follow Datadog's PyPI packaging conventions. The CLI command name (`dd-license-attribution`) is unchanged.
+- `authors` metadata in `pyproject.toml` now lists Datadog, Inc. instead of individual maintainers, and `project.urls` now also sets `Repository`.
 
 ### Deprecated
 - `generate-sbom-csv` is deprecated in favor of `generate-sbom --format csv`; it still works and emits a deprecation warning.

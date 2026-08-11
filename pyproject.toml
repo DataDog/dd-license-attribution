@@ -3,17 +3,16 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "dd-license-attribution"
+name = "datadog-license-attribution"
 version = "0.5.0"
 description = "A tool that collects license and copyright information for third party dependencies of a project."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 authors = [
-    { name = "Damian Vicino", email = "damian.vicino@datadoghq.com" },
-    { name = "Ara Pulido", email = "ara.pulido@datadoghq.com" }
+    { name = "Datadog, Inc.", email = "package@datadoghq.com" }
 ]
-urls = { "Homepage" = "https://github.com/DataDog/dd-license-attribution" }
+urls = { "Homepage" = "https://github.com/DataDog/dd-license-attribution/blob/main/README.md", "Repository" = "https://github.com/DataDog/dd-license-attribution" }
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent"

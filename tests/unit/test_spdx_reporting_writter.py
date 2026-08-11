@@ -230,4 +230,4 @@ def test_spdx_reporting_writter_uses_unknown_when_package_version_is_missing() -
         )
 
     assert spdx_report_writter.tool_version == "unknown"
-    mock_version.assert_called_once_with("dd-license-attribution")
+    mock_version.assert_called_once_with("datadog-license-attribution")

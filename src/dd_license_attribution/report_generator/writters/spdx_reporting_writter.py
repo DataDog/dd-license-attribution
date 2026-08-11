@@ -126,7 +126,7 @@ class SPDXReportingWritter(ReportingWritter):
 
 def _get_tool_version() -> str:
     try:
-        return version("dd-license-attribution")
+        return version("datadog-license-attribution")
     except PackageNotFoundError:
         return "unknown"
 
