@@ -8,7 +8,8 @@
 # SPDX license cleaner that converts long license descriptions to SPDX license expressions
 
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from dd_license_attribution.license_cleaner.llm_client import LLMClient
 from dd_license_attribution.metadata_collector.metadata import Metadata

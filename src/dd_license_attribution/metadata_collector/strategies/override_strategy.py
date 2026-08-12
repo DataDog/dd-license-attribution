@@ -7,7 +7,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict
+from typing import Any
 
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
@@ -41,7 +41,7 @@ class OverrideRule:
     """
 
     override_type: OverrideType
-    target: Dict[OverrideTargetField, str]
+    target: dict[OverrideTargetField, str]
     replacement: Metadata | None
 
 
@@ -98,7 +98,7 @@ class OverrideCollectionStrategy(MetadataCollectionStrategy):
         """
         override_rules = []
         for rule in json_obj:
-            targets: Dict[OverrideTargetField, str] = {}
+            targets: dict[OverrideTargetField, str] = {}
             for target in rule.get("target", {}):
                 try:
                     match_field = OverrideTargetField(target)
