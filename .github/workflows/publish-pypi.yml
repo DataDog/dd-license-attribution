@@ -2,9 +2,10 @@ name: Publish to PyPI
 
 on:
   release:
-    # `released` additionally catches a pre-release later promoted to a full
-    # release, which fires `released` rather than another `published` event.
-    types: [published, released]
+    # `released` alone covers both an ordinary stable release and a
+    # pre-release later promoted to a full release, without the double
+    # `published`+`released` fire a normal release would otherwise trigger.
+    types: [released]
 
 permissions:
   contents: read
