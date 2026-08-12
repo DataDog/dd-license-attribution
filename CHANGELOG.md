@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-11
+
 ### Added
 - New reusable composite GitHub Action (`action.yml` at the repository root) that regenerates a third-party license SBOM and validates it against a committed `LICENSE-3rdparty.csv` file. It sets up its own Python, Go, Node.js/npm/Yarn, and Rust/dd-rust-license-tool toolchains as needed, installs the pinned tool version, and takes the target as an `owner/name` `repository` input (defaulting to the current repository). It automatically builds a mirror so the branch actually under test (`pull_request` head, merge-queue, or pushed branch) is scanned; when `github-token` is provided, the mirror supports cloning **private repositories**. `pull_request_target` intentionally remains on the base branch to avoid exposing privileged tokens while scanning untrusted code. Additional inputs control `ecosystem`/`package`, the `csv-path` to compare, `--override-spec`, per-strategy enable/disable toggles including `rust-strategy`, `--experimental-strategy`, `--deep-scanning`, `--yarn-subdir`, the `default-branch`, the `github-token`, Python/Go/Node.js/Rust versions (each can be set to `false` to skip the internal toolchain setup when the calling workflow already provides it), and the exact-vs-structural `compare` mode; it exposes `sbom-path` and `matches` outputs. Callers with special needs can supply their own mirror-specification file via `use-mirrors`, whose entries are merged ahead of (and thus take precedence over) the auto-built mirror. Reference it as `DataDog/dd-license-attribution@<ref>`.
 - New `yarn-subdir` action input accepts newline-separated paths and forwards each path as a `--yarn-subdir` argument.
@@ -29,6 +31,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - The minimum supported Typer version is now 0.27.0.
 - Markdown `generate-sbom` reports now show the root package version explicitly, exclude the root package from the dependency table, and include root license and copyright in the summary.
 - PyPI collection strategy now performs case-insensitive key matching for project_urls dictionary to better handle different key capitalizations from PyPI metadata
+- PyPI package name is now `datadog-license-attribution` to follow Datadog's PyPI packaging conventions. The CLI command name (`dd-license-attribution`) is unchanged.
+- `authors` metadata in `pyproject.toml` now lists Datadog, Inc. instead of individual maintainers, and `project.urls` now also sets `Repository`.
 
 ### Deprecated
 - `generate-sbom-csv` is deprecated in favor of `generate-sbom --format csv`; it still works and emits a deprecation warning.
