@@ -2,7 +2,9 @@ name: Publish to PyPI
 
 on:
   release:
-    types: [published]
+    # `released` additionally catches a pre-release later promoted to a full
+    # release, which fires `released` rather than another `published` event.
+    types: [published, released]
 
 permissions:
   contents: read
