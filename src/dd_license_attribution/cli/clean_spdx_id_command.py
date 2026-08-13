@@ -14,9 +14,9 @@ from typing import Annotated, Any
 import typer
 
 from dd_license_attribution.adaptors.os import (
-    absolute_path,
     get_env_var,
     path_exists,
+    resolve_absolute_path,
     write_file,
 )
 from dd_license_attribution.license_cleaner.llm_client import create_llm_client
@@ -166,7 +166,9 @@ def clean_spdx_id(
 
         # Read and parse input CSV to metadata using existing strategy
         logger.info("Reading input CSV from: %s", input_csv)
-        strategy = License3rdPartyMetadataCollectionStrategy(absolute_path(input_csv))
+        strategy = License3rdPartyMetadataCollectionStrategy(
+            resolve_absolute_path(input_csv)
+        )
         metadata_list = strategy.augment_metadata([])
 
         # Define callback for interactive prompting (if not in auto-confirm mode)
@@ -203,7 +205,7 @@ def clean_spdx_id(
         logger.info("Writing cleaned CSV to: %s", output_csv)
         csv_writer = CSVReportingWritter()
         cleaned_csv = csv_writer.write(cleaned_metadata)
-        write_file(absolute_path(output_csv), cleaned_csv)
+        write_file(resolve_absolute_path(output_csv), cleaned_csv)
 
         logger.info(
             "Successfully cleaned %d license(s) and wrote output to: %s",
