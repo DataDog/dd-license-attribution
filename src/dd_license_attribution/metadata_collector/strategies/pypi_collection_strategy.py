@@ -7,7 +7,7 @@
 
 import logging
 import re
-from typing import Any, Optional
+from typing import Any
 
 import requests
 from giturlparse import validate as validate_git_url
@@ -304,7 +304,7 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
 
     def _get_metadata_from_pypi(
         self, package: str, version: str
-    ) -> Optional[dict[str, Any]]:
+    ) -> dict[str, Any] | None:
         # get metadata from pypi API; omit version to fetch the latest release
         if version:
             request_uri = f"https://pypi.org/pypi/{package}/{version}/json"
