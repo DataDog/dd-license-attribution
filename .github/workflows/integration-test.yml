@@ -78,6 +78,7 @@ jobs:
           # the matrix Python version; opt out of both by passing false.
           python-version: false
           go-version: false
+          skip-install: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
       # The SPDX test below runs the CLI directly (not through the action), so
@@ -247,3 +248,61 @@ jobs:
       - name: Test generate-overrides command with clean CSV
         run: |
           dd-license-attribution generate-overrides LICENSE-3rdparty.csv -o test-overrides.json
+
+  # Exercise the reusable action with the published PyPI package (not a source
+  # build). This validates the exact combination external consumers get:\  # action.yml + datadog-license-attribution==<pinned-version> from PyPI.
+  # Structural validation only — the published version may produce a different
+  # dependency closure than the source build, so we don't compare against the
+  # committed LICENSE-3rdparty.csv.
+  action-published-package:
+    runs-on: ubuntu-latest
+    name: action (published package)
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate action with published PyPI package
+        id: validate-published
+        uses: ./
+        with:
+          repository: DataDog/apigentools
+          compare: false
+          # Disable strategies that require extra toolchains (Go, Rust, npm,
+          # ScanCode) to keep this job lightweight — we are testing that the
+          # action can install and run the published package, not the full
+          # strategy matrix.
+          gopkg-strategy: false
+          rust-strategy: false
+          npm-strategy: false
+          scancode-strategy: false
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify SBOM output is structurally valid
+        env:
+          SBOM_PATH: ${{ steps.validate-published.outputs.sbom-path }}
+        run: |
+          if [ ! -f "${SBOM_PATH}" ]; then
+            echo "::error::No SBOM output file produced"
+            exit 1
+          fi
+          head -1 "${SBOM_PATH}" | grep -iq "component.*origin.*license.*copyright" || {
+            echo "::error::Generated SBOM is missing the expected CSV header"
+            exit 1
+          }
+          line_count=$(wc -l < "${SBOM_PATH}")
+          if [ "${line_count}" -lt 2 ]; then
+            echo "::error::Generated SBOM contains no dependencies"
+            exit 1
+          fi
+          echo "Action + published package test passed: $((line_count - 1)) dependencies found"
+
+      - name: Upload SBOM output on failure
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ddla-published-package-output
+          path: ${{ steps.validate-published.outputs.sbom-path }}
+          if-no-files-found: ignore
