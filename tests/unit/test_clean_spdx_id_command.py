@@ -59,7 +59,7 @@ class TestCleanSPDXIdCommand:
             ],
         }
 
-    @patch("dd_license_attribution.cli.clean_spdx_id_command.absolute_path")
+    @patch("dd_license_attribution.cli.clean_spdx_id_command.resolve_absolute_path")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.path_exists")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.write_file")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.CSVReportingWritter")
@@ -76,12 +76,12 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class: Mock,
         mock_write_file: Mock,
         mock_path_exists: Mock,
-        mock_absolute_path: Mock,
+        mock_resolve_absolute_path: Mock,
     ) -> None:
         """Test successful execution with no changes needed."""
         # Mock adaptor functions
         mock_path_exists.side_effect = [True, False]  # input exists, output doesn't
-        mock_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
+        mock_resolve_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
 
         mock_llm_client = Mock()
         mock_create_llm_client.return_value = mock_llm_client
@@ -128,10 +128,12 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class.assert_called_once()
         mock_csv_writer.write.assert_called_once_with(self.sample_metadata)
         mock_path_exists.assert_has_calls([call("input.csv"), call("output.csv")])
-        mock_absolute_path.assert_has_calls([call("input.csv"), call("output.csv")])
+        mock_resolve_absolute_path.assert_has_calls(
+            [call("input.csv"), call("output.csv")]
+        )
         mock_write_file.assert_called_once_with("/abs/output.csv", self.cleaned_csv)
 
-    @patch("dd_license_attribution.cli.clean_spdx_id_command.absolute_path")
+    @patch("dd_license_attribution.cli.clean_spdx_id_command.resolve_absolute_path")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.path_exists")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.write_file")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.CSVReportingWritter")
@@ -148,12 +150,12 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class: Mock,
         mock_write_file: Mock,
         mock_path_exists: Mock,
-        mock_absolute_path: Mock,
+        mock_resolve_absolute_path: Mock,
     ) -> None:
         """Test using Anthropic as LLM provider."""
         # Mock adaptor functions
         mock_path_exists.side_effect = [True, False]
-        mock_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
+        mock_resolve_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
 
         mock_llm_client = Mock()
         mock_create_llm_client.return_value = mock_llm_client
@@ -202,10 +204,12 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class.assert_called_once()
         mock_csv_writer.write.assert_called_once_with(self.sample_metadata)
         mock_path_exists.assert_has_calls([call("input.csv"), call("output.csv")])
-        mock_absolute_path.assert_has_calls([call("input.csv"), call("output.csv")])
+        mock_resolve_absolute_path.assert_has_calls(
+            [call("input.csv"), call("output.csv")]
+        )
         mock_write_file.assert_called_once_with("/abs/output.csv", self.cleaned_csv)
 
-    @patch("dd_license_attribution.cli.clean_spdx_id_command.absolute_path")
+    @patch("dd_license_attribution.cli.clean_spdx_id_command.resolve_absolute_path")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.path_exists")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.write_file")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.CSVReportingWritter")
@@ -222,12 +226,12 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class: Mock,
         mock_write_file: Mock,
         mock_path_exists: Mock,
-        mock_absolute_path: Mock,
+        mock_resolve_absolute_path: Mock,
     ) -> None:
         """Test using custom model."""
         # Mock adaptor functions
         mock_path_exists.side_effect = [True, False]
-        mock_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
+        mock_resolve_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
 
         mock_llm_client = Mock()
         mock_create_llm_client.return_value = mock_llm_client
@@ -278,7 +282,9 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class.assert_called_once()
         mock_csv_writer.write.assert_called_once_with(self.sample_metadata)
         mock_path_exists.assert_has_calls([call("input.csv"), call("output.csv")])
-        mock_absolute_path.assert_has_calls([call("input.csv"), call("output.csv")])
+        mock_resolve_absolute_path.assert_has_calls(
+            [call("input.csv"), call("output.csv")]
+        )
         mock_write_file.assert_called_once_with("/abs/output.csv", self.cleaned_csv)
 
     @patch("dd_license_attribution.cli.clean_spdx_id_command.get_env_var")
@@ -317,7 +323,7 @@ class TestCleanSPDXIdCommand:
         assert "Input CSV file not found" in result.stderr
         mock_path_exists.assert_called_once_with("nonexistent.csv")
 
-    @patch("dd_license_attribution.cli.clean_spdx_id_command.absolute_path")
+    @patch("dd_license_attribution.cli.clean_spdx_id_command.resolve_absolute_path")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.path_exists")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.write_file")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.CSVReportingWritter")
@@ -334,12 +340,12 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class: Mock,
         mock_write_file: Mock,
         mock_path_exists: Mock,
-        mock_absolute_path: Mock,
+        mock_resolve_absolute_path: Mock,
     ) -> None:
         """Test execution with modifications in auto-confirm mode."""
         # Mock adaptor functions
         mock_path_exists.side_effect = [True, False]
-        mock_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
+        mock_resolve_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
 
         mock_llm_client = Mock()
         mock_create_llm_client.return_value = mock_llm_client
@@ -386,10 +392,12 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class.assert_called_once()
         mock_csv_writer.write.assert_called_once_with(self.sample_metadata)
         mock_path_exists.assert_has_calls([call("input.csv"), call("output.csv")])
-        mock_absolute_path.assert_has_calls([call("input.csv"), call("output.csv")])
+        mock_resolve_absolute_path.assert_has_calls(
+            [call("input.csv"), call("output.csv")]
+        )
         mock_write_file.assert_called_once_with("/abs/output.csv", self.cleaned_csv)
 
-    @patch("dd_license_attribution.cli.clean_spdx_id_command.absolute_path")
+    @patch("dd_license_attribution.cli.clean_spdx_id_command.resolve_absolute_path")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.path_exists")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.write_file")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.CSVReportingWritter")
@@ -408,12 +416,12 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class: Mock,
         mock_write_file: Mock,
         mock_path_exists: Mock,
-        mock_absolute_path: Mock,
+        mock_resolve_absolute_path: Mock,
     ) -> None:
         """Test execution with modifications in prompting mode (user accepts)."""
         # Mock adaptor functions
         mock_path_exists.side_effect = [True, False]
-        mock_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
+        mock_resolve_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
 
         mock_llm_client = Mock()
         mock_create_llm_client.return_value = mock_llm_client
@@ -475,14 +483,16 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class.assert_called_once()
         mock_csv_writer.write.assert_called_once_with(self.sample_metadata)
         mock_path_exists.assert_has_calls([call("input.csv"), call("output.csv")])
-        mock_absolute_path.assert_has_calls([call("input.csv"), call("output.csv")])
+        mock_resolve_absolute_path.assert_has_calls(
+            [call("input.csv"), call("output.csv")]
+        )
         mock_write_file.assert_called_once_with("/abs/output.csv", self.cleaned_csv)
         # Callback should be called once for each change with expected prompt
         mock_confirm.assert_called_once_with(
             "Apply this change?", err=True, default=True
         )
 
-    @patch("dd_license_attribution.cli.clean_spdx_id_command.absolute_path")
+    @patch("dd_license_attribution.cli.clean_spdx_id_command.resolve_absolute_path")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.path_exists")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.write_file")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.CSVReportingWritter")
@@ -501,12 +511,12 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class: Mock,
         mock_write_file: Mock,
         mock_path_exists: Mock,
-        mock_absolute_path: Mock,
+        mock_resolve_absolute_path: Mock,
     ) -> None:
         """Test execution with modifications in prompting mode (user rejects)."""
         # Mock adaptor functions
         mock_path_exists.side_effect = [True, False]
-        mock_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
+        mock_resolve_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
 
         mock_llm_client = Mock()
         mock_create_llm_client.return_value = mock_llm_client
@@ -568,7 +578,9 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class.assert_called_once()
         mock_csv_writer.write.assert_called_once_with(self.sample_metadata)
         mock_path_exists.assert_has_calls([call("input.csv"), call("output.csv")])
-        mock_absolute_path.assert_has_calls([call("input.csv"), call("output.csv")])
+        mock_resolve_absolute_path.assert_has_calls(
+            [call("input.csv"), call("output.csv")]
+        )
         # File should still be written (with no changes since user rejected)
         mock_write_file.assert_called_once_with("/abs/output.csv", self.cleaned_csv)
         # Callback should be called once for the change with expected prompt
@@ -614,7 +626,7 @@ class TestCleanSPDXIdCommand:
         mock_strategy_class.assert_not_called()
         mock_csv_writer_class.assert_not_called()
 
-    @patch("dd_license_attribution.cli.clean_spdx_id_command.absolute_path")
+    @patch("dd_license_attribution.cli.clean_spdx_id_command.resolve_absolute_path")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.path_exists")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.write_file")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.CSVReportingWritter")
@@ -631,12 +643,12 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class: Mock,
         mock_write_file: Mock,
         mock_path_exists: Mock,
-        mock_absolute_path: Mock,
+        mock_resolve_absolute_path: Mock,
     ) -> None:
         """Test error handling when ValueError is raised."""
         # Mock adaptor functions
         mock_path_exists.side_effect = [True, False]
-        mock_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
+        mock_resolve_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
 
         mock_create_llm_client.side_effect = ValueError("Invalid provider")
 
@@ -656,13 +668,13 @@ class TestCleanSPDXIdCommand:
         assert "Configuration error: Invalid provider" in result.stderr
         mock_create_llm_client.assert_called_once_with("openai", "test-key", None)
         mock_path_exists.assert_has_calls([call("input.csv"), call("output.csv")])
-        mock_absolute_path.assert_not_called()
+        mock_resolve_absolute_path.assert_not_called()
         mock_write_file.assert_not_called()
         mock_spdx_cleaner_class.assert_not_called()
         mock_strategy_class.assert_not_called()
         mock_csv_writer_class.assert_not_called()
 
-    @patch("dd_license_attribution.cli.clean_spdx_id_command.absolute_path")
+    @patch("dd_license_attribution.cli.clean_spdx_id_command.resolve_absolute_path")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.path_exists")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.write_file")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.CSVReportingWritter")
@@ -679,12 +691,12 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class: Mock,
         mock_write_file: Mock,
         mock_path_exists: Mock,
-        mock_absolute_path: Mock,
+        mock_resolve_absolute_path: Mock,
     ) -> None:
         """Test error handling when generic Exception is raised."""
         # Mock adaptor functions
         mock_path_exists.side_effect = [True, False]
-        mock_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
+        mock_resolve_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
 
         mock_llm_client = Mock()
         mock_create_llm_client.return_value = mock_llm_client
@@ -714,7 +726,7 @@ class TestCleanSPDXIdCommand:
         assert result.exit_code == 1
         mock_create_llm_client.assert_called_once_with("openai", "test-key", None)
         mock_path_exists.assert_has_calls([call("input.csv"), call("output.csv")])
-        mock_absolute_path.assert_called_once_with("input.csv")
+        mock_resolve_absolute_path.assert_called_once_with("input.csv")
         mock_strategy_class.assert_called_once_with("/abs/input.csv")
         mock_strategy.augment_metadata.assert_called_once_with([])
         mock_spdx_cleaner_class.assert_called_once_with(mock_llm_client)
@@ -770,7 +782,7 @@ class TestCleanSPDXIdCommand:
         mock_strategy_class.assert_not_called()
         mock_csv_writer_class.assert_not_called()
 
-    @patch("dd_license_attribution.cli.clean_spdx_id_command.absolute_path")
+    @patch("dd_license_attribution.cli.clean_spdx_id_command.resolve_absolute_path")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.path_exists")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.get_env_var")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.write_file")
@@ -789,7 +801,7 @@ class TestCleanSPDXIdCommand:
         mock_write_file: Mock,
         mock_get_env_var: Mock,
         mock_path_exists: Mock,
-        mock_absolute_path: Mock,
+        mock_resolve_absolute_path: Mock,
     ) -> None:
         """Test that ANTHROPIC_API_KEY is used when Anthropic provider is selected."""
         # Mock get_env_var to return appropriate key based on env var name
@@ -800,7 +812,7 @@ class TestCleanSPDXIdCommand:
 
         # Mock adaptor functions
         mock_path_exists.side_effect = [True, False]
-        mock_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
+        mock_resolve_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
 
         mock_llm_client = Mock()
         mock_create_llm_client.return_value = mock_llm_client
@@ -851,10 +863,12 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class.assert_called_once()
         mock_csv_writer.write.assert_called_once_with(self.sample_metadata)
         mock_path_exists.assert_has_calls([call("input.csv"), call("output.csv")])
-        mock_absolute_path.assert_has_calls([call("input.csv"), call("output.csv")])
+        mock_resolve_absolute_path.assert_has_calls(
+            [call("input.csv"), call("output.csv")]
+        )
         mock_write_file.assert_called_once_with("/abs/output.csv", self.cleaned_csv)
 
-    @patch("dd_license_attribution.cli.clean_spdx_id_command.absolute_path")
+    @patch("dd_license_attribution.cli.clean_spdx_id_command.resolve_absolute_path")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.path_exists")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.get_env_var")
     @patch("dd_license_attribution.cli.clean_spdx_id_command.write_file")
@@ -873,7 +887,7 @@ class TestCleanSPDXIdCommand:
         mock_write_file: Mock,
         mock_get_env_var: Mock,
         mock_path_exists: Mock,
-        mock_absolute_path: Mock,
+        mock_resolve_absolute_path: Mock,
     ) -> None:
         """Test that OPENAI_API_KEY is used when OpenAI provider is selected (default)."""
         # Mock get_env_var to return appropriate key based on env var name
@@ -884,7 +898,7 @@ class TestCleanSPDXIdCommand:
 
         # Mock adaptor functions
         mock_path_exists.side_effect = [True, False]
-        mock_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
+        mock_resolve_absolute_path.side_effect = ["/abs/input.csv", "/abs/output.csv"]
 
         mock_llm_client = Mock()
         mock_create_llm_client.return_value = mock_llm_client
@@ -931,7 +945,9 @@ class TestCleanSPDXIdCommand:
         mock_csv_writer_class.assert_called_once()
         mock_csv_writer.write.assert_called_once_with(self.sample_metadata)
         mock_path_exists.assert_has_calls([call("input.csv"), call("output.csv")])
-        mock_absolute_path.assert_has_calls([call("input.csv"), call("output.csv")])
+        mock_resolve_absolute_path.assert_has_calls(
+            [call("input.csv"), call("output.csv")]
+        )
         mock_write_file.assert_called_once_with("/abs/output.csv", self.cleaned_csv)
 
     @patch("dd_license_attribution.cli.clean_spdx_id_command.get_env_var")
