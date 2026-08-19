@@ -23,35 +23,35 @@ Runs may take minutes or hours depending on the size of the project dependency t
 
 ### Getting Started
 
-1. Install the required dependencies (see the [Requirements](#requirements) section below)
-2. Clone this repository
-3. Install the package:
+1. Install the package:
 
 ```bash
-pip install .
+pip install datadog-license-attribution
 ```
-4. Run the tool on a GitHub repository:
+2. Run the tool on a GitHub repository:
 ```bash
 dd-license-attribution generate-sbom https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
-5. Or run on an npm package directly:
+3. Or run on an npm package directly:
 ```bash
 dd-license-attribution generate-sbom --ecosystem npm --no-gh-auth express > LICENSE-3rdparty.csv
 ```
-6. Or run on a PyPI package directly:
+4. Or run on a PyPI package directly:
 ```bash
 dd-license-attribution generate-sbom --ecosystem python --no-gh-auth requests==2.31.0 > LICENSE-3rdparty.csv
 ```
-7. Or run on a Go module directly:
+5. Or run on a Go module directly:
 ```bash
 dd-license-attribution generate-sbom --ecosystem go --no-gh-auth github.com/stretchr/testify@v1.9.0 > LICENSE-3rdparty.csv
 ```
-8. Or run on a Rust crate directly:
+6. Or run on a Rust crate directly:
 ```bash
 dd-license-attribution generate-sbom --ecosystem rust --no-gh-auth serde@1.0 > LICENSE-3rdparty.csv
 ```
 
 For more advanced usage, see the sections below.
+
+> **Installing from source?** See the [CONTRIBUTING.md](./CONTRIBUTING.md) guidelines for development setup instructions.
 
 ### Available Commands
 
@@ -84,11 +84,11 @@ Run `dd-license-attribution --help` to see all available commands.
 
 #### Generating SBOM Reports
 
-To install and run the command after cloning the repository:
+To install and run the command:
 
 ```bash
-#starting at the root of the repository
-pip install .
+# Install from PyPI
+pip install datadog-license-attribution
 
 # Optionally you can define a GITHUB_TOKEN, if used it will raise the throttling threashold and maspeed up your generation calls to github APIs.
 export GITHUB_TOKEN=YOUR_TOKEN
