@@ -250,7 +250,8 @@ jobs:
           dd-license-attribution generate-overrides LICENSE-3rdparty.csv -o test-overrides.json
 
   # Exercise the reusable action with the published PyPI package (not a source
-  # build). This validates the exact combination external consumers get:\  # action.yml + datadog-license-attribution==<pinned-version> from PyPI.
+  # build). This validates the exact combination external consumers get:
+  # action.yml + datadog-license-attribution==<pinned-version> from PyPI.
   # Structural validation only — the published version may produce a different
   # dependency closure than the source build, so we don't compare against the
   # committed LICENSE-3rdparty.csv.

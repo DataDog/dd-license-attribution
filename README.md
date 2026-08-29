@@ -481,8 +481,9 @@ file drifts from what `dd-license-attribution` would produce.
 The action sets up its own Python and, when their strategies or ecosystems
 require them, Go, Node.js, and Rust toolchains. The Node.js setup also provides
 npm and Yarn Classic; the Rust setup installs `dd-rust-license-tool`. It
-installs the exact version of `dd-license-attribution` shipped with the `@ref`
-you pin, so no additional setup steps are required. If your workflow already
+installs `datadog-license-attribution` from PyPI, pinned by default to the
+version shipped with the `@ref` you pin (override with `package-version` or
+skip entirely with `skip-install`), so no additional setup steps are required. If your workflow already
 provides any of these toolchains, opt out of the corresponding internal setup by
 passing `python-version: false`, `go-version: false`, `node-version: false`, or
 `rust-version: false`. When `compare` is enabled, your repository must be

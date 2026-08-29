@@ -301,7 +301,7 @@ runs:
       run: |
         python -m pip install --upgrade pip
         if [ "${PACKAGE_VERSION}" = "latest" ]; then
-          python -m pip install datadog-license-attribution
+          python -m pip install --upgrade datadog-license-attribution
         else
           python -m pip install "datadog-license-attribution==${PACKAGE_VERSION}"
         fi
