@@ -162,14 +162,13 @@ class AnthropicClient:
             response = self.client.messages.create(
                 model=self.model,
                 max_tokens=50,
-                temperature=0,
                 system="You are a license identification expert. Your task is to identify the SPDX license expression from license text. Respond ONLY with the SPDX license expression, nothing else. Use operators like OR, AND, WITH for composite licenses (e.g., 'MIT OR Apache-2.0', 'GPL-2.0-only WITH Classpath-exception-2.0'). If you cannot identify the license, respond with 'UNKNOWN'.",
                 messages=[{"role": "user", "content": prompt}],
             )
 
-            # Get text from response (only TextBlock has .text attribute)
+            # Get text from response (only TextBlock carries the response text)
             content_block = response.content[0]
-            if hasattr(content_block, "text"):
+            if isinstance(content_block, anthropic.types.TextBlock):
                 spdx_expression = content_block.text
             else:
                 spdx_expression = None
