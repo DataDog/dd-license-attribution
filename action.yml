@@ -160,6 +160,14 @@ inputs:
       calling workflow). Useful in CI workflows that test the tool itself.
     required: false
     default: "false"
+  package-version:
+    description: >-
+      Version of the datadog-license-attribution package to install from
+      PyPI. Defaults to the release this action version was published with.
+      Set to 'latest' to install the newest published release instead of the
+      pinned default. Ignored when skip-install is 'true'.
+    required: false
+    default: "0.6.0"
   go-version:
     description: >-
       Go version to set up when the GoPkg strategy is enabled or `ecosystem` is
@@ -288,9 +296,15 @@ runs:
     - name: Install dd-license-attribution
       if: ${{ inputs.skip-install != 'true' }}
       shell: bash
+      env:
+        PACKAGE_VERSION: ${{ inputs.package-version }}
       run: |
         python -m pip install --upgrade pip
-        python -m pip install datadog-license-attribution==0.6.0
+        if [ "${PACKAGE_VERSION}" = "latest" ]; then
+          python -m pip install datadog-license-attribution
+        else
+          python -m pip install "datadog-license-attribution==${PACKAGE_VERSION}"
+        fi
 
     - name: Generate and validate SBOM
       id: validate
