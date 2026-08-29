@@ -189,13 +189,12 @@ class TestAnthropicAPIContract:
 
         We depend on:
         - response.content[0].text containing the response text
-        - The ability to set model, max_tokens, temperature, system, and messages
+        - The ability to set model, max_tokens, system, and messages
         """
         # Make a minimal API call to keep costs low
         response = anthropic_client.messages.create(
             model="claude-3-5-haiku-20241022",  # Use a cost-effective model
             max_tokens=10,  # Minimal tokens to reduce cost
-            temperature=0,
             system="You are a helpful assistant. Respond with only 'OK'.",
             messages=[{"role": "user", "content": "Test"}],
         )

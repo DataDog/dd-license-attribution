@@ -10,6 +10,7 @@
 from unittest.mock import Mock, patch
 
 import pytest
+from anthropic.types import TextBlock
 
 from dd_license_attribution.license_cleaner.llm_client import (
     AnthropicClient,
@@ -372,8 +373,7 @@ class TestAnthropicClient:
 
         # Mock the API response
         mock_response = Mock()
-        mock_content = Mock()
-        mock_content.text = "Apache-2.0"
+        mock_content = TextBlock(text="Apache-2.0", type="text")
         mock_response.content = [mock_content]
         mock_client.messages.create.return_value = mock_response
 
@@ -386,7 +386,7 @@ class TestAnthropicClient:
         mock_client.messages.create.assert_called_once()
         call_kwargs = mock_client.messages.create.call_args[1]
         assert call_kwargs["model"] == "claude-3-7-sonnet-20250219"
-        assert call_kwargs["temperature"] == 0
+        assert "temperature" not in call_kwargs
         assert call_kwargs["max_tokens"] == 50
         assert len(call_kwargs["messages"]) == 1
 
@@ -397,8 +397,7 @@ class TestAnthropicClient:
         mock_anthropic_class.return_value = mock_client
 
         mock_response = Mock()
-        mock_content = Mock()
-        mock_content.text = None
+        mock_content = TextBlock(text="", type="text")
         mock_response.content = [mock_content]
         mock_client.messages.create.return_value = mock_response
 
@@ -580,8 +579,7 @@ class TestAnthropicClient:
         mock_anthropic_class.return_value = mock_client
 
         mock_response = Mock()
-        mock_content = Mock()
-        mock_content.text = "MIT OR Apache-2.0"
+        mock_content = TextBlock(text="MIT OR Apache-2.0", type="text")
         mock_response.content = [mock_content]
         mock_client.messages.create.return_value = mock_response
 
@@ -602,8 +600,9 @@ class TestAnthropicClient:
         mock_anthropic_class.return_value = mock_client
 
         mock_response = Mock()
-        mock_content = Mock()
-        mock_content.text = "GPL-2.0-only WITH Classpath-exception-2.0"
+        mock_content = TextBlock(
+            text="GPL-2.0-only WITH Classpath-exception-2.0", type="text"
+        )
         mock_response.content = [mock_content]
         mock_client.messages.create.return_value = mock_response
 
