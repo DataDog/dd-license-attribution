@@ -483,8 +483,9 @@ require them, Go, Node.js, and Rust toolchains. The Node.js setup also provides
 npm and Yarn Classic; the Rust setup installs `dd-rust-license-tool`. It
 installs `datadog-license-attribution` from PyPI, pinned by default to the
 version shipped with the `@ref` you pin (override with `package-version` or
-skip entirely with `skip-install`), so no additional setup steps are required. If your workflow already
-provides any of these toolchains, opt out of the corresponding internal setup by
+skip entirely with `skip-install`), so no additional setup steps are required.
+If your workflow already provides any of these toolchains, opt out of the
+corresponding internal setup by
 passing `python-version: false`, `go-version: false`, `node-version: false`, or
 `rust-version: false`. When `compare` is enabled, your repository must be
 checked out so the action can read the committed `LICENSE-3rdparty.csv`.
