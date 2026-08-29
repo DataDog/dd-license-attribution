@@ -94,10 +94,6 @@ module = "scancode"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "scancode.api"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
 module = "agithub.GitHub"
 ignore_missing_imports = true
 
