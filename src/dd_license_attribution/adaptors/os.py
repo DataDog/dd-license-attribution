@@ -12,6 +12,7 @@ import os
 import subprocess
 import tarfile
 from collections.abc import Iterable, Iterator, Mapping
+from pathlib import Path
 
 import requests
 
@@ -120,7 +121,19 @@ def extract_tar_members(
 
 
 def absolute_path(path: str) -> str:
+    """Return a normalized absolute path (lexical normalization of '..' and '.')."""
     return os.path.abspath(path)
+
+
+def resolve_absolute_path(path: str) -> str:
+    """Return an absolute path without normalizing '..' segments.
+
+    Matches ``pathlib.Path.absolute()`` semantics, which prepend the cwd
+    to relative paths but do not lexically normalize '..' or '.' components.
+    Use this when the caller relied on ``Path.absolute()`` and needs the
+    same behavior through the adaptor layer.
+    """
+    return str(Path(path).absolute())
 
 
 def is_absolute_path(path: str) -> bool:

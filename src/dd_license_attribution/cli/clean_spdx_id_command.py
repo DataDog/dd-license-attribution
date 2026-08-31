@@ -8,14 +8,17 @@
 # Command for cleaning SPDX license identifiers in CSV files using LLMs
 
 import logging
-import os
 import sys
-from pathlib import Path
 from typing import Annotated, Any
 
 import typer
 
-from dd_license_attribution.adaptors.os import write_file
+from dd_license_attribution.adaptors.os import (
+    get_env_var,
+    path_exists,
+    resolve_absolute_path,
+    write_file,
+)
 from dd_license_attribution.license_cleaner.llm_client import create_llm_client
 from dd_license_attribution.license_cleaner.spdx_cleaner import SPDXCleaner
 from dd_license_attribution.metadata_collector.strategies.license_3rdparty_metadata_collection_strategy import (  # noqa: E501
@@ -128,7 +131,7 @@ def clean_spdx_id(
             if llm_provider.lower() == "openai"
             else "ANTHROPIC_API_KEY"
         )
-        api_key = os.environ.get(env_var_name)
+        api_key = get_env_var(env_var_name)
 
     # Validate API key
     if not api_key:
@@ -143,14 +146,12 @@ def clean_spdx_id(
         sys.exit(1)
 
     # Validate input file exists
-    input_path = Path(input_csv)
-    if not input_path.exists():
+    if not path_exists(input_csv):
         logger.error("Input CSV file not found: %s", input_csv)
         sys.exit(1)
 
     # Validate output path is writable
-    output_path = Path(output_csv)
-    if output_path.exists() and not yes:
+    if path_exists(output_csv) and not yes:
         overwrite = typer.confirm(
             f"Output file {output_csv} already exists. Overwrite?", err=True
         )
@@ -165,7 +166,9 @@ def clean_spdx_id(
 
         # Read and parse input CSV to metadata using existing strategy
         logger.info("Reading input CSV from: %s", input_csv)
-        strategy = License3rdPartyMetadataCollectionStrategy(str(input_path.absolute()))
+        strategy = License3rdPartyMetadataCollectionStrategy(
+            resolve_absolute_path(input_csv)
+        )
         metadata_list = strategy.augment_metadata([])
 
         # Define callback for interactive prompting (if not in auto-confirm mode)
@@ -202,7 +205,7 @@ def clean_spdx_id(
         logger.info("Writing cleaned CSV to: %s", output_csv)
         csv_writer = CSVReportingWritter()
         cleaned_csv = csv_writer.write(cleaned_metadata)
-        write_file(str(output_path.absolute()), cleaned_csv)
+        write_file(resolve_absolute_path(output_csv), cleaned_csv)
 
         logger.info(
             "Successfully cleaned %d license(s) and wrote output to: %s",
