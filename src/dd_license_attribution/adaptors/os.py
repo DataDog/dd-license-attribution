@@ -12,6 +12,7 @@ import os
 import subprocess
 import tarfile
 from collections.abc import Iterable, Iterator, Mapping
+from pathlib import Path
 
 import requests
 
@@ -132,8 +133,6 @@ def resolve_absolute_path(path: str) -> str:
     Use this when the caller relied on ``Path.absolute()`` and needs the
     same behavior through the adaptor layer.
     """
-    from pathlib import Path
-
     return str(Path(path).absolute())
 
 
