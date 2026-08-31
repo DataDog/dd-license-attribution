@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The composite GitHub Action (`action.yml`) now installs the published `datadog-license-attribution` package from PyPI (pinned to the release version) instead of building from the checked-out source tree. External consumers no longer need the repository source to run the action.
+
+### Added
+- New `skip-install` input for the composite GitHub Action. Set to `true` to skip installing from PyPI and use the `dd-license-attribution` already on PATH (e.g. a source build installed by the calling workflow). Defaults to `false`.
+- New `package-version` input for the composite GitHub Action. Controls which version of `datadog-license-attribution` is installed from PyPI. Defaults to the pinned release version (`0.6.0`); set to `latest` to install the newest published release. Ignored when `skip-install` is `true`.
+
 ## [0.6.0] - 2026-08-11
 
 ### Added

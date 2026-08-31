@@ -23,35 +23,35 @@ Runs may take minutes or hours depending on the size of the project dependency t
 
 ### Getting Started
 
-1. Install the required dependencies (see the [Requirements](#requirements) section below)
-2. Clone this repository
-3. Install the package:
+1. Install the package:
 
 ```bash
-pip install .
+pip install datadog-license-attribution
 ```
-4. Run the tool on a GitHub repository:
+2. Run the tool on a GitHub repository:
 ```bash
 dd-license-attribution generate-sbom https://github.com/owner/repo > LICENSE-3rdparty.csv
 ```
-5. Or run on an npm package directly:
+3. Or run on an npm package directly:
 ```bash
 dd-license-attribution generate-sbom --ecosystem npm --no-gh-auth express > LICENSE-3rdparty.csv
 ```
-6. Or run on a PyPI package directly:
+4. Or run on a PyPI package directly:
 ```bash
 dd-license-attribution generate-sbom --ecosystem python --no-gh-auth requests==2.31.0 > LICENSE-3rdparty.csv
 ```
-7. Or run on a Go module directly:
+5. Or run on a Go module directly:
 ```bash
 dd-license-attribution generate-sbom --ecosystem go --no-gh-auth github.com/stretchr/testify@v1.9.0 > LICENSE-3rdparty.csv
 ```
-8. Or run on a Rust crate directly:
+6. Or run on a Rust crate directly:
 ```bash
 dd-license-attribution generate-sbom --ecosystem rust --no-gh-auth serde@1.0 > LICENSE-3rdparty.csv
 ```
 
 For more advanced usage, see the sections below.
+
+> **Installing from source?** See the [CONTRIBUTING.md](./CONTRIBUTING.md) guidelines for development setup instructions.
 
 ### Available Commands
 
@@ -84,11 +84,11 @@ Run `dd-license-attribution --help` to see all available commands.
 
 #### Generating SBOM Reports
 
-To install and run the command after cloning the repository:
+To install and run the command:
 
 ```bash
-#starting at the root of the repository
-pip install .
+# Install from PyPI
+pip install datadog-license-attribution
 
 # Optionally you can define a GITHUB_TOKEN, if used it will raise the throttling threashold and maspeed up your generation calls to github APIs.
 export GITHUB_TOKEN=YOUR_TOKEN
@@ -481,9 +481,11 @@ file drifts from what `dd-license-attribution` would produce.
 The action sets up its own Python and, when their strategies or ecosystems
 require them, Go, Node.js, and Rust toolchains. The Node.js setup also provides
 npm and Yarn Classic; the Rust setup installs `dd-rust-license-tool`. It
-installs the exact version of `dd-license-attribution` shipped with the `@ref`
-you pin, so no additional setup steps are required. If your workflow already
-provides any of these toolchains, opt out of the corresponding internal setup by
+installs `datadog-license-attribution` from PyPI, pinned by default to the
+version shipped with the `@ref` you pin (override with `package-version` or
+skip entirely with `skip-install`), so no additional setup steps are required.
+If your workflow already provides any of these toolchains, opt out of the
+corresponding internal setup by
 passing `python-version: false`, `go-version: false`, `node-version: false`, or
 `rust-version: false`. When `compare` is enabled, your repository must be
 checked out so the action can read the committed `LICENSE-3rdparty.csv`.
@@ -567,6 +569,8 @@ jobs:
 | `use-mirrors` | _(empty)_ | Path (in the workspace) to a JSON file of mirror specifications. Its entries are merged *ahead* of the auto-built mirror, so they take precedence for any overlapping `original_url` while the auto-built entry remains a fallback. In ecosystem mode it is passed verbatim to `--use-mirrors`. |
 | `github-token` | _(empty)_ | Token used for GitHub API calls and, embedded in the mirror URL, for cloning the repository. Leave empty for public or untrusted targets; provide a read-only token for a trusted private repository. |
 | `python-version` | `3.14` | Python version to set up and run the tool with. Set to `false` to skip the internal Python setup and use the `python` already on `PATH`. |
+| `skip-install` | `false` | Set to `true` to skip installing `datadog-license-attribution` from PyPI and use the version already on `PATH` (e.g. a source build installed by the calling workflow). |
+| `package-version` | `0.6.0` | Version of `datadog-license-attribution` to install from PyPI. Set to `latest` to install the newest published release instead of the pinned default. Ignored when `skip-install` is `true`. |
 | `go-version` | `1.23` | Go version to set up when `gopkg-strategy` is enabled or `ecosystem` is `go`. Set to `false` to skip the internal Go setup and use the calling workflow's Go toolchain. |
 | `node-version` | `24` | Node.js version to set up when `npm-strategy` is enabled or `ecosystem` is `npm`; npm and Yarn Classic are also installed. Set to `false` to use the calling workflow's JavaScript toolchain. |
 | `rust-version` | `stable` | Rust toolchain to install when Rust crate resolution or analysis requires Cargo; `dd-rust-license-tool` is installed with Cargo when `rust-strategy` is enabled. Set to `false` to use the calling workflow's Rust toolchain and existing `dd-rust-license-tool` installation. |
