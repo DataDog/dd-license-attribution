@@ -295,5 +295,22 @@
         "nexB. Inc. and others"
       ]
     }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "component": "isort",
+      "origin": "isort"
+    },
+    "replacement": {
+      "name": "isort",
+      "origin": "isort",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "Timothy Edmund Crosley"
+      ]
+    }
   }
 ]
