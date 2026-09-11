@@ -6,6 +6,7 @@
 # Copyright 2024-present Datadog, Inc.
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -20,10 +21,12 @@ from giturlparse import parse as parse_git_url
 
 from dd_license_attribution.adaptors.os import (
     create_dirs,
+    current_time,
     list_dir,
     output_from_command,
     path_exists,
     run_command,
+    sleep,
 )
 from dd_license_attribution.artifact_management.artifact_manager import (
     ArtifactManager,
@@ -34,6 +37,11 @@ NONINTERACTIVE_GIT_ENV = {
     "GIT_TERMINAL_PROMPT": "0",
 }
 NONINTERACTIVE_GIT_TIMEOUT_SECONDS = 30
+GITHUB_API_MAX_RETRIES = 3
+GITHUB_API_RETRY_BASE_DELAY_SECONDS = 2.0
+GITHUB_API_RETRY_MAX_DELAY_SECONDS = 60.0
+GITHUB_API_RETRY_BUFFER_SECONDS = 1.0
+GITHUB_API_TRANSIENT_STATUS_CODES = frozenset({500, 502, 503, 504})
 
 
 class NonAccessibleRepository(Exception):
@@ -54,6 +62,240 @@ def _output_from_git_command(args: list[str], git_env: dict[str, str] | None) ->
     return output_from_command(
         args, env=git_env, timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS
     )
+
+
+def _response_headers(github_client: GitHub) -> dict[str, str] | None:
+    """Return the API client's most recent response headers, if usable.
+
+    The agithub API class exposes getheaders() returning the headers of
+    the last performed request (list of (name, value) pairs or a mapping,
+    depending on the client version). Tolerate any client implementation
+    and return None when the headers cannot be read, so callers can fall
+    back to inspecting the response body.
+
+    Args:
+        github_client: The GitHub API client instance.
+
+    Returns:
+        A lowercase header-name -> value dict, or None when unavailable.
+    """
+    getheaders = getattr(github_client, "getheaders", None)
+    if not callable(getheaders):
+        return None
+    try:
+        raw = getheaders()
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if isinstance(raw, dict):
+        return {str(k).lower(): str(v) for k, v in raw.items()}
+    items = getattr(raw, "items", None)
+    if callable(items):
+        try:
+            return {str(k).lower(): str(v) for k, v in items()}
+        except (AttributeError, TypeError, ValueError):
+            return None
+    if isinstance(raw, (list, tuple)):
+        try:
+            return {str(k).lower(): str(v) for k, v in raw}
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _is_rate_limit_response(
+    status: int, result: dict[str, Any] | None, headers: dict[str, str] | None = None
+) -> bool:
+    """Check whether a GitHub API response is a rate limit response.
+
+    GitHub signals rate limits on API responses in several ways:
+    - A 429 (Too Many Requests) response - used for secondary rate limits.
+    - A 403 response confirmed as a rate limit by a Retry-After header
+      (secondary rate limit), by the X-RateLimit-Remaining header reaching 0
+      (primary rate limit), or by the message mentioning a rate limit
+      (e.g. "You have exceeded a secondary rate limit").
+
+    The X-RateLimit-Remaining header tracks only the PRIMARY quota, so a
+    positive value does NOT rule out a secondary rate limit: a positive
+    remaining header never overrides the Retry-After header or the message.
+    Other 403 responses (e.g. "Resource not accessible by integration") are
+    permanent access failures and must not be retried.
+
+    Args:
+        status: The HTTP status code of the response.
+        result: The parsed response body, if any.
+        headers: The response headers if available; None to fall back to
+            inspecting the response body message.
+
+    Returns:
+        True if the response is a confirmed rate limit response, False
+        otherwise (including when a 403 cause cannot be confirmed - such
+        responses are treated as permanent failures).
+    """
+    if status == 429:
+        return True
+    if status != 403:
+        return False
+    if headers is not None:
+        if headers.get("retry-after") is not None:
+            # A 403 carrying Retry-After is a secondary rate limit, even when
+            # the primary quota (X-RateLimit-Remaining) is not exhausted.
+            return True
+        remaining = headers.get("x-ratelimit-remaining")
+        if remaining is not None:
+            try:
+                if int(remaining) <= 0:
+                    return True
+            except ValueError:
+                logger.debug(
+                    "Unparseable X-RateLimit-Remaining header value: %s", remaining
+                )
+    message = result.get("message") if isinstance(result, dict) else None
+    return "rate limit" in str(message).lower()
+
+
+def _advised_retry_delay_seconds(headers: dict[str, str] | None) -> float | None:
+    """Compute the server-advised retry wait from rate limit headers.
+
+    Secondary rate limits (429, or a 403 carrying Retry-After) advise a wait
+    via the Retry-After header (seconds). Primary rate limits (403 with
+    X-RateLimit-Remaining reaching 0) carry X-RateLimit-Reset (unix epoch) -
+    the advised wait is until that quota window resets. The reset header
+    only tracks the PRIMARY quota window, so it is only consulted when the
+    primary quota is actually exhausted; for a secondary rate limit with
+    primary quota left it is irrelevant and no advice is derived (callers
+    fall back to exponential backoff). A small buffer is added on top of
+    the server's advice.
+
+    Args:
+        headers: The response headers if available; None when not.
+
+    Returns:
+        The advised delay in seconds, or None when the headers carry no
+        usable advice.
+    """
+    if headers is None:
+        return None
+    retry_after = headers.get("retry-after")
+    if retry_after is not None:
+        try:
+            return float(retry_after) + GITHUB_API_RETRY_BUFFER_SECONDS
+        except ValueError:
+            logger.debug("Unparseable Retry-After header value: %s", retry_after)
+    remaining = headers.get("x-ratelimit-remaining")
+    if remaining is None:
+        return None
+    try:
+        if int(remaining) > 0:
+            # Primary quota not exhausted: the X-RateLimit-Reset epoch would
+            # be bad advice for this response.
+            return None
+    except ValueError:
+        logger.debug("Unparseable X-RateLimit-Remaining header value: %s", remaining)
+        return None
+    reset = headers.get("x-ratelimit-reset")
+    if reset is not None:
+        try:
+            delay = float(reset) - current_time() + GITHUB_API_RETRY_BUFFER_SECONDS
+        except ValueError:
+            logger.debug("Unparseable X-RateLimit-Reset header value: %s", reset)
+            return None
+        if delay > 0:
+            return delay
+    return None
+
+
+def _is_transient_response(
+    status: int, result: dict[str, Any] | None, headers: dict[str, str] | None
+) -> bool:
+    """Check whether a GitHub API response is a transient failure.
+
+    Transient failures are rate limit responses (see _is_rate_limit_response)
+    or 5xx server errors, which GitHub documents as temporary and safe to
+    retry. Everything else (success, 404, permanent 403, 301, ...) is final.
+
+    Args:
+        status: The HTTP status code of the response.
+        result: The parsed response body, if any.
+        headers: The response headers if available.
+
+    Returns:
+        True if the response is a transient failure worth retrying.
+    """
+    if status in GITHUB_API_TRANSIENT_STATUS_CODES:
+        return True
+    return _is_rate_limit_response(status, result, headers)
+
+
+def github_api_get_with_retry(
+    fetch: Callable[[], tuple[int, dict[str, Any] | None]],
+    github_client: GitHub,
+) -> tuple[int, dict[str, Any] | None, int]:
+    """Perform a GitHub API fetch, retrying transient failures.
+
+    Rate limit responses (a 429, or a 403 confirmed as a rate limit by the
+    X-RateLimit-Remaining header or, failing that, the response message)
+    are retried following the server-advised timeline when rate limit
+    headers are available: Retry-After for secondary rate limits, or until
+    the X-RateLimit-Reset epoch for primary ones. 5xx server errors are
+    also transient and retried (with exponential backoff - they carry no
+    retry advice). When no advice is available the retry uses exponential
+    backoff. An advised wait longer than GITHUB_API_RETRY_MAX_DELAY_SECONDS
+    is not retried: retrying before the server allows it would be
+    aggressive, and blocking a scan for minutes is worse than letting the
+    caller fail (transiently - transient failures must not be cached by
+    callers).
+
+    Args:
+        fetch: Zero-argument callable performing one API request and
+            returning its (status, parsed body).
+        github_client: The GitHub API client used to read response headers.
+
+    Returns:
+        A tuple of (status, result, attempts) - the final (status, parsed
+        body) after retries are exhausted or the request succeeds, and the
+        number of fetch attempts performed (1 when no retry happened).
+    """
+    status, result = fetch()
+    headers = _response_headers(github_client)
+    attempt = 1
+    while (
+        _is_transient_response(status, result, headers)
+        and attempt < GITHUB_API_MAX_RETRIES
+    ):
+        # Only rate limit responses carry retry advice: 5xx server errors
+        # use the exponential backoff even when rate limit headers (which
+        # GitHub sends on every response) happen to be present.
+        rate_limited = _is_rate_limit_response(status, result, headers)
+        advised_delay = _advised_retry_delay_seconds(headers) if rate_limited else None
+        if (
+            advised_delay is not None
+            and advised_delay > GITHUB_API_RETRY_MAX_DELAY_SECONDS
+        ):
+            logger.warning(
+                "GitHub API rate limit advises waiting %.0f seconds, which "
+                "exceeds the %.0f second cap; not retrying this request",
+                advised_delay,
+                GITHUB_API_RETRY_MAX_DELAY_SECONDS,
+            )
+            break
+        delay = (
+            advised_delay
+            if advised_delay is not None
+            else GITHUB_API_RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+        )
+        logger.warning(
+            "GitHub API transient failure (status %s, attempt %d/%d), "
+            "retrying in %s seconds...",
+            status,
+            attempt,
+            GITHUB_API_MAX_RETRIES,
+            delay,
+        )
+        sleep(delay)
+        attempt += 1
+        status, result = fetch()
+        headers = _response_headers(github_client)
+    return (status, result, attempt)
 
 
 def extract_ref(ref: str, url: str, git_env: dict[str, str] | None = None) -> str:
@@ -191,7 +433,15 @@ class SourceCodeManager(ArtifactManager):
         )
         original_url = f"{parsed_url.protocol}://{parsed_url.host}/{owner}/{repo}"
         fallback_result = (original_url, None)
-        self._canonical_urls_cache[url] = fallback_result
+        # Transient failures (429, a 403 confirmed as a rate limit by the
+        # rate limit headers or, failing that, the message, or 5xx server
+        # errors): don't cache the fallback so a later call can retry once
+        # they recover. Other failures (e.g. 404 not found, or a permanent
+        # 403) are safe to cache.
+        if not _is_transient_response(
+            status, repository, _response_headers(self.github_client)
+        ):
+            self._canonical_urls_cache[url] = fallback_result
         return fallback_result
 
     def get_repository_info(
@@ -215,6 +465,17 @@ class SourceCodeManager(ArtifactManager):
               non-GitHub URL (rare edge case).
             - repository_dict: The repository information dict on success, None on error
 
+        Transient failures - confirmed rate limit responses (a 429, or a 403
+        confirmed as a rate limit by the X-RateLimit-Remaining header when
+        available, else by the message) and 5xx server errors - are
+        retried following the server-advised timeline (Retry-After /
+        X-RateLimit-Reset, capped at GITHUB_API_RETRY_MAX_DELAY_SECONDS) or
+        exponential backoff when no advice is available: up to
+        GITHUB_API_MAX_RETRIES attempts. Transient results are never cached
+        so that later callers get a fresh chance once the failure recovers;
+        other results (success or permanent errors like 404, including
+        non-rate-limit 403 responses) are cached.
+
         Examples:
             (200, {"html_url": "...", "license": {...}, ...})  # Normal case
             (404, None)  # Repository not found
@@ -228,6 +489,49 @@ class SourceCodeManager(ArtifactManager):
             return self._repository_info_cache[cache_key]
 
         logger.debug("Fetching repository info for: %s/%s", owner, repo)
+        status, result, attempts = github_api_get_with_retry(
+            lambda: self._fetch_repository_info(owner, repo), self.github_client
+        )
+
+        if _is_transient_response(
+            status, result, _response_headers(self.github_client)
+        ):
+            # Transient failures (rate limits, 5xx server errors): don't
+            # cache them so a later caller can retry once they recover.
+            logger.error(
+                "GitHub API transient failure for %s/%s after %d attempts",
+                owner,
+                repo,
+                attempts,
+            )
+            return (status, result)
+
+        # Cache the result (including permanent errors like 404 and permanent
+        # 403 responses) and return
+        cached_result = (status, result)
+        self._repository_info_cache[cache_key] = cached_result
+        logger.debug(
+            "Cached repository info for %s/%s with status %s", owner, repo, status
+        )
+        return cached_result
+
+    def _fetch_repository_info(
+        self, owner: str, repo: str
+    ) -> tuple[int, dict[str, Any] | None]:
+        """Perform a single GitHub API repository lookup, following 301 redirects.
+
+        Follows redirects for renamed/transferred repositories when the redirect
+        target is still a GitHub URL. If a redirect points to a non-GitHub URL,
+        the 301 status is returned without following.
+
+        Args:
+            owner: The repository owner
+            repo: The repository name
+
+        Returns:
+            A tuple of (status_code, repository_dict) for the (possibly
+            redirect-resolved) lookup.
+        """
         status, result = self.github_client.repos[owner][repo].get()
 
         # Handle redirects (301) for renamed/transferred repositories
@@ -250,13 +554,7 @@ class SourceCodeManager(ArtifactManager):
                     endpoint = endpoint[part]
                 status, result = endpoint.get()
 
-        # Cache the result (including errors) and return
-        cached_result = (status, result)
-        self._repository_info_cache[cache_key] = cached_result
-        logger.debug(
-            "Cached repository info for %s/%s with status %s", owner, repo, status
-        )
-        return cached_result
+        return (status, result)
 
     def _discover_default_branch(
         self, url: str, git_env: dict[str, str] | None = None
