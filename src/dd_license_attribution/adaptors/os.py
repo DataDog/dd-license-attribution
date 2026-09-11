@@ -59,6 +59,10 @@ def path_exists(file_path: str) -> bool:
     return os.path.exists(file_path)
 
 
+def remove_file(file_path: str) -> None:
+    os.remove(file_path)
+
+
 def sleep(seconds: float) -> None:
     time.sleep(seconds)
 
