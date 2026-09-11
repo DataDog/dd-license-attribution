@@ -29,6 +29,7 @@ from dd_license_attribution.artifact_management.source_code_manager import (
     NonAccessibleRepository,
     SourceCodeManager,
     UnauthorizedRepository,
+    github_api_get_with_retry,
 )
 
 
@@ -354,11 +355,18 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
         logger.debug(
             "Attempting to retrieve GitHub-generated SBOM for '%s/%s'.", owner, repo
         )
-        status, result = self.client.repos[owner][repo]["dependency-graph"].sbom.get()
+        # Retry confirmed rate limit responses (a 429, or a 403 confirmed by
+        # the rate limit headers or, failing that, the message), mirroring
+        # SourceCodeManager.get_repository_info. Permanent 403 responses
+        # (e.g. missing dependency-graph permissions) are not retried.
+        status, result, _ = github_api_get_with_retry(
+            lambda: self.client.repos[owner][repo]["dependency-graph"].sbom.get(),
+            self.client,
+        )
         logger.debug(
             "GitHub SBOM API response for '%s/%s': status=%s", owner, repo, status
         )
-        if status == 200:
+        if status == 200 and isinstance(result, dict):
             return result["sbom"]
         if status == 404:
             error_message = (

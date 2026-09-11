@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- GitHub repository-info lookups no longer silently drop copyright/license metadata or leave origin URLs unresolved when the GitHub API returns a transient failure: a rate-limit response (a 429, or a 403 confirmed as a rate limit by a `Retry-After` header or by the `X-RateLimit-Remaining` header reaching 0 - a positive `X-RateLimit-Remaining` never rules out a secondary rate limit, which the message confirms - falling back to the response message when headers are unavailable) or a 5xx server error. Retries follow the server-advised timeline: `Retry-After` for secondary rate limits, or until the `X-RateLimit-Reset` epoch for primary ones (capped at 60 seconds; advised waits beyond the cap are not retried at all, since retrying before the server allows would be aggressive). When no header advice is available, retries use exponential backoff (3 attempts, 2s/4s delays). Transient results are not cached (unlike permanent errors such as 404 or access-denied 403 responses) so a later caller can succeed once the failure recovers. This makes the experimental `--experimental-strategy` output stable against API bursts and server blips and reduces nondeterministic diffs against classic strategy output. The GitHub SBOM retrieval (`repos/{owner}/{repo}/dependency-graph/sbom`) applies the same retry so a transient failure no longer drops the SBOM phase either - notably, a transient 500 from the dependency-graph endpoint previously made packages that only it discovers (dev tooling such as `black`, `ruff`, `isort`) disappear from the generated CSV.
+
 ### Changed
 - The composite GitHub Action (`action.yml`) now installs the published `datadog-license-attribution` package from PyPI (pinned to the release version) instead of building from the checked-out source tree. External consumers no longer need the repository source to run the action.
 
