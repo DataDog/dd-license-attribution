@@ -11,6 +11,13 @@ on:
 permissions:
   contents: read
 
+# Some mutation runs may take over 1 hour (the whole unit suite runs per
+# mutant, per branch). Only the run for the PR's latest push matters:
+# cancel any in-progress run for the same PR when a new push supersedes it.
+concurrency:
+  group: mutation-regression-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   mutation-regression:
     runs-on: ubuntu-latest
@@ -126,13 +133,25 @@ jobs:
 
       - name: Compare mutation results and detect regressions
         if: steps.changed-files.outputs.paths != ''
+        env:
+          CHANGED_PATHS: ${{ steps.changed-files.outputs.paths }}
         run: |
           python3 << 'SCRIPT'
+          import os
           import sys
           from collections import Counter
 
           MINIMUM_MUTATION_SCORE = 80
           MUTANT_TRANSITION_WARNING_LIMIT = 50
+
+          # Dotted module prefixes for the changed files, e.g.
+          # src/dd_license_attribution/foo.py -> dd_license_attribution.foo.
+          # mutmut names mutants '<module>.<function-marker>__mutmut_N'.
+          changed_paths = [p.strip() for p in os.environ["CHANGED_PATHS"].split(",") if p.strip()]
+          modules = [
+              p[len("src/"): -len(".py")].replace("/", ".")
+              for p in changed_paths
+          ]
 
           def parse_results(path):
               """Parse mutmut results into dict of {mutant_name: status}."""
@@ -148,6 +167,18 @@ jobs:
 
           base = parse_results('mutmut-base-results.txt')
           pr = parse_results('mutmut-pr-results.txt')
+
+          # The mutation runs are invoked with `|| true`, so a crashed or
+          # misconfigured run is not a job failure by itself. If BOTH runs
+          # produced no result entries at all, the gate has nothing to
+          # assess and must fail instead of silently passing.
+          if not base and not pr:
+              print(
+                  "::error::No mutation results were reported for any changed "
+                  "file on either branch; the mutation runs may have failed - "
+                  "check the logs of the previous steps"
+              )
+              sys.exit(1)
 
           base_counts = Counter(base.values())
           pr_counts = Counter(pr.values())
@@ -211,19 +242,124 @@ jobs:
               f"{survived_delta:+d} survived"
           )
 
-          # Enforce minimum mutation score on PR branch
-          pr_total_testable = pr_counts['killed'] + pr_counts['survived']
-          if pr_total_testable > 0:
-              pr_score = pr_counts['killed'] / pr_total_testable * 100
-              print(f"\nPR mutation score: {pr_score:.1f}% (minimum: {MINIMUM_MUTATION_SCORE}%)")
-              if pr_score < MINIMUM_MUTATION_SCORE:
+          # Enforce the minimum mutation score per changed file, using each
+          # file's own target-branch baseline. A file whose baseline meets the
+          # floor keeps the strict 80% minimum. A file whose baseline is below
+          # the floor is grandfathered: non-regression is enforced instead
+          # (the PR score must not drop below that file's own baseline, with a
+          # warning). Per-file enforcement prevents a low-baseline file from
+          # lowering the bar for other changed files.
+          # New code cannot get a free pass: PR-only mutants count towards
+          # their file's score, a file with no baseline mutants (e.g. a
+          # brand-new file) gets the strict 80% floor, and a changed file with
+          # no testable mutants on the PR branch fails.
+          def counts_for(results, module):
+              counts = Counter()
+              for name, status in results.items():
+                  if name.startswith(module + "."):
+                      counts[status] += 1
+              return counts
+
+          per_file_lines = []
+          per_file_failures = []
+          for path, module in zip(changed_paths, modules):
+              module_base = counts_for(base, module)
+              module_pr = counts_for(pr, module)
+              module_base_total = module_base['killed'] + module_base['survived']
+              module_pr_total = module_pr['killed'] + module_pr['survived']
+              pr_any = sum(module_pr.values())
+              base_any = sum(module_base.values())
+              if pr_any == 0 and base_any == 0:
+                  # No mutants at all were reported for this changed file on
+                  # either branch. Files with no mutable expressions (e.g.
+                  # import-only modules) legitimately produce no mutants, so
+                  # this must not block the PR; warn so a results-coverage
+                  # gap (paths_to_mutate or module-prefix grouping issue)
+                  # stays visible.
                   print(
-                      f"::error::Mutation score {pr_score:.1f}% is below "
-                      f"the minimum threshold of {MINIMUM_MUTATION_SCORE}%"
+                      f"::warning::{module}: no mutants were reported on "
+                      "either branch; the file may have no mutable expressions "
+                      "- check that the mutation results cover this file"
                   )
-                  sys.exit(1)
-          else:
-              print("::error::No killed or survived mutants were reported for the PR branch")
+                  per_file_lines.append(f"{module}: no mutants reported")
+                  continue
+              if pr_any == 0:
+                  # The PR branch reported no mutants for this changed file
+                  # while the target branch did. A deleted/renamed file
+                  # legitimately produces no PR mutants and must not block
+                  # the PR; a file that still exists losing all its mutants
+                  # is a mutation-results collection problem and must fail.
+                  if os.path.isfile(path):
+                      per_file_failures.append(
+                          f"{module}: no mutants were reported on the PR "
+                          "branch although the file still exists; the "
+                          "mutation results may not cover it"
+                      )
+                  else:
+                      print(
+                          f"::warning::{module}: no mutants were reported on "
+                          "the PR branch and the file no longer exists "
+                          "(removed or renamed)"
+                      )
+                      per_file_lines.append(
+                          f"{module}: no mutants reported on the PR branch "
+                          "(file removed or renamed)"
+                      )
+                  continue
+              if module_pr_total == 0 and module_base_total == 0:
+                  # Mutants exist on both branches but none are scoreable
+                  # (e.g. all skipped): the file was already unassessable on
+                  # the target branch, so there is nothing to gate.
+                  # A file with NO baseline mutants (e.g. brand-new code) whose
+                  # PR mutants are all non-scoring was never assessed - fail
+                  # instead of bypassing the floor.
+                  if base_any == 0:
+                      per_file_failures.append(
+                          f"{module}: no scoreable mutants for a file with no "
+                          "target-branch baseline; new code cannot be assessed"
+                      )
+                  else:
+                      per_file_lines.append(f"{module}: no testable mutants")
+                  continue
+              if module_pr_total == 0:
+                  per_file_failures.append(
+                      f"{module}: no killed or survived mutants were reported "
+                      "for the PR branch"
+                  )
+                  continue
+              module_pr_score = module_pr['killed'] / module_pr_total * 100
+              module_base_score = (
+                  module_base['killed'] / module_base_total * 100
+                  if module_base_total > 0
+                  else MINIMUM_MUTATION_SCORE
+              )
+              effective_minimum = min(MINIMUM_MUTATION_SCORE, module_base_score)
+              per_file_lines.append(
+                  f"{module}: {module_pr_score:.1f}% "
+                  f"(minimum: {MINIMUM_MUTATION_SCORE}%, "
+                  f"target branch: {module_base_score:.1f}%, "
+                  f"effective minimum: {effective_minimum:.1f}%)"
+              )
+              if module_base_score < MINIMUM_MUTATION_SCORE:
+                  print(
+                      f"::warning::{module}: target branch mutation score "
+                      f"({module_base_score:.1f}%) is below the minimum "
+                      f"threshold of {MINIMUM_MUTATION_SCORE}%; "
+                      "enforcing non-regression instead."
+                  )
+              if module_pr_score < effective_minimum:
+                  per_file_failures.append(
+                      f"{module}: mutation score {module_pr_score:.1f}% is below "
+                      f"the effective minimum threshold of {effective_minimum:.1f}%"
+                  )
+
+          print("\nPer-file mutation scores:")
+          for line in per_file_lines:
+              print(f"  {line}")
+
+          if per_file_failures:
+              for failure in per_file_failures:
+                  print(f"::error::{failure}")
               sys.exit(1)
 
           if pr_counts['timeout']:
