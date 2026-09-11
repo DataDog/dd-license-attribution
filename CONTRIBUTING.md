@@ -121,6 +121,18 @@ pipenv run pytest tests/contract/test_llm_apis.py -v
 
 These tests make minimal API calls to keep costs low (using small `max_tokens` values and cost-effective models).
 
+### Dependency lockfile (`pylock.toml`)
+
+The runtime dependency closure is pinned in a committed [PEP 751](https://peps.python.org/pep-0751/) lockfile, `pylock.toml`. The tool prefers the lockfile when scanning Python projects, so dependency enumeration (and therefore `LICENSE-3rdparty.csv`) is reproducible instead of tracking whatever is latest on PyPI at scan time.
+
+Regenerate it whenever the runtime `dependencies` in `pyproject.toml` change:
+
+```bash
+uv pip compile --universal --generate-hashes --format pylock.toml pyproject.toml -o pylock.toml
+```
+
+Consumption requires `pip >= 26.1` (experimental PEP 751 support). When the lockfile cannot be installed (old pip, or a platform without matching wheels for some pinned artifact), the scan falls back to an unpinned install and logs a warning - dependency enumeration may then not be reproducible on that platform. CI validates `LICENSE-3rdparty.csv` on x86_64 Linux runners where the full pinned closure installs cleanly.
+
 ### Additional coding guidelines
 
 The `AGENTS.md` file at the repository root contains detailed coding guidelines that apply to all contributions. Key points include:
