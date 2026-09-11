@@ -28,7 +28,8 @@ dependencies = [
     "openai>=1.0.1",
     "anthropic>=0.18.1",
     "semver>=3.0.4",
-    "spdx-tools>=0.8"
+    "spdx-tools>=0.8",
+    "packaging>=24.0",
 ]
 
 [project.optional-dependencies]
