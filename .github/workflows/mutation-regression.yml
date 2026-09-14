@@ -94,9 +94,31 @@ jobs:
           python3 << 'PYEOF'
           import os
           import re
+          import subprocess
           content = open('pyproject.toml').read()
-          paths = os.environ['CHANGED_PATHS'].split(',')
-          paths_str = '[' + ', '.join('"' + p.strip() + '"' for p in paths) + ']'
+          paths = [p.strip() for p in os.environ['CHANGED_PATHS'].split(',') if p.strip()]
+          # The target branch does not contain some changed paths (git diff
+          # reports a rename under its new path only). Mutate what exists at
+          # this checkout, and resolve rename destinations to their old path
+          # so the baseline run covers the source of a rename.
+          run_paths = [p for p in paths if os.path.isfile(p)]
+          missing = [p for p in paths if p not in run_paths]
+          if missing:
+              diff = subprocess.run(
+                  ['git', 'diff', '--find-renames', '--name-status',
+                   os.environ['PR_BASE_SHA'], os.environ['PR_HEAD_SHA']],
+                  capture_output=True, text=True, check=True,
+              ).stdout
+              rename_source = {}
+              for line in diff.splitlines():
+                  fields = line.split('\t')
+                  if len(fields) >= 3 and fields[0].startswith('R'):
+                      rename_source[fields[2]] = fields[1]
+              for p in missing:
+                  old = rename_source.get(p)
+                  if old and os.path.isfile(old) and old not in run_paths:
+                      run_paths.append(old)
+          paths_str = '[' + ', '.join('"' + p + '"' for p in run_paths) + ']'
           content = re.sub(r'paths_to_mutate = \[.*\]', 'paths_to_mutate = ' + paths_str, content)
           # also_copy ensures the full src/ tree is in mutants/ so imports work when
           # paths_to_mutate is scoped to individual files (mutmut removes src/ from
@@ -121,8 +143,11 @@ jobs:
           import os
           import re
           content = open('pyproject.toml').read()
-          paths = os.environ['CHANGED_PATHS'].split(',')
-          paths_str = '[' + ', '.join('"' + p.strip() + '"' for p in paths) + ']'
+          paths = [p.strip() for p in os.environ['CHANGED_PATHS'].split(',') if p.strip()]
+          # The PR branch may not contain some changed paths either (the
+          # old name of a renamed file). Only mutate what exists here.
+          paths = [p for p in paths if os.path.isfile(p)]
+          paths_str = '[' + ', '.join('"' + p + '"' for p in paths) + ']'
           content = re.sub(r'paths_to_mutate = \[.*\]', 'paths_to_mutate = ' + paths_str, content)
           if 'also_copy' not in content:
               content = content.replace('[tool.mutmut]\n', '[tool.mutmut]\nalso_copy = ["src/"]\n')
@@ -177,10 +202,11 @@ jobs:
           # files are ambiguous though: a masked crash leaves both empty,
           # but so does a healthy run over changed files that cannot yield
           # mutants at all - mutmut only creates mutants for function and
-          # method bodies, so import-only modules (e.g. __init__.py files)
-          # legitimately produce no result entries. Only fail when a
-          # changed file should have produced mutants; otherwise fall
-          # through so the per-file loop can classify each import-only
+          # method bodies (mutant names are function-keyed), so files with
+          # no function or method definitions (import-only modules, enums,
+          # data-only classes) legitimately produce no result entries. Only
+          # fail when a changed file should have produced mutants; otherwise
+          # fall through so the per-file loop can classify each mutation-free
           # file as a warning instead of blocking a valid change.
           def file_can_yield_mutants(path):
               if not os.path.isfile(path):
@@ -191,7 +217,7 @@ jobs:
               except OSError:
                   return False
               return re.search(
-                  r"^\s*(async\s+def|def|class)\s", source, re.MULTILINE
+                  r"^\s*(async\s+)?def\s", source, re.MULTILINE
               ) is not None
 
           if not base and not pr:
@@ -199,7 +225,7 @@ jobs:
                   print(
                       "::error::No mutation results were reported for any changed "
                       "file on either branch although at least one changed file "
-                      "defines functions or classes; the mutation runs may have "
+                      "defines functions or methods; the mutation runs may have "
                       "failed - check the logs of the previous steps"
                   )
                   sys.exit(1)
@@ -340,17 +366,28 @@ jobs:
               base_any = sum(module_base.values())
               if pr_any == 0 and base_any == 0:
                   # No mutants at all were reported for this changed file on
-                  # either branch. Files with no mutable expressions (e.g.
-                  # import-only modules) legitimately produce no mutants, so
-                  # this must not block the PR; warn so a results-coverage
-                  # gap (paths_to_mutate or module-prefix grouping issue)
-                  # stays visible.
-                  print(
-                      f"::warning::{module}: no mutants were reported on "
-                      "either branch; the file may have no mutable expressions "
-                      "- check that the mutation results cover this file"
-                  )
-                  per_file_lines.append(f"{module}: no mutants reported")
+                  # either branch. A file that cannot yield mutants (no
+                  # function or method definitions: import-only modules,
+                  # enums, data-only classes) legitimately produces none and
+                  # must not block the PR. A file that defines functions and
+                  # still reported no mutants anywhere is a results-coverage
+                  # problem and must fail - new code cannot pass untested.
+                  if file_can_yield_mutants(path):
+                      per_file_failures.append(
+                          f"{module}: no mutants were reported on either "
+                          "branch although the file defines functions or "
+                          "methods; the mutation results may not cover it"
+                      )
+                  else:
+                      print(
+                          f"::warning::{module}: no mutants were reported on "
+                          "either branch; the file has no function or method "
+                          "definitions - check that the mutation results "
+                          "cover this file"
+                      )
+                      per_file_lines.append(
+                          f"{module}: no mutants reported (mutation-free)"
+                      )
                   continue
               if pr_any == 0:
                   # The PR branch reported no mutants for this changed file
