@@ -135,9 +135,13 @@ jobs:
         if: steps.changed-files.outputs.paths != ''
         env:
           CHANGED_PATHS: ${{ steps.changed-files.outputs.paths }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           python3 << 'SCRIPT'
           import os
+          import re
+          import subprocess
           import sys
           from collections import Counter
 
@@ -169,16 +173,41 @@ jobs:
           pr = parse_results('mutmut-pr-results.txt')
 
           # The mutation runs are invoked with `|| true`, so a crashed or
-          # misconfigured run is not a job failure by itself. If BOTH runs
-          # produced no result entries at all, the gate has nothing to
-          # assess and must fail instead of silently passing.
+          # misconfigured run is not a job failure by itself. Empty result
+          # files are ambiguous though: a masked crash leaves both empty,
+          # but so does a healthy run over changed files that cannot yield
+          # mutants at all - mutmut only creates mutants for function and
+          # method bodies, so import-only modules (e.g. __init__.py files)
+          # legitimately produce no result entries. Only fail when a
+          # changed file should have produced mutants; otherwise fall
+          # through so the per-file loop can classify each import-only
+          # file as a warning instead of blocking a valid change.
+          def file_can_yield_mutants(path):
+              if not os.path.isfile(path):
+                  return False
+              try:
+                  with open(path, encoding="utf-8") as f:
+                      source = f.read()
+              except OSError:
+                  return False
+              return re.search(
+                  r"^\s*(async\s+def|def|class)\s", source, re.MULTILINE
+              ) is not None
+
           if not base and not pr:
+              if any(file_can_yield_mutants(p) for p in changed_paths):
+                  print(
+                      "::error::No mutation results were reported for any changed "
+                      "file on either branch although at least one changed file "
+                      "defines functions or classes; the mutation runs may have "
+                      "failed - check the logs of the previous steps"
+                  )
+                  sys.exit(1)
               print(
-                  "::error::No mutation results were reported for any changed "
-                  "file on either branch; the mutation runs may have failed - "
-                  "check the logs of the previous steps"
+                  "::warning::No mutation results were reported on either "
+                  "branch, and no changed file defines functions or classes; "
+                  "treating the change as mutation-free"
               )
-              sys.exit(1)
 
           base_counts = Counter(base.values())
           pr_counts = Counter(pr.values())
@@ -242,6 +271,34 @@ jobs:
               f"{survived_delta:+d} survived"
           )
 
+          # A renamed file has no target-branch baseline under its new
+          # module name (the old name does not exist on the PR branch and
+          # the new name does not exist on the target branch). Carry the old
+          # module's baseline over so a pure rename of a below-floor file
+          # does not fall through to the absolute minimum and fail without
+          # a real regression.
+          rename_source = {}  # new path -> old path
+          renamed_away = {}  # old path -> new path
+          diff = subprocess.run(
+              [
+                  "git",
+                  "diff",
+                  "--find-renames",
+                  "--name-status",
+                  os.environ["PR_BASE_SHA"],
+                  os.environ["PR_HEAD_SHA"],
+              ],
+              capture_output=True,
+              text=True,
+              check=True,
+          ).stdout
+          for line in diff.splitlines():
+              fields = line.split("\t")
+              if len(fields) >= 3 and fields[0].startswith("R"):
+                  old_path, new_path = fields[1], fields[2]
+                  rename_source[new_path] = old_path
+                  renamed_away[old_path] = new_path
+
           # Enforce the minimum mutation score per changed file, using each
           # file's own target-branch baseline. A file whose baseline meets the
           # floor keeps the strict 80% minimum. A file whose baseline is below
@@ -252,7 +309,8 @@ jobs:
           # New code cannot get a free pass: PR-only mutants count towards
           # their file's score, a file with no baseline mutants (e.g. a
           # brand-new file) gets the strict 80% floor, and a changed file with
-          # no testable mutants on the PR branch fails.
+          # no testable mutants on the PR branch fails. A renamed file is
+          # assessed under its new name against the baseline of its old name.
           def counts_for(results, module):
               counts = Counter()
               for name, status in results.items():
@@ -260,10 +318,21 @@ jobs:
                       counts[status] += 1
               return counts
 
+          def to_module(path):
+              return path[len("src/"): -len(".py")].replace("/", ".")
+
           per_file_lines = []
           per_file_failures = []
           for path, module in zip(changed_paths, modules):
-              module_base = counts_for(base, module)
+              if path in renamed_away:
+                  # The file moved; the entry for its new path (below) carries
+                  # the baseline over. Do not double-count the old path.
+                  per_file_lines.append(
+                      f"{module}: renamed to {to_module(renamed_away[path])}"
+                  )
+                  continue
+              base_module = to_module(rename_source[path]) if path in rename_source else module
+              module_base = counts_for(base, base_module)
               module_pr = counts_for(pr, module)
               module_base_total = module_base['killed'] + module_base['survived']
               module_pr_total = module_pr['killed'] + module_pr['survived']
@@ -334,11 +403,17 @@ jobs:
                   else MINIMUM_MUTATION_SCORE
               )
               effective_minimum = min(MINIMUM_MUTATION_SCORE, module_base_score)
+              rename_note = (
+                  f" (baseline from renamed source {base_module})"
+                  if path in rename_source
+                  else ""
+              )
               per_file_lines.append(
                   f"{module}: {module_pr_score:.1f}% "
                   f"(minimum: {MINIMUM_MUTATION_SCORE}%, "
                   f"target branch: {module_base_score:.1f}%, "
                   f"effective minimum: {effective_minimum:.1f}%)"
+                  f"{rename_note}"
               )
               if module_base_score < MINIMUM_MUTATION_SCORE:
                   print(
