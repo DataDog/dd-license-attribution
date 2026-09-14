@@ -164,8 +164,8 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           python3 << 'SCRIPT'
+          import ast
           import os
-          import re
           import subprocess
           import sys
           from collections import Counter
@@ -201,38 +201,67 @@ jobs:
           # misconfigured run is not a job failure by itself. Empty result
           # files are ambiguous though: a masked crash leaves both empty,
           # but so does a healthy run over changed files that cannot yield
-          # mutants at all - mutmut only creates mutants for function and
-          # method bodies (mutant names are function-keyed), so files with
-          # no function or method definitions (import-only modules, enums,
-          # data-only classes) legitimately produce no result entries. Only
-          # fail when a changed file should have produced mutants; otherwise
-          # fall through so the per-file loop can classify each mutation-free
-          # file as a warning instead of blocking a valid change.
+          # mutants at all. mutmut only creates mutants inside function and
+          # method bodies (mutant names are function-keyed), and only when a
+          # body contains something to mutate - so import-only modules,
+          # enums, data-only classes, and interface/stub modules whose
+          # functions are only pass/.../docstring/raise-NotImplementedError
+          # legitimately produce no result entries. Only fail when a changed
+          # file should have produced mutants; otherwise fall through so the
+          # per-file loop can classify each mutation-free file as a warning
+          # instead of blocking a valid change.
+          def function_has_mutation_points(func):
+              for stmt in func.body:
+                  if isinstance(stmt, ast.Pass):
+                      continue
+                  if isinstance(stmt, ast.Expr) and isinstance(
+                      stmt.value, (ast.Constant, ast.JoinedStr)
+                  ):
+                      # Docstrings, bare "..." protocol bodies, and string
+                      # constant statements have nothing to mutate.
+                      continue
+                  if isinstance(stmt, ast.Raise) and stmt.exc is not None:
+                      raised = stmt.exc
+                      if isinstance(raised, ast.Call):
+                          raised = raised.func
+                      if (
+                          isinstance(raised, ast.Name)
+                          and raised.id == "NotImplementedError"
+                      ):
+                          continue
+                  return True
+              return False
+
           def file_can_yield_mutants(path):
               if not os.path.isfile(path):
                   return False
               try:
                   with open(path, encoding="utf-8") as f:
                       source = f.read()
-              except OSError:
+                  tree = ast.parse(source)
+              except (OSError, SyntaxError):
                   return False
-              return re.search(
-                  r"^\s*(async\s+)?def\s", source, re.MULTILINE
-              ) is not None
+              for node in ast.walk(tree):
+                  if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                      if function_has_mutation_points(node):
+                          return True
+              return False
 
           if not base and not pr:
               if any(file_can_yield_mutants(p) for p in changed_paths):
                   print(
                       "::error::No mutation results were reported for any changed "
                       "file on either branch although at least one changed file "
-                      "defines functions or methods; the mutation runs may have "
-                      "failed - check the logs of the previous steps"
+                      "contains function or method bodies that mutmut could "
+                      "mutate; the mutation runs may have failed - check the "
+                      "logs of the previous steps"
                   )
                   sys.exit(1)
               print(
                   "::warning::No mutation results were reported on either "
-                  "branch, and no changed file defines functions or classes; "
-                  "treating the change as mutation-free"
+                  "branch, and no changed file contains function or method "
+                  "bodies that mutmut could mutate; treating the change as "
+                  "mutation-free"
               )
 
           base_counts = Counter(base.values())
@@ -366,24 +395,24 @@ jobs:
               base_any = sum(module_base.values())
               if pr_any == 0 and base_any == 0:
                   # No mutants at all were reported for this changed file on
-                  # either branch. A file that cannot yield mutants (no
-                  # function or method definitions: import-only modules,
-                  # enums, data-only classes) legitimately produces none and
-                  # must not block the PR. A file that defines functions and
+                  # either branch. A file with no mutation points (no function
+                  # or method definitions, or only stub/protocol bodies)
+                  # legitimately produces none and must not block the PR. A
+                  # file whose functions contain code mutmut could mutate and
                   # still reported no mutants anywhere is a results-coverage
                   # problem and must fail - new code cannot pass untested.
                   if file_can_yield_mutants(path):
                       per_file_failures.append(
                           f"{module}: no mutants were reported on either "
-                          "branch although the file defines functions or "
-                          "methods; the mutation results may not cover it"
+                          "branch although the file contains function or "
+                          "method bodies that mutmut could mutate; the "
+                          "mutation results may not cover it"
                       )
                   else:
                       print(
                           f"::warning::{module}: no mutants were reported on "
-                          "either branch; the file has no function or method "
-                          "definitions - check that the mutation results "
-                          "cover this file"
+                          "either branch; the file has no mutation points "
+                          "- check that the mutation results cover this file"
                       )
                       per_file_lines.append(
                           f"{module}: no mutants reported (mutation-free)"
