@@ -46,7 +46,7 @@
 "idna","https://github.com/kjd/idna","['BSD-3-Clause']","['Kim Davies and contributors']"
 "importlib_metadata","https://github.com/python/importlib_metadata","['Apache-2.0']","['Jason R. Coombs']"
 "intbitset","https://github.com/inveniosoftware-contrib/intbitset","['LGPL-3.0-or-later']","['Invenio collaboration', 'maintained by Philippe Ombredanne and AboutCode.org']"
-"isort","isort","['MIT']","['Google LLC', 'Marcel Hellkamp', 'Red Hat, Inc.', 'Taneli Hukkinen', 'Timothy Edmund Crosley', 'VMware, Inc', 'from']"
+"isort","isort","['MIT']","[]"
 "jaraco.functools","https://github.com/jaraco/jaraco.functools","['MIT']","['Jason R. Coombs']"
 "javaproperties","https://github.com/jwodder/javaproperties","['MIT']","['John Thorvald Wodder II']"
 "jiter","https://github.com/pydantic/jiter","['MIT']","['Samuel Colvin']"
