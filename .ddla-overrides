@@ -165,6 +165,23 @@
   {
     "override_type": "replace",
     "target": {
+      "component": "isort",
+      "origin": "isort"
+    },
+    "replacement": {
+      "name": "isort",
+      "origin": "isort",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "Timothy Edmund Crosley"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
       "component": "ruff",
       "origin": "ruff"
     },
