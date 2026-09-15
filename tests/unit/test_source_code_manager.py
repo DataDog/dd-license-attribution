@@ -1760,8 +1760,7 @@ def test_get_code_can_skip_canonical_lookup_for_direct_git_checkout(
     artifact_list_dir_mock.return_value = []
     source_code_list_dir_mock.return_value = []
     output_from_command_mock.return_value = (
-        "ref: refs/heads/main\tHEAD\n"
-        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\tHEAD\n"
+        "ref: refs/heads/main\tHEAD\n72a11341aa684010caf1ca5dee779f0e7e84dfe9\tHEAD\n"
     )
     run_command_mock.return_value = 0
     github_client_mock = Mock()
@@ -1813,7 +1812,7 @@ def test_get_code_can_skip_canonical_lookup_for_direct_git_checkout(
     source_code_list_dir_mock.assert_called_once_with("cache_dir")
 
 
-@pytest.mark.parametrize("status", [401, 403, 404, 500])
+@pytest.mark.parametrize("status", [401, 404])
 @patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
 @patch(
     "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
@@ -1882,6 +1881,85 @@ def test_get_code_returns_none_when_api_url_is_none(
     assert code_ref is None
     assert git_url_parse_mock.call_count == 2
     repo_mock.get.assert_called_once_with()
+    path_exists_mock.assert_called_once_with("cache_dir")
+    list_dir_mock.assert_called_once_with("cache_dir")
+    source_code_list_dir_mock.assert_not_called()
+    run_command_mock.assert_not_called()
+    output_from_command_mock.assert_not_called()
+    create_dirs_mock.assert_not_called()
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.sleep")
+@patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+@patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
+@patch("dd_license_attribution.artifact_management.source_code_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_get_code_returns_none_when_rate_limited_after_retries(
+    path_exists_mock: Mock,
+    list_dir_mock: Mock,
+    git_url_parse_mock: Mock,
+    source_code_list_dir_mock: Mock,
+    run_command_mock: Mock,
+    output_from_command_mock: Mock,
+    create_dirs_mock: Mock,
+    sleep_mock: Mock,
+) -> None:
+    """Test get_code retries 403 rate limit responses with backoff, then returns None."""
+    # Configure mocks
+    path_exists_mock.return_value = True
+    list_dir_mock.return_value = []
+
+    parsed_url_original = GitUrlParseMock(
+        valid=True,
+        owner="test_owner",
+        repo="test_repo",
+        branch="",
+        path="",
+        path_raw="",
+    )
+    parsed_url_canonical = GitUrlParseMock(
+        valid=True,
+        owner="test_owner",
+        repo="test_repo",
+        branch="",
+        path="",
+        path_raw="",
+    )
+
+    git_url_parse_mock.side_effect = [
+        parsed_url_original,
+        parsed_url_canonical,
+    ]
+
+    # Mock GitHub client to always return a rate limit 403
+    github_client_mock = Mock()
+    repo_mock = Mock()
+    repo_mock.get.return_value = (
+        403,
+        {"message": "API rate limit exceeded for 1.2.3.4."},
+    )
+    owner_mock = Mock()
+    owner_mock.__getitem__ = Mock(return_value=repo_mock)
+    repos_mock = Mock()
+    repos_mock.__getitem__ = Mock(return_value=owner_mock)
+    github_client_mock.repos = repos_mock
+
+    source_code_manager = SourceCodeManager("cache_dir", github_client_mock, 86400)
+
+    request_url = "https://github.com/test_owner/test_repo"
+    code_ref = source_code_manager.get_code(request_url)
+
+    # Should return None because api_url is None (GitHub API stayed rate limited)
+    assert code_ref is None
+    git_url_parse_mock.assert_has_calls([call(request_url), call(request_url)])
+    # 3 attempts total: the initial call plus GITHUB_API_MAX_RETRIES - 1 retries
+    assert repo_mock.get.mock_calls == [call(), call(), call()]
+    assert sleep_mock.mock_calls == [call(2.0), call(4.0)]
     path_exists_mock.assert_called_once_with("cache_dir")
     list_dir_mock.assert_called_once_with("cache_dir")
     source_code_list_dir_mock.assert_not_called()

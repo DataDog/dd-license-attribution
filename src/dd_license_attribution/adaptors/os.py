@@ -11,6 +11,7 @@ import contextlib
 import os
 import subprocess
 import tarfile
+import time
 from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 
@@ -56,6 +57,18 @@ def run_command(
 
 def path_exists(file_path: str) -> bool:
     return os.path.exists(file_path)
+
+
+def remove_file(file_path: str) -> None:
+    os.remove(file_path)
+
+
+def sleep(seconds: float) -> None:
+    time.sleep(seconds)
+
+
+def current_time() -> float:
+    return time.time()
 
 
 def create_dirs(path: str) -> None:

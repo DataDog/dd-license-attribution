@@ -5,6 +5,8 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
+from unittest.mock import call
+
 import pytest_mock
 from agithub.GitHub import GitHub
 
@@ -80,14 +82,17 @@ class SbomMockWrapper:
 
 
 class GitHubClientMock:
-    def __init__(self, sbom_input: SbomMockWrapper) -> None:
+    def __init__(self, sbom_input: SbomMockWrapper, getheaders: object = None) -> None:
         # this needs to be accessed: self.repos[owner][repo].sbom and return sbom_input
         self.repos = {"test_owner": {"test_repo": {"dependency-graph": sbom_input}}}
+        # Optional response-headers mock, read by the rate limit retry logic
+        self.getheaders: object = getheaders
 
 
 def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github_sbom_api(
     mocker: pytest_mock.MockFixture,
 ) -> None:
+    """A persistent 500 is retried with backoff before the package is skipped."""
     sbom_mock = mocker.Mock()
     sbom_mock.get.return_value = (500, "Not Found")
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
@@ -105,6 +110,9 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
             owner="test_owner",
             repo="test_repo",
         ),
+    )
+    sleep_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.sleep"
     )
 
     strategy = GitHubSbomMetadataCollectionStrategy(
@@ -134,7 +142,9 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
 
     source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
     github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
-    sbom_mock.get.assert_called_once_with()
+    # A transient 500 is retried: 3 attempts with 2s/4s exponential backoff
+    sbom_mock.get.assert_has_calls([call(), call(), call()])
+    sleep_mock.assert_has_calls([call(2.0), call(4.0)])
 
 
 def test_github_sbom_collection_strategy_raise_special_exception_if_error_calling_github_sbom_api_is_404(
@@ -729,3 +739,201 @@ def test_github_sbom_collection_strategy_uses_name_as_origin_if_download_locatio
     source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
     giturlparse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
     sbom_mock.get.assert_called_once_with()
+
+
+def test_github_sbom_collection_strategy_retries_429_rate_limit(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that a 429 secondary rate limit is retried with backoff before succeeding."""
+    sbom_content = {
+        "SPDXID": "SPDXRef-Document",
+        "packages": [
+            {
+                "SPDXID": "SPDXRef-Package-test_owner-test_repo",
+                "name": "test_owner/test_repo",
+                "licenseConcluded": "MIT",
+                "versionInfo": "1.0.0",
+            }
+        ],
+    }
+    sbom_mock = mocker.Mock()
+    sbom_mock.get.side_effect = [
+        (429, {"message": "You have exceeded a secondary rate limit"}),
+        (200, {"sbom": sbom_content}),
+    ]
+    github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/test_owner/test_repo",
+        "https://api.github.com/repos/test_owner/test_repo",
+    )
+
+    github_parse_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(
+            valid=True,
+            platform="github",
+            owner="test_owner",
+            repo="test_repo",
+        ),
+    )
+    sleep_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.sleep"
+    )
+
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
+        project_scope=ProjectScope.ALL,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="",
+            version="",
+            origin="test_purl",
+            local_src_path="",
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    # The SBOM should have been retrieved on the second attempt: the
+    # endpoint was called once for the 429 and once for the successful retry
+    sleep_mock.assert_called_once_with(2.0)
+    assert len(updated_metadata) >= 1
+    sbom_mock.get.assert_has_calls([call(), call()])
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
+    github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
+
+
+def test_github_sbom_collection_strategy_does_not_retry_permanent_403(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that a permanent (non-rate-limit) 403 is not retried."""
+    sbom_mock = mocker.Mock()
+    sbom_mock.get.return_value = (
+        403,
+        {"message": "Resource not accessible by integration"},
+    )
+    github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/test_owner/test_repo",
+        "https://api.github.com/repos/test_owner/test_repo",
+    )
+
+    github_parse_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(
+            valid=True,
+            platform="github",
+            owner="test_owner",
+            repo="test_repo",
+        ),
+    )
+    sleep_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.sleep"
+    )
+
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
+        project_scope=ProjectScope.ALL,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="",
+            version="",
+            origin="test_purl",
+            local_src_path="",
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    # With the new logging, errors are caught and packages are skipped rather
+    # than raising. The package should be returned with the canonical origin
+    # but no SBOM data, without any retry.
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    assert len(updated_metadata) == 1
+    assert updated_metadata[0].origin == "https://github.com/test_owner/test_repo"
+    sbom_mock.get.assert_called_once_with()
+    sleep_mock.assert_not_called()
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
+    github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
+
+
+def test_github_sbom_collection_strategy_honors_retry_after_header(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Test that the SBOM retry waits the server-advised Retry-After (plus buffer)."""
+    sbom_content = {
+        "SPDXID": "SPDXRef-Document",
+        "packages": [
+            {
+                "SPDXID": "SPDXRef-Package-test_owner-test_repo",
+                "name": "test_owner/test_repo",
+                "licenseConcluded": "MIT",
+                "versionInfo": "1.0.0",
+            }
+        ],
+    }
+    sbom_mock = mocker.Mock()
+    sbom_mock.get.side_effect = [
+        (429, {"message": "You have exceeded a secondary rate limit"}),
+        (200, {"sbom": sbom_content}),
+    ]
+    github_client_mock = GitHubClientMock(
+        sbom_input=SbomMockWrapper(sbom_mock),
+        getheaders=mocker.Mock(return_value=[("Retry-After", "3")]),
+    )
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/test_owner/test_repo",
+        "https://api.github.com/repos/test_owner/test_repo",
+    )
+
+    github_parse_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(
+            valid=True,
+            platform="github",
+            owner="test_owner",
+            repo="test_repo",
+        ),
+    )
+    sleep_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.source_code_manager.sleep"
+    )
+
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
+        project_scope=ProjectScope.ALL,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="",
+            version="",
+            origin="test_purl",
+            local_src_path="",
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    # The SBOM was retrieved on the second attempt, waiting the advised 3s
+    # plus the 1s buffer
+    sleep_mock.assert_called_once_with(4.0)
+    assert len(updated_metadata) >= 1
+    sbom_mock.get.assert_has_calls([call(), call()])
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
+    github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
