@@ -68,6 +68,7 @@ def test_python_env_is_not_created_if_not_python_project_detected(
         ("setup.py", True),
         ("setup.cfg", False),
         ("pyproject.toml", True),
+        ("pylock.toml", False),
         ("Pipfile", False),
         ("Pipfile.lock", False),
     ],
@@ -100,6 +101,24 @@ def test_python_env_is_created_if_python_project_detected_and_not_cached(
         "dd_license_attribution.artifact_management.python_env_manager.run_command",
         return_value=0,
     )
+    if py_file == "pylock.toml":
+        # A lock-only project (pylock.toml, no build manifest) is detected
+        # as a Python project and still gets an environment: the lock sync
+        # fails gracefully here (unparseable lockfile) and, with no build
+        # manifest, there is no `pip install .` fallback - the virtualenv
+        # creation is the only run_command call.
+        python_env_path_exists_mock = mocker.patch(
+            "dd_license_attribution.artifact_management.python_env_manager.path_exists",
+            return_value=False,
+        )
+        python_env_open_file_mock = mocker.patch(
+            "dd_license_attribution.artifact_management.python_env_manager.open_file",
+            return_value="not a parseable lockfile",
+        )
+        python_env_output_mock = mocker.patch(
+            "dd_license_attribution.artifact_management.python_env_manager.output_from_command",
+            return_value="",
+        )
 
     python_env_manager = PythonEnvManager("cache_dir", 86400)
     resource_path = "cache_dir/20210901_000000Z/python_project"
@@ -140,6 +159,29 @@ def test_python_env_is_created_if_python_project_detected_and_not_cached(
             )
         )
     run_command_mock.assert_has_calls(expected_calls)
+    if py_file == "pylock.toml":
+        # Exact call list: the virtualenv creation is the ONLY run_command
+        # call - a lock-only project never reaches the unpinned
+        # `pip install .` fallback.
+        assert run_command_mock.mock_calls == expected_calls
+        python_env_open_file_mock.assert_called_once_with("pylock.toml")
+        assert python_env_path_exists_mock.mock_calls == [
+            call(
+                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+            ),
+            call(
+                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps"
+            ),
+        ]
+        python_env_output_mock.assert_called_once_with(
+            [
+                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                "-m",
+                "pip",
+                "freeze",
+                "--all",
+            ]
+        )
 
 
 def test_python_env_is_returned_if_python_project_detected_and_cached(
