@@ -11,6 +11,13 @@ on:
 permissions:
   contents: read
 
+# Some mutation runs may take over 1 hour (the whole unit suite runs per
+# mutant, per branch). Only the run for the PR's latest push matters:
+# cancel any in-progress run for the same PR when a new push supersedes it.
+concurrency:
+  group: mutation-regression-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   mutation-regression:
     runs-on: ubuntu-latest
@@ -87,9 +94,31 @@ jobs:
           python3 << 'PYEOF'
           import os
           import re
+          import subprocess
           content = open('pyproject.toml').read()
-          paths = os.environ['CHANGED_PATHS'].split(',')
-          paths_str = '[' + ', '.join('"' + p.strip() + '"' for p in paths) + ']'
+          paths = [p.strip() for p in os.environ['CHANGED_PATHS'].split(',') if p.strip()]
+          # The target branch does not contain some changed paths (git diff
+          # reports a rename under its new path only). Mutate what exists at
+          # this checkout, and resolve rename destinations to their old path
+          # so the baseline run covers the source of a rename.
+          run_paths = [p for p in paths if os.path.isfile(p)]
+          missing = [p for p in paths if p not in run_paths]
+          if missing:
+              diff = subprocess.run(
+                  ['git', 'diff', '--find-renames', '--name-status',
+                   os.environ['PR_BASE_SHA'], os.environ['PR_HEAD_SHA']],
+                  capture_output=True, text=True, check=True,
+              ).stdout
+              rename_source = {}
+              for line in diff.splitlines():
+                  fields = line.split('\t')
+                  if len(fields) >= 3 and fields[0].startswith('R'):
+                      rename_source[fields[2]] = fields[1]
+              for p in missing:
+                  old = rename_source.get(p)
+                  if old and os.path.isfile(old) and old not in run_paths:
+                      run_paths.append(old)
+          paths_str = '[' + ', '.join('"' + p + '"' for p in run_paths) + ']'
           content = re.sub(r'paths_to_mutate = \[.*\]', 'paths_to_mutate = ' + paths_str, content)
           # also_copy ensures the full src/ tree is in mutants/ so imports work when
           # paths_to_mutate is scoped to individual files (mutmut removes src/ from
@@ -97,9 +126,30 @@ jobs:
           if 'also_copy' not in content:
               content = content.replace('[tool.mutmut]\n', '[tool.mutmut]\nalso_copy = ["src/"]\n')
           open('pyproject.toml', 'w').write(content)
+          open('mutmut-base-paths.txt', 'w').write('\n'.join(run_paths))
           PYEOF
-          mutmut run --max-children 4 || true
-          mutmut results --all true > mutmut-base-results.txt
+          if [ -s mutmut-base-paths.txt ]; then
+            set +e
+            mutmut run --max-children 4 2>&1 | tee mutmut-base-output.txt
+            echo "${PIPESTATUS[0]}" > mutmut-base-exit.txt
+            set -e
+            mutmut results --all true > mutmut-base-results.txt
+            : > mutmut-base-mutated.txt
+            while IFS= read -r p; do
+              # mutmut rewrites every scoped file into mutants/, but only files
+              # it actually mutated contain __mutmut_ mutant definitions.
+              if grep -Fq '__mutmut_' "mutants/${p}" 2>/dev/null; then
+                echo "${p}" >> mutmut-base-mutated.txt
+              fi
+            done < mutmut-base-paths.txt
+          else
+            # An empty paths_to_mutate would make mutmut mutate the entire
+            # tree (hours of CI), so skip the run entirely.
+            echo "No mutatable files exist on the target branch — skipping the baseline run."
+            echo "skipped" > mutmut-base-exit.txt
+            : > mutmut-base-results.txt
+            : > mutmut-base-mutated.txt
+          fi
           rm -rf mutants/ .mutmut-cache
           git checkout -- pyproject.toml
           git checkout "${PR_HEAD_SHA}"
@@ -114,25 +164,117 @@ jobs:
           import os
           import re
           content = open('pyproject.toml').read()
-          paths = os.environ['CHANGED_PATHS'].split(',')
-          paths_str = '[' + ', '.join('"' + p.strip() + '"' for p in paths) + ']'
+          paths = [p.strip() for p in os.environ['CHANGED_PATHS'].split(',') if p.strip()]
+          # The PR branch may not contain some changed paths either (the
+          # old name of a renamed file). Only mutate what exists here.
+          paths = [p for p in paths if os.path.isfile(p)]
+          paths_str = '[' + ', '.join('"' + p + '"' for p in paths) + ']'
           content = re.sub(r'paths_to_mutate = \[.*\]', 'paths_to_mutate = ' + paths_str, content)
           if 'also_copy' not in content:
               content = content.replace('[tool.mutmut]\n', '[tool.mutmut]\nalso_copy = ["src/"]\n')
           open('pyproject.toml', 'w').write(content)
+          open('mutmut-pr-paths.txt', 'w').write('\n'.join(paths))
           PYEOF
-          mutmut run --max-children 4 || true
-          mutmut results --all true > mutmut-pr-results.txt
+          if [ -s mutmut-pr-paths.txt ]; then
+            set +e
+            mutmut run --max-children 4 2>&1 | tee mutmut-pr-output.txt
+            echo "${PIPESTATUS[0]}" > mutmut-pr-exit.txt
+            set -e
+            mutmut results --all true > mutmut-pr-results.txt
+            : > mutmut-pr-mutated.txt
+            while IFS= read -r p; do
+              if grep -Fq '__mutmut_' "mutants/${p}" 2>/dev/null; then
+                echo "${p}" >> mutmut-pr-mutated.txt
+              fi
+            done < mutmut-pr-paths.txt
+          else
+            # All changed files were removed on this branch; an empty
+            # paths_to_mutate would make mutmut mutate the entire tree.
+            echo "No mutatable files exist on the PR branch — skipping the PR run."
+            echo "skipped" > mutmut-pr-exit.txt
+            : > mutmut-pr-results.txt
+            : > mutmut-pr-mutated.txt
+          fi
 
       - name: Compare mutation results and detect regressions
         if: steps.changed-files.outputs.paths != ''
+        env:
+          CHANGED_PATHS: ${{ steps.changed-files.outputs.paths }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           python3 << 'SCRIPT'
+          import os
+          import subprocess
           import sys
           from collections import Counter
 
           MINIMUM_MUTATION_SCORE = 80
           MUTANT_TRANSITION_WARNING_LIMIT = 50
+
+          # mutmut is the authority on what it could mutate and why it
+          # stopped; the compare step never guesses from the source itself.
+          # The run steps record each run's exit code, output, and the list
+          # of scoped files mutmut actually mutated (its mutants/ rewrite
+          # only contains __mutmut_ mutant definitions for mutated files).
+          # A healthy run exits 0 even with surviving mutants; mutmut's own
+          # early stop ("Stopping early, because we could not find any test
+          # case for any mutant") means the scoped files produced no
+          # test-associated mutants - legitimate for mutation-free files.
+          NO_TEST_CASE_MARKER = (
+              "Stopping early, because we could not find any test case "
+              "for any mutant"
+          )
+
+          def read_run_state(side):
+              """Read the recorded exit code, output and mutated list of a run."""
+              exit_code = "missing"
+              exit_file = f"mutmut-{side}-exit.txt"
+              if os.path.isfile(exit_file):
+                  with open(exit_file, encoding="utf-8") as f:
+                      exit_code = f.read().strip() or "unknown"
+              output = ""
+              output_file = f"mutmut-{side}-output.txt"
+              if os.path.isfile(output_file):
+                  with open(output_file, encoding="utf-8", errors="replace") as f:
+                      output = f.read()
+              mutated = []
+              mutated_file = f"mutmut-{side}-mutated.txt"
+              if os.path.isfile(mutated_file):
+                  with open(mutated_file, encoding="utf-8") as f:
+                      mutated = [line.strip() for line in f if line.strip()]
+              return exit_code, output, mutated
+
+          base_exit, base_output, base_mutated = read_run_state("base")
+          pr_exit, pr_output, pr_mutated = read_run_state("pr")
+
+          def run_truly_failed(exit_code, output):
+              if exit_code in ("0", "skipped"):
+                  return False
+              return NO_TEST_CASE_MARKER not in output
+
+          for side, exit_code, output in (
+              ("target-branch", base_exit, base_output),
+              ("PR", pr_exit, pr_output),
+          ):
+              if run_truly_failed(exit_code, output):
+                  print(
+                      f"::error::The {side} mutation run failed with exit "
+                      f"code {exit_code}; its results cannot be trusted. "
+                      "mutmut output tail:"
+                  )
+                  for line in output.strip().splitlines()[-15:]:
+                      print(f"  {line}")
+                  sys.exit(1)
+
+          # Dotted module prefixes for the changed files, e.g.
+          # src/dd_license_attribution/foo.py -> dd_license_attribution.foo.
+          # mutmut names mutants '<module>.<function-marker>__mutmut_N'.
+          changed_paths = [p.strip() for p in os.environ["CHANGED_PATHS"].split(",") if p.strip()]
+          modules = [
+              p[len("src/"): -len(".py")].replace("/", ".")
+              for p in changed_paths
+          ]
 
           def parse_results(path):
               """Parse mutmut results into dict of {mutant_name: status}."""
@@ -148,6 +290,29 @@ jobs:
 
           base = parse_results('mutmut-base-results.txt')
           pr = parse_results('mutmut-pr-results.txt')
+          pr_mutated_set = set(pr_mutated)
+
+          if not base and not pr:
+              # No result entries at all. The runs were healthy (checked
+              # above), so either mutmut generated no mutants for any
+              # changed file - a mutation-free change, which must not block
+              # the PR - or it generated mutants but no test case covered
+              # any of them, in which case there is nothing to score and
+              # new code would pass without mutation coverage: fail.
+              uncovered = sorted(set(base_mutated) | set(pr_mutated))
+              if uncovered:
+                  print(
+                      "::error::mutmut generated mutants for "
+                      f"{', '.join(uncovered)} but no test case covered "
+                      "any of them, so no mutation results exist on "
+                      "either branch; the changed code is untested"
+                  )
+                  sys.exit(1)
+              print(
+                  "::warning::No mutation results were reported on either "
+                  "branch and mutmut generated no mutants for the changed "
+                  "files; treating the change as mutation-free"
+              )
 
           base_counts = Counter(base.values())
           pr_counts = Counter(pr.values())
@@ -211,19 +376,181 @@ jobs:
               f"{survived_delta:+d} survived"
           )
 
-          # Enforce minimum mutation score on PR branch
-          pr_total_testable = pr_counts['killed'] + pr_counts['survived']
-          if pr_total_testable > 0:
-              pr_score = pr_counts['killed'] / pr_total_testable * 100
-              print(f"\nPR mutation score: {pr_score:.1f}% (minimum: {MINIMUM_MUTATION_SCORE}%)")
-              if pr_score < MINIMUM_MUTATION_SCORE:
-                  print(
-                      f"::error::Mutation score {pr_score:.1f}% is below "
-                      f"the minimum threshold of {MINIMUM_MUTATION_SCORE}%"
+          # A renamed file has no target-branch baseline under its new
+          # module name (the old name does not exist on the PR branch and
+          # the new name does not exist on the target branch). Carry the old
+          # module's baseline over so a pure rename of a below-floor file
+          # does not fall through to the absolute minimum and fail without
+          # a real regression.
+          rename_source = {}  # new path -> old path
+          renamed_away = {}  # old path -> new path
+          diff = subprocess.run(
+              [
+                  "git",
+                  "diff",
+                  "--find-renames",
+                  "--name-status",
+                  os.environ["PR_BASE_SHA"],
+                  os.environ["PR_HEAD_SHA"],
+              ],
+              capture_output=True,
+              text=True,
+              check=True,
+          ).stdout
+          for line in diff.splitlines():
+              fields = line.split("\t")
+              if len(fields) >= 3 and fields[0].startswith("R"):
+                  old_path, new_path = fields[1], fields[2]
+                  rename_source[new_path] = old_path
+                  renamed_away[old_path] = new_path
+
+          # Enforce the minimum mutation score per changed file, using each
+          # file's own target-branch baseline. A file whose baseline meets the
+          # floor keeps the strict 80% minimum. A file whose baseline is below
+          # the floor is grandfathered: non-regression is enforced instead
+          # (the PR score must not drop below that file's own baseline, with a
+          # warning). Per-file enforcement prevents a low-baseline file from
+          # lowering the bar for other changed files.
+          # New code cannot get a free pass: PR-only mutants count towards
+          # their file's score, a file with no baseline mutants (e.g. a
+          # brand-new file) gets the strict 80% floor, and a changed file with
+          # no testable mutants on the PR branch fails. A renamed file is
+          # assessed under its new name against the baseline of its old name.
+          def counts_for(results, module):
+              counts = Counter()
+              for name, status in results.items():
+                  if name.startswith(module + "."):
+                      counts[status] += 1
+              return counts
+
+          def to_module(path):
+              return path[len("src/"): -len(".py")].replace("/", ".")
+
+          per_file_lines = []
+          per_file_failures = []
+          for path, module in zip(changed_paths, modules):
+              if path in renamed_away:
+                  # The file moved; the entry for its new path (below) carries
+                  # the baseline over. Do not double-count the old path.
+                  per_file_lines.append(
+                      f"{module}: renamed to {to_module(renamed_away[path])}"
                   )
-                  sys.exit(1)
-          else:
-              print("::error::No killed or survived mutants were reported for the PR branch")
+                  continue
+              base_module = to_module(rename_source[path]) if path in rename_source else module
+              module_base = counts_for(base, base_module)
+              module_pr = counts_for(pr, module)
+              module_base_total = module_base['killed'] + module_base['survived']
+              module_pr_total = module_pr['killed'] + module_pr['survived']
+              pr_any = sum(module_pr.values())
+              base_any = sum(module_base.values())
+              if pr_any == 0 and base_any == 0:
+                  # No result entries for this changed file on either branch.
+                  # mutmut is the authority: if it generated mutants for the
+                  # file (the run steps recorded it in the mutated list),
+                  # missing entries are a results-collection problem and must
+                  # fail. If it generated none, the file has no mutation
+                  # points (import-only modules, enums, stub or protocol-only
+                  # modules, ...) and must not block the PR.
+                  if path in pr_mutated_set:
+                      per_file_failures.append(
+                          f"{module}: mutmut generated mutants for this "
+                          "file on the PR branch but no results were "
+                          "reported for it; the mutation results may not "
+                          "cover it"
+                      )
+                  else:
+                      print(
+                          f"::warning::{module}: no mutants were reported "
+                          "on either branch and mutmut generated none for "
+                          "this file; it has no mutation points"
+                      )
+                      per_file_lines.append(
+                          f"{module}: no mutants reported (mutation-free)"
+                      )
+                  continue
+              if pr_any == 0:
+                  # The PR branch reported no mutants for this changed file
+                  # while the target branch did. A deleted/renamed file
+                  # legitimately produces no PR mutants and must not block
+                  # the PR; a file that still exists losing all its mutants
+                  # is a mutation-results collection problem and must fail.
+                  if os.path.isfile(path):
+                      per_file_failures.append(
+                          f"{module}: no mutants were reported on the PR "
+                          "branch although the file still exists; the "
+                          "mutation results may not cover it"
+                      )
+                  else:
+                      print(
+                          f"::warning::{module}: no mutants were reported on "
+                          "the PR branch and the file no longer exists "
+                          "(removed or renamed)"
+                      )
+                      per_file_lines.append(
+                          f"{module}: no mutants reported on the PR branch "
+                          "(file removed or renamed)"
+                      )
+                  continue
+              if module_pr_total == 0 and module_base_total == 0:
+                  # Mutants exist on both branches but none are scoreable
+                  # (e.g. all skipped): the file was already unassessable on
+                  # the target branch, so there is nothing to gate.
+                  # A file with NO baseline mutants (e.g. brand-new code) whose
+                  # PR mutants are all non-scoring was never assessed - fail
+                  # instead of bypassing the floor.
+                  if base_any == 0:
+                      per_file_failures.append(
+                          f"{module}: no scoreable mutants for a file with no "
+                          "target-branch baseline; new code cannot be assessed"
+                      )
+                  else:
+                      per_file_lines.append(f"{module}: no testable mutants")
+                  continue
+              if module_pr_total == 0:
+                  per_file_failures.append(
+                      f"{module}: no killed or survived mutants were reported "
+                      "for the PR branch"
+                  )
+                  continue
+              module_pr_score = module_pr['killed'] / module_pr_total * 100
+              module_base_score = (
+                  module_base['killed'] / module_base_total * 100
+                  if module_base_total > 0
+                  else MINIMUM_MUTATION_SCORE
+              )
+              effective_minimum = min(MINIMUM_MUTATION_SCORE, module_base_score)
+              rename_note = (
+                  f" (baseline from renamed source {base_module})"
+                  if path in rename_source
+                  else ""
+              )
+              per_file_lines.append(
+                  f"{module}: {module_pr_score:.1f}% "
+                  f"(minimum: {MINIMUM_MUTATION_SCORE}%, "
+                  f"target branch: {module_base_score:.1f}%, "
+                  f"effective minimum: {effective_minimum:.1f}%)"
+                  f"{rename_note}"
+              )
+              if module_base_score < MINIMUM_MUTATION_SCORE:
+                  print(
+                      f"::warning::{module}: target branch mutation score "
+                      f"({module_base_score:.1f}%) is below the minimum "
+                      f"threshold of {MINIMUM_MUTATION_SCORE}%; "
+                      "enforcing non-regression instead."
+                  )
+              if module_pr_score < effective_minimum:
+                  per_file_failures.append(
+                      f"{module}: mutation score {module_pr_score:.1f}% is below "
+                      f"the effective minimum threshold of {effective_minimum:.1f}%"
+                  )
+
+          print("\nPer-file mutation scores:")
+          for line in per_file_lines:
+              print(f"  {line}")
+
+          if per_file_failures:
+              for failure in per_file_failures:
+                  print(f"::error::{failure}")
               sys.exit(1)
 
           if pr_counts['timeout']:
@@ -241,3 +568,11 @@ jobs:
           path: |
             mutmut-base-results.txt
             mutmut-pr-results.txt
+            mutmut-base-paths.txt
+            mutmut-pr-paths.txt
+            mutmut-base-exit.txt
+            mutmut-pr-exit.txt
+            mutmut-base-mutated.txt
+            mutmut-pr-mutated.txt
+            mutmut-base-output.txt
+            mutmut-pr-output.txt
