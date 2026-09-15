@@ -167,7 +167,7 @@ inputs:
       Set to 'latest' to install the newest published release instead of the
       pinned default. Ignored when skip-install is 'true'.
     required: false
-    default: "0.6.0"
+    default: "0.7.0"
   go-version:
     description: >-
       Go version to set up when the GoPkg strategy is enabled or `ecosystem` is
