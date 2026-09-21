@@ -50,6 +50,7 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
     # method to get the metadata
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = []
+        skipped_dependencies = 0
         for package in metadata:
             # if the package has a license and a copyright
             if not package.origin or (package.license and package.copyright):
@@ -74,6 +75,12 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     package.origin, force_update=False
                 )
                 if not source_code_reference_or_none:
+                    skipped_dependencies += 1
+                    logger.warning(
+                        "Skipping source scan for %s: could not resolve or clone %s",
+                        package.name,
+                        package.origin,
+                    )
                     updated_metadata.append(package)
                     continue
                 else:
@@ -98,6 +105,12 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                 if not package.copyright:
                     package.copyright = self._get_copyright(source_code_reference)
             updated_metadata.append(package)
+        if skipped_dependencies > 0:
+            logger.warning(
+                "Enrichment skipped for %d of %d dependencies",
+                skipped_dependencies,
+                len(metadata),
+            )
         return updated_metadata
 
     def _filter_candidate_files(

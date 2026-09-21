@@ -5,7 +5,10 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2026-present Datadog, Inc.
 
+import logging
 from unittest.mock import Mock, call, patch
+
+from pytest import LogCaptureFixture
 
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
@@ -1182,5 +1185,155 @@ def test_get_repository_info_retries_5xx_server_errors(
     assert result2 == result1
     repo_mock.get.assert_has_calls([call(), call(), call(), call(), call(), call()])
     sleep_mock.assert_has_calls([call(2.0), call(4.0), call(2.0), call(4.0)])
+    path_exists_mock.assert_called_once_with("cache_dir")
+    list_dir_mock.assert_called_once_with("cache_dir")
+
+
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_get_repository_info_logs_cached_failures_at_info(
+    path_exists_mock: Mock,
+    list_dir_mock: Mock,
+    caplog: LogCaptureFixture,
+) -> None:
+    """A non-transient (permanent) failure is cached - and that must be visible at INFO so later silent skips are diagnosable; a success stays at DEBUG."""
+    # Configure mocks
+    path_exists_mock.return_value = True
+    list_dir_mock.return_value = []
+
+    def make_github_client_mock(
+        status: int, result: dict[str, object] | None
+    ) -> tuple[Mock, Mock]:
+        github_client_mock = Mock()
+        repo_mock = Mock()
+        repo_mock.get.return_value = (status, result)
+        owner_mock = Mock()
+        owner_mock.__getitem__ = Mock(return_value=repo_mock)
+        repos_mock = Mock()
+        repos_mock.__getitem__ = Mock(return_value=owner_mock)
+        github_client_mock.repos = repos_mock
+        return github_client_mock, repo_mock
+
+    # Permanent 403 (permission failure, not a rate limit): cached, INFO log.
+    failure_client, failure_repo_mock = make_github_client_mock(
+        403, {"message": "Resource not accessible"}
+    )
+    permanent_403_manager = SourceCodeManager("cache_dir", failure_client, 86400)
+    # Success: cached, stays at DEBUG.
+    success_client, success_repo_mock = make_github_client_mock(
+        200,
+        {
+            "html_url": "https://github.com/DataDog/dd-license-attribution",
+            "url": "https://api.github.com/repos/DataDog/dd-license-attribution",
+        },
+    )
+    success_manager = SourceCodeManager("cache_dir", success_client, 86400)
+
+    with caplog.at_level(logging.INFO):
+        status_403, _ = permanent_403_manager.get_repository_info(
+            "DataDog", "private-repo"
+        )
+        status_200, _ = success_manager.get_repository_info(
+            "DataDog", "dd-license-attribution"
+        )
+
+    assert status_403 == 403
+    assert status_200 == 200
+    failure_records = [
+        record
+        for record in caplog.records
+        if "Cached repository info failure" in record.message
+    ]
+    assert len(failure_records) == 1, caplog.records
+    assert (
+        "Cached repository info failure for DataDog/private-repo with status 403"
+        in failure_records[0].message
+    )
+    assert failure_records[0].levelname == "INFO"
+
+    # Mock verification: exactly one API fetch per repository, no retry,
+    # and the cached results are reused on a second lookup.
+    failure_repo_mock.get.assert_called_once_with()
+    success_repo_mock.get.assert_called_once_with()
+    permanent_403_manager.get_repository_info("DataDog", "private-repo")
+    success_manager.get_repository_info("DataDog", "dd-license-attribution")
+    failure_repo_mock.get.assert_called_once_with()
+    success_repo_mock.get.assert_called_once_with()
+    assert path_exists_mock.call_count == 2
+    path_exists_mock.assert_has_calls([call("cache_dir"), call("cache_dir")])
+    assert list_dir_mock.call_count == 2
+    list_dir_mock.assert_has_calls([call("cache_dir"), call("cache_dir")])
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.sleep")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_get_repository_info_retries_403_abuse_detection_and_succeeds(
+    path_exists_mock: Mock,
+    list_dir_mock: Mock,
+    sleep_mock: Mock,
+) -> None:
+    """A 403 secondary/abuse rate limit whose message does not mention "rate limit" (and carries no Retry-After) is transient: retried, not silently treated as permanent."""
+    # Configure mocks
+    path_exists_mock.return_value = True
+    list_dir_mock.return_value = []
+
+    # Mock GitHub API client: an abuse-detection 403 (no "rate limit" phrase,
+    # no headers), then a 200
+    github_client_mock = Mock()
+    # getheaders is what proves the response carried no Retry-After / rate
+    # limit headers: the classification must come from the message alone.
+    github_client_mock.getheaders.return_value = None
+    repo_mock = Mock()
+    repo_mock.get.side_effect = [
+        (
+            403,
+            {
+                "message": "You have triggered an abuse detection mechanism "
+                "and will be blocked for a few minutes."
+            },
+        ),
+        (
+            200,
+            {
+                "html_url": "https://github.com/DataDog/dd-license-attribution",
+                "url": "https://api.github.com/repos/DataDog/dd-license-attribution",
+                "license": {"spdx_id": "Apache-2.0"},
+                "owner": {"login": "DataDog"},
+            },
+        ),
+    ]
+    owner_mock = Mock()
+    owner_mock.__getitem__ = Mock(return_value=repo_mock)
+    repos_mock = Mock()
+    repos_mock.__getitem__ = Mock(return_value=owner_mock)
+    github_client_mock.repos = repos_mock
+
+    source_code_manager = SourceCodeManager("cache_dir", github_client_mock, 86400)
+
+    # Call get_repository_info - the abuse-detection 403 is retried and
+    # succeeds on the second attempt instead of being cached as permanent
+    status, result = source_code_manager.get_repository_info(
+        "DataDog", "dd-license-attribution"
+    )
+
+    assert status == 200
+    assert result is not None
+    assert result["html_url"] == "https://github.com/DataDog/dd-license-attribution"
+    assert repo_mock.get.mock_calls == [call(), call()]
+    # getheaders was consulted (returning None: no Retry-After / rate limit
+    # headers on the abuse-detection 403), so the transient classification
+    # must have come from the message phrasing alone.
+    assert github_client_mock.getheaders.called
+    github_client_mock.getheaders.assert_called_with()
+    assert sleep_mock.mock_calls == [call(2.0)]
+
+    # Verify the successful result is cached (no further API calls)
+    status2, result2 = source_code_manager.get_repository_info(
+        "DataDog", "dd-license-attribution"
+    )
+    assert status2 == 200
+    assert result2 == result
+    assert repo_mock.get.mock_calls == [call(), call()]
     path_exists_mock.assert_called_once_with("cache_dir")
     list_dir_mock.assert_called_once_with("cache_dir")
