@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-09-22
+
 ### Fixed
 - Silent enricher skips under GitHub API rate pressure: a dependency whose source could not be resolved or cloned is now reported at WARNING (`Skipping source scan for <package>: could not resolve or clone <origin>`) together with a run summary (`Enrichment skipped for N of M dependencies`), a failed canonical-URL resolution logs at WARNING with the status code and URL, and a cached permanent repository-info failure (e.g. a 404 or a permission 403) logs at INFO. Previously these paths were silent or DEBUG-only, so under rate pressure the experimental strategy silently skipped all source cloning, dropping `copyright` (sometimes `license`) metadata and leaving raw origin URLs, with no log output to diagnose.
 - GitHub secondary/abuse rate limits that surface as a 403 whose message does not mention "rate limit" (e.g. "You have triggered an abuse detection mechanism", "You have been blocked from the API") and often carries no `Retry-After` header are now classified as transient rate limits and get the existing retry/backoff treatment, instead of being misclassified as permanent failures and silently skipped. Permission 403 responses ("Resource not accessible by integration") remain permanent and are not retried.
