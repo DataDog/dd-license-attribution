@@ -5,11 +5,13 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
+import logging
 from datetime import datetime
 from typing import Any  # used for auxiliary testing function only
 from unittest.mock import Mock, call, patch
 
 import pytest
+from pytest import LogCaptureFixture
 
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
@@ -20,6 +22,7 @@ from dd_license_attribution.artifact_management.source_code_manager import (
     MirrorSpec,
     RefType,
     SourceCodeManager,
+    _is_rate_limit_response,
 )
 
 
@@ -1326,7 +1329,9 @@ def test_get_canonical_urls_with_non_github_url(
 
 
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
-def test_get_canonical_urls_with_api_error(git_url_parse_mock: Mock) -> None:
+def test_get_canonical_urls_with_api_error(
+    git_url_parse_mock: Mock, caplog: LogCaptureFixture
+) -> None:
     """Test that get_canonical_urls handles API errors gracefully."""
     # Configure parse_git_url mock
     git_url_parse_mock.return_value = GitUrlParseMock(
@@ -1353,14 +1358,25 @@ def test_get_canonical_urls_with_api_error(git_url_parse_mock: Mock) -> None:
 
     source_code_manager = SourceCodeManager("cache_dir", github_client_mock, 86400)
 
-    canonical_url, api_url = source_code_manager.get_canonical_urls(
-        "https://github.com/DataDog/nonexistent-repo"
-    )
+    with caplog.at_level(logging.WARNING):
+        canonical_url, api_url = source_code_manager.get_canonical_urls(
+            "https://github.com/DataDog/nonexistent-repo"
+        )
 
     # Verify the results - should return original URL with no API URL
     assert canonical_url == "https://github.com/DataDog/nonexistent-repo"
     assert api_url is None
     assert git_url_parse_mock.call_count == 1  # Only called once in get_canonical_urls
+
+    # The non-200 fallback must be visible at WARNING (not silently DEBUG),
+    # naming the status code and the URL.
+    expected_warning = (
+        "Failed to resolve canonical URLs (status 404) for: "
+        "https://github.com/DataDog/nonexistent-repo"
+    )
+    assert any(
+        expected_warning in record.message for record in caplog.records
+    ), caplog.records
 
 
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
@@ -2039,3 +2055,110 @@ def test_get_code_returns_none_when_canonical_url_parse_invalid(
     # Should return None because canonical URL parses as invalid
     assert code_ref is None
     assert git_url_parse_mock.call_count == 3
+
+
+class TestIsRateLimitResponseClassification:
+    """Direct classification matrix for _is_rate_limit_response.
+
+    GitHub secondary/abuse rate limits surface as a 403 whose message does
+    not mention "rate limit" and often carries no Retry-After header; those
+    must be classified as rate limits so they get retried. Permission 403s
+    ("Resource not accessible by integration") must stay permanent.
+    """
+
+    @pytest.mark.parametrize(
+        "status, result, headers, expected",
+        [
+            # A 429 is always a rate limit, regardless of body or headers.
+            (429, None, None, True),
+            (429, {"message": "Too many requests"}, None, True),
+            # A 403 confirmed by a Retry-After header (secondary rate limit),
+            # even when the primary quota (X-RateLimit-Remaining) is positive.
+            (403, None, {"retry-after": "60"}, True),
+            (403, None, {"retry-after": "30", "x-ratelimit-remaining": "5000"}, True),
+            # A 403 confirmed by the primary quota being exhausted.
+            (403, None, {"x-ratelimit-remaining": "0"}, True),
+            (403, None, {"x-ratelimit-remaining": "-1"}, True),
+            # A 403 confirmed by the message mentioning a rate limit.
+            (
+                403,
+                {"message": "API rate limit exceeded for 1.2.3.4."},
+                None,
+                True,
+            ),
+            (
+                403,
+                {"message": "You have exceeded a secondary rate limit"},
+                {},
+                True,
+            ),
+            # A 403 for a secondary/abuse rate limit whose message does NOT
+            # contain "rate limit" (GitHub abuse detection phrasing), with no
+            # Retry-After header - the misclassification fixed in this change.
+            (
+                403,
+                {
+                    "message": "You have triggered an abuse detection mechanism "
+                    "and will be blocked for a few minutes."
+                },
+                None,
+                True,
+            ),
+            (
+                403,
+                {"message": "You have been blocked from the API for 1 hour."},
+                None,
+                True,
+            ),
+            # Abuse-detection phrasing matches case-insensitively.
+            (
+                403,
+                {"message": "You have TRIGGERED an Abuse Detection mechanism"},
+                None,
+                True,
+            ),
+            # Abuse phrasing is confirmed even when the primary quota is
+            # positive (X-RateLimit-Remaining only tracks the primary quota).
+            (
+                403,
+                {"message": "You have triggered an abuse detection mechanism"},
+                {"x-ratelimit-remaining": "5000"},
+                True,
+            ),
+            # Permission failures are permanent: not retried, not rate limits.
+            (
+                403,
+                {"message": "Resource not accessible by integration"},
+                None,
+                False,
+            ),
+            (
+                403,
+                {"message": "Resource not accessible by integration"},
+                {"x-ratelimit-remaining": "5000"},
+                False,
+            ),
+            # Unrelated 403 messages are permanent.
+            (403, {"message": "Forbidden"}, None, False),
+            (403, None, None, False),
+            # An unparseable X-RateLimit-Remaining confirms nothing.
+            (
+                403,
+                {"message": "Some other error"},
+                {"x-ratelimit-remaining": "abc"},
+                False,
+            ),
+            # Non-403/429 statuses are never rate limits here.
+            (404, {"message": "Not Found"}, None, False),
+            (301, {"message": "Moved Permanently"}, None, False),
+            (200, None, None, False),
+        ],
+    )
+    def test_classification_matrix(
+        self,
+        status: int,
+        result: dict[str, Any] | None,
+        headers: dict[str, str] | None,
+        expected: bool,
+    ) -> None:
+        assert _is_rate_limit_response(status, result, headers) is expected

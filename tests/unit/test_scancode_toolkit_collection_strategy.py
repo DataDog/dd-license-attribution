@@ -5,10 +5,12 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
+import logging
 from functools import partial
 from unittest.mock import call
 
 import pytest_mock
+from pytest import LogCaptureFixture
 
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
@@ -1294,3 +1296,118 @@ def test_no_crash_on_wrong_path_being_infered_in_previous_step_if_the_local_src_
     )
 
     listdir_mock.assert_called_once_with("/local_path/to/package1")
+
+
+def test_scancode_toolkit_logs_warning_when_source_code_cannot_be_resolved(
+    mocker: pytest_mock.MockFixture,
+    caplog: LogCaptureFixture,
+) -> None:
+    """A package whose source cannot be resolved/cloned is skipped with a WARNING (not silently) and counted in a summary."""
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_code.return_value = None
+
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(source_code_manager_mock)
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            version=None,
+            origin="test_purl",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    assert updated_metadata == initial_metadata
+    source_code_manager_mock.get_code.assert_called_once_with(
+        "test_purl", force_update=False
+    )
+    expected_warning = (
+        "Skipping source scan for package1: could not resolve or clone test_purl"
+    )
+    assert any(
+        expected_warning in record.message for record in caplog.records
+    ), caplog.records
+    expected_summary = "Enrichment skipped for 1 of 1 dependencies"
+    assert any(
+        expected_summary in record.message for record in caplog.records
+    ), caplog.records
+
+
+def test_scancode_toolkit_skip_summary_counts_only_unresolved_packages(
+    mocker: pytest_mock.MockFixture,
+    caplog: LogCaptureFixture,
+) -> None:
+    """The summary reports skipped-of-total; packages that never needed enrichment don't count."""
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_code.return_value = None
+
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(source_code_manager_mock)
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            version=None,
+            origin="test_purl",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["Datadog Inc."],
+        ),
+        Metadata(
+            name="package2",
+            version=None,
+            origin="test_purl_2",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        ),
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    assert updated_metadata == initial_metadata
+    # Only package2 needed enrichment; package1 already had license+copyright.
+    source_code_manager_mock.get_code.assert_called_once_with(
+        "test_purl_2", force_update=False
+    )
+    assert any(
+        "Skipping source scan for package2: could not resolve or clone test_purl_2"
+        in record.message
+        for record in caplog.records
+    ), caplog.records
+    expected_summary = "Enrichment skipped for 1 of 2 dependencies"
+    assert any(
+        expected_summary in record.message for record in caplog.records
+    ), caplog.records
+
+
+def test_scancode_toolkit_no_skip_summary_when_all_packages_enriched_or_complete(
+    mocker: pytest_mock.MockFixture,
+    caplog: LogCaptureFixture,
+) -> None:
+    """No skip-summary WARNING is emitted when nothing was skipped."""
+    source_code_manager_mock = mocker.Mock()
+
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(source_code_manager_mock)
+    initial_metadata = [
+        Metadata(
+            name="package1",
+            version=None,
+            origin="test_purl",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["Datadog Inc."],
+        )
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    assert updated_metadata == initial_metadata
+    source_code_manager_mock.get_code.assert_not_called()
+    assert not any(
+        "Enrichment skipped" in record.message for record in caplog.records
+    ), caplog.records

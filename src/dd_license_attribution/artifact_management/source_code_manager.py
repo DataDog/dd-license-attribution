@@ -42,6 +42,17 @@ GITHUB_API_RETRY_BASE_DELAY_SECONDS = 2.0
 GITHUB_API_RETRY_MAX_DELAY_SECONDS = 60.0
 GITHUB_API_RETRY_BUFFER_SECONDS = 1.0
 GITHUB_API_TRANSIENT_STATUS_CODES = frozenset({500, 502, 503, 504})
+# GitHub signals rate limits in 403 response messages in several ways: the
+# message may mention a rate limit ("You have exceeded a secondary rate
+# limit"), or - for secondary/abuse rate limits - use phrasing that does
+# NOT contain the phrase "rate limit" and often carries no Retry-After
+# header ("You have triggered an abuse detection mechanism"). Matched
+# case-insensitively against the lowercased response message.
+GITHUB_RATE_LIMIT_MESSAGE_PHRASES = (
+    "rate limit",
+    "abuse detection",
+    "blocked from the api",
+)
 
 
 class NonAccessibleRepository(Exception):
@@ -111,8 +122,12 @@ def _is_rate_limit_response(
     - A 429 (Too Many Requests) response - used for secondary rate limits.
     - A 403 response confirmed as a rate limit by a Retry-After header
       (secondary rate limit), by the X-RateLimit-Remaining header reaching 0
-      (primary rate limit), or by the message mentioning a rate limit
-      (e.g. "You have exceeded a secondary rate limit").
+      (primary rate limit), or by the message matching one of the documented
+      rate limit phrases (GITHUB_RATE_LIMIT_MESSAGE_PHRASES): either phrasing
+      that mentions a rate limit (e.g. "You have exceeded a secondary rate
+      limit") or GitHub's secondary/abuse limit phrasing that does not
+      ("abuse detection", "blocked from the API") - the latter often
+      carries no Retry-After header.
 
     The X-RateLimit-Remaining header tracks only the PRIMARY quota, so a
     positive value does NOT rule out a secondary rate limit: a positive
@@ -150,7 +165,8 @@ def _is_rate_limit_response(
                     "Unparseable X-RateLimit-Remaining header value: %s", remaining
                 )
     message = result.get("message") if isinstance(result, dict) else None
-    return "rate limit" in str(message).lower()
+    message_text = str(message).lower()
+    return any(phrase in message_text for phrase in GITHUB_RATE_LIMIT_MESSAGE_PHRASES)
 
 
 def _advised_retry_delay_seconds(headers: dict[str, str] | None) -> float | None:
@@ -428,8 +444,8 @@ class SourceCodeManager(ArtifactManager):
             return canonical_result
 
         # If we couldn't get the repository information, return the original URL
-        logger.debug(
-            "Failed to resolve canonical URLs (status %s), returning: %s", status, url
+        logger.warning(
+            "Failed to resolve canonical URLs (status %s) for: %s", status, url
         )
         original_url = f"{parsed_url.protocol}://{parsed_url.host}/{owner}/{repo}"
         fallback_result = (original_url, None)
@@ -510,9 +526,24 @@ class SourceCodeManager(ArtifactManager):
         # 403 responses) and return
         cached_result = (status, result)
         self._repository_info_cache[cache_key] = cached_result
-        logger.debug(
-            "Cached repository info for %s/%s with status %s", owner, repo, status
-        )
+        if status != 200:
+            # A non-transient failure (permanent 403, 404, ...): cached, so
+            # every later lookup for this owner/repo silently returns the
+            # failure. Log at INFO so downstream skips stay diagnosable at
+            # the default log level.
+            logger.info(
+                "Cached repository info failure for %s/%s with status %s",
+                owner,
+                repo,
+                status,
+            )
+        else:
+            logger.debug(
+                "Cached repository info for %s/%s with status %s",
+                owner,
+                repo,
+                status,
+            )
         return cached_result
 
     def _fetch_repository_info(
