@@ -42,11 +42,14 @@ GITHUB_API_RETRY_BASE_DELAY_SECONDS = 2.0
 GITHUB_API_RETRY_MAX_DELAY_SECONDS = 60.0
 GITHUB_API_RETRY_BUFFER_SECONDS = 1.0
 GITHUB_API_TRANSIENT_STATUS_CODES = frozenset({500, 502, 503, 504})
-# GitHub secondary/abuse rate limits can surface as a 403 whose message does
-# NOT contain the phrase "rate limit" (and often carries no Retry-After
-# header), e.g. "You have triggered an abuse detection mechanism". Matched
+# GitHub signals rate limits in 403 response messages in several ways: the
+# message may mention a rate limit ("You have exceeded a secondary rate
+# limit"), or - for secondary/abuse rate limits - use phrasing that does
+# NOT contain the phrase "rate limit" and often carries no Retry-After
+# header ("You have triggered an abuse detection mechanism"). Matched
 # case-insensitively against the lowercased response message.
-GITHUB_ABUSE_RATE_LIMIT_MESSAGE_PHRASES = (
+GITHUB_RATE_LIMIT_MESSAGE_PHRASES = (
+    "rate limit",
     "abuse detection",
     "blocked from the api",
 )
@@ -119,11 +122,12 @@ def _is_rate_limit_response(
     - A 429 (Too Many Requests) response - used for secondary rate limits.
     - A 403 response confirmed as a rate limit by a Retry-After header
       (secondary rate limit), by the X-RateLimit-Remaining header reaching 0
-      (primary rate limit), by the message mentioning a rate limit
-      (e.g. "You have exceeded a secondary rate limit"), or by the message
-      matching GitHub's secondary/abuse limit phrasing that does not mention
-      a rate limit ("abuse detection", "blocked from the API") - these
-      responses often carry no Retry-After header.
+      (primary rate limit), or by the message matching one of the documented
+      rate limit phrases (GITHUB_RATE_LIMIT_MESSAGE_PHRASES): either phrasing
+      that mentions a rate limit (e.g. "You have exceeded a secondary rate
+      limit") or GitHub's secondary/abuse limit phrasing that does not
+      ("abuse detection", "blocked from the API") - the latter often
+      carries no Retry-After header.
 
     The X-RateLimit-Remaining header tracks only the PRIMARY quota, so a
     positive value does NOT rule out a secondary rate limit: a positive
@@ -162,11 +166,7 @@ def _is_rate_limit_response(
                 )
     message = result.get("message") if isinstance(result, dict) else None
     message_text = str(message).lower()
-    if "rate limit" in message_text:
-        return True
-    return any(
-        phrase in message_text for phrase in GITHUB_ABUSE_RATE_LIMIT_MESSAGE_PHRASES
-    )
+    return any(phrase in message_text for phrase in GITHUB_RATE_LIMIT_MESSAGE_PHRASES)
 
 
 def _advised_retry_delay_seconds(headers: dict[str, str] | None) -> float | None:
