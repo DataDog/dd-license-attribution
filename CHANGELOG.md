@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ### Fixed
 - Rust crate author lookups no longer read the first archive member ending in `/Cargo.toml` (which a nested manifest such as a test fixture could shadow ahead of the real one); the crates.io source archive is now searched for the exact root member `{crate}-{version}/Cargo.toml`, preventing wrong copyright attribution for crates containing nested manifests.
 - Rust crates.io metadata and author lookups now URL-encode crate names and versions (via `urllib.parse.quote`) in crates.io API URLs, preventing malformed requests for crates or versions containing URL-reserved characters.
+- Rust crate author lookups no longer read the first archive member ending in `/Cargo.toml` (which a nested manifest such as a test fixture could shadow ahead of the real one); the crates.io source archive is now searched for the exact root member `{crate}-{version}/Cargo.toml`, preventing wrong copyright attribution for crates containing nested manifests.
 
 ## [0.7.1] - 2026-09-22
 
