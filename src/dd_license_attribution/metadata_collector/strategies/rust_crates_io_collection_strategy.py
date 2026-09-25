@@ -8,6 +8,7 @@
 import json
 import logging
 import tomllib
+from urllib.parse import quote
 
 import semver
 
@@ -355,7 +356,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         requested_version: str | None,
         include_authors: bool,
     ) -> CrateMetadata | None:
-        metadata_url = f"{CRATES_IO_API_BASE_URL}/{crate_name}"
+        metadata_url = f"{CRATES_IO_API_BASE_URL}/{quote(crate_name, safe='')}"
         try:
             response = json.loads(
                 download_bounded(
@@ -424,7 +425,10 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
             return None
 
     def _get_crate_authors(self, crate_name: str, version: str) -> list[str]:
-        download_endpoint = f"{CRATES_IO_API_BASE_URL}/{crate_name}/{version}/download"
+        download_endpoint = (
+            f"{CRATES_IO_API_BASE_URL}/{quote(crate_name, safe='')}"
+            f"/{quote(version, safe='')}/download"
+        )
         try:
             archive_content = download_bounded(
                 download_endpoint,
