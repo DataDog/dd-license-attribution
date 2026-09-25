@@ -462,6 +462,370 @@ def test_direct_root_package_is_enriched_from_manifest_version(
     )
 
 
+def test_crate_name_requiring_url_encoding_is_quoted(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=[False, True],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        return_value=('[package]\nname = "crate/name+special"\nversion = "1.0.0"\n'),
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_bounded",
+        side_effect=[
+            _crate_response(
+                "crate/name+special",
+                "1.0.0",
+                repository="https://github.com/org/crate-name-special",
+            ),
+            b"crate archive",
+        ],
+    )
+    mock_read_archive = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.read_tar_gz_text_file",
+        return_value=(
+            '[package]\nname = "crate/name+special"\n'
+            'authors = ["Special Crate Developers"]\n'
+        ),
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "crate/name+special",
+        source_code_manager,
+        local_project_path="/project",
+    )
+
+    result = strategy.augment_metadata([_metadata("crate/name+special", "1.0.0")])
+
+    assert result == [
+        _metadata(
+            "crate/name+special",
+            "1.0.0",
+            origin="https://github.com/org/crate-name-special",
+            license=["MIT OR Apache-2.0"],
+            copyright=["Special Crate Developers"],
+        )
+    ]
+    source_code_manager.get_code.assert_not_called()
+    mock_path_exists.assert_has_calls(
+        [call("/project/Cargo.lock"), call("/project/Cargo.toml")]
+    )
+    assert mock_path_exists.call_count == 2
+    mock_open_file.assert_called_once_with("/project/Cargo.toml")
+    mock_download.assert_has_calls(
+        [
+            call(
+                f"{CRATES_IO_API_BASE_URL}/crate%2Fname%2Bspecial",
+                user_agent=DDLA_USER_AGENT,
+            ),
+            call(
+                f"{CRATES_IO_API_BASE_URL}/crate%2Fname%2Bspecial/1.0.0/download",
+                user_agent=DDLA_USER_AGENT,
+            ),
+        ]
+    )
+    assert mock_download.call_count == 2
+    mock_read_archive.assert_called_once_with(b"crate archive", "/Cargo.toml")
+
+
+def test_crate_authors_download_url_encodes_semver_build_metadata(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=[False, True],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        return_value='[package]\nname = "serde"\nversion = "1.0.2+build.1"\n',
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_bounded",
+        side_effect=[
+            _crate_response(
+                "serde",
+                "1.0.2+build.1",
+                repository="https://github.com/serde-rs/serde",
+            ),
+            b"crate archive",
+        ],
+    )
+    mock_read_archive = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.read_tar_gz_text_file",
+        return_value='[package]\nname = "serde"\nauthors = ["Serde Developers"]\n',
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "serde",
+        source_code_manager,
+        local_project_path="/project",
+    )
+
+    result = strategy.augment_metadata([_metadata("serde", "1.0.2+build.1")])
+
+    assert result == [
+        _metadata(
+            "serde",
+            "1.0.2+build.1",
+            origin="https://github.com/serde-rs/serde",
+            license=["MIT OR Apache-2.0"],
+            copyright=["Serde Developers"],
+        )
+    ]
+    mock_download.assert_has_calls(
+        [
+            call(
+                f"{CRATES_IO_API_BASE_URL}/serde",
+                user_agent=DDLA_USER_AGENT,
+            ),
+            call(
+                f"{CRATES_IO_API_BASE_URL}/serde/1.0.2%2Bbuild.1/download",
+                user_agent=DDLA_USER_AGENT,
+            ),
+        ]
+    )
+    assert mock_download.call_count == 2
+    mock_read_archive.assert_called_once_with(b"crate archive", "/Cargo.toml")
+
+
+def test_version_repository_takes_precedence_over_crate_repository(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=[False, True],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        return_value='[dependencies]\nregex = "=1.0.0"\n',
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_bounded",
+        return_value=json.dumps(
+            {
+                "crate": {
+                    "name": "regex",
+                    "default_version": "1.0.0",
+                    "repository": "https://crate.example/repo",
+                },
+                "versions": [
+                    {
+                        "num": "1.0.0",
+                        "license": "MIT OR Apache-2.0",
+                        "repository": "https://version.example/repo",
+                    }
+                ],
+            }
+        ).encode(),
+    )
+    mock_read_archive = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.read_tar_gz_text_file"
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "regex",
+        source_code_manager,
+        local_project_path="/project",
+    )
+
+    result = strategy.augment_metadata(
+        [
+            _metadata(
+                "regex",
+                "1.0.0",
+                license=["MIT OR Apache-2.0"],
+                copyright=["The Rust Developers"],
+            )
+        ]
+    )
+
+    assert result == [
+        _metadata(
+            "regex",
+            "1.0.0",
+            origin="https://version.example/repo",
+            license=["MIT OR Apache-2.0"],
+            copyright=["The Rust Developers"],
+        )
+    ]
+    mock_path_exists.assert_has_calls(
+        [call("/project/Cargo.lock"), call("/project/Cargo.toml")]
+    )
+    assert mock_path_exists.call_count == 2
+    mock_open_file.assert_called_once_with("/project/Cargo.toml")
+    mock_download.assert_called_once_with(
+        f"{CRATES_IO_API_BASE_URL}/regex",
+        user_agent=DDLA_USER_AGENT,
+    )
+    mock_read_archive.assert_not_called()
+
+
+def test_crate_repository_used_when_version_repository_is_missing(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=[False, True],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        return_value='[dependencies]\nregex = "=1.0.0"\n',
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_bounded",
+        return_value=json.dumps(
+            {
+                "crate": {
+                    "name": "regex",
+                    "default_version": "1.0.0",
+                    "repository": "https://crate.example/repo",
+                },
+                "versions": [
+                    {
+                        "num": "1.0.0",
+                        "license": "MIT OR Apache-2.0",
+                    }
+                ],
+            }
+        ).encode(),
+    )
+    mock_read_archive = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.read_tar_gz_text_file"
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "regex",
+        source_code_manager,
+        local_project_path="/project",
+    )
+
+    result = strategy.augment_metadata(
+        [
+            _metadata(
+                "regex",
+                "1.0.0",
+                license=["MIT OR Apache-2.0"],
+                copyright=["The Rust Developers"],
+            )
+        ]
+    )
+
+    assert result == [
+        _metadata(
+            "regex",
+            "1.0.0",
+            origin="https://crate.example/repo",
+            license=["MIT OR Apache-2.0"],
+            copyright=["The Rust Developers"],
+        )
+    ]
+    mock_path_exists.assert_has_calls(
+        [call("/project/Cargo.lock"), call("/project/Cargo.toml")]
+    )
+    assert mock_path_exists.call_count == 2
+    mock_open_file.assert_called_once_with("/project/Cargo.toml")
+    mock_download.assert_called_once_with(
+        f"{CRATES_IO_API_BASE_URL}/regex",
+        user_agent=DDLA_USER_AGENT,
+    )
+    mock_read_archive.assert_not_called()
+
+
+def test_author_download_failure_logs_crate_name_and_version(
+    mocker: pytest_mock.MockFixture,
+    caplog: LogCaptureFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=[False, True],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        return_value='[dependencies]\nregex = "=1.0.0"\n',
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_bounded",
+        side_effect=[
+            _crate_response(
+                "regex",
+                "1.0.0",
+                repository="https://github.com/rust-lang/regex",
+            ),
+            OSError("download failed"),
+        ],
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "regex",
+        source_code_manager,
+        local_project_path="/project",
+    )
+
+    with caplog.at_level(logging.WARNING):
+        result = strategy.augment_metadata([_metadata("regex", "1.0.0")])
+
+    assert result == [
+        _metadata(
+            "regex",
+            "1.0.0",
+            origin="https://github.com/rust-lang/regex",
+            license=["MIT OR Apache-2.0"],
+        )
+    ]
+    assert any(
+        record.getMessage()
+        == "Could not retrieve crates.io authors for regex@1.0.0: download failed"
+        for record in caplog.records
+    )
+
+
 def test_repository_mode_ignores_manifest_ranges_without_lockfile(
     mocker: pytest_mock.MockFixture,
 ) -> None:
@@ -1097,9 +1461,18 @@ def test_manifest_requirement_without_exact_version_is_not_enriched(
 @pytest.mark.parametrize(
     ("metadata_response", "expected_log"),
     [
-        (OSError("network unavailable"), "Could not retrieve crates.io metadata"),
+        (
+            OSError("network unavailable"),
+            "Could not retrieve crates.io metadata for regex: network unavailable",
+        ),
         (b"not-json", "Could not retrieve crates.io metadata"),
         (json.dumps([]).encode(), None),
+        (
+            json.dumps(
+                {"crate": "not-a-dict", "versions": [{"num": "1.0.0"}]}
+            ).encode(),
+            None,
+        ),
         (json.dumps({"crate": {}, "versions": "invalid"}).encode(), None),
         (
             json.dumps(
