@@ -204,7 +204,7 @@ def extract_tar_gz(
 
 def read_tar_gz_text_file(
     archive_content: bytes,
-    member_suffix: str,
+    member_name: str,
     max_bytes: int = MAX_EXTRACTED_ARCHIVE_BYTES,
     max_members: int = MAX_ARCHIVE_MEMBERS,
 ) -> str | None:
@@ -220,7 +220,7 @@ def read_tar_gz_text_file(
             member_count += 1
             if member_count > max_members:
                 raise ValueError(f"Archive contains more than {max_members} members")
-            if not member.isfile() or not member.name.endswith(member_suffix):
+            if not member.isfile() or member.name != member_name:
                 continue
             if member.size > max_bytes:
                 raise ValueError(

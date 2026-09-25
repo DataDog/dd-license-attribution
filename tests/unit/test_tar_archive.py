@@ -401,15 +401,33 @@ def test_read_tar_gz_text_file_reads_matching_member() -> None:
         }
     )
 
-    result = read_tar_gz_text_file(archive_content, "/Cargo.toml")
+    result = read_tar_gz_text_file(archive_content, "crate/Cargo.toml")
+
+    assert result == '[package]\nname = "crate"\n'
+
+
+def test_read_tar_gz_text_file_ignores_earlier_nested_member_with_same_suffix() -> None:
+    archive_content = _tar_gz_with_files(
+        {
+            "crate/tests/fixture/Cargo.toml": b'[package]\nname = "fixture"\n',
+            "crate/Cargo.toml": b'[package]\nname = "crate"\n',
+        }
+    )
+
+    result = read_tar_gz_text_file(archive_content, "crate/Cargo.toml")
 
     assert result == '[package]\nname = "crate"\n'
 
 
 def test_read_tar_gz_text_file_returns_none_without_matching_member() -> None:
-    archive_content = _tar_gz_with_files({"crate/README.md": b"readme"})
+    archive_content = _tar_gz_with_files(
+        {
+            "crate/README.md": b"readme",
+            "crate/nested/Cargo.toml": b'[package]\nname = "nested"\n',
+        }
+    )
 
-    result = read_tar_gz_text_file(archive_content, "/Cargo.toml")
+    result = read_tar_gz_text_file(archive_content, "crate/Cargo.toml")
 
     assert result is None
 
@@ -420,7 +438,7 @@ def test_read_tar_gz_text_file_rejects_oversized_member() -> None:
     with pytest.raises(ValueError, match="exceeds maximum size of 20 bytes"):
         read_tar_gz_text_file(
             archive_content,
-            "/Cargo.toml",
+            "crate/Cargo.toml",
             max_bytes=20,
         )
 
@@ -430,7 +448,7 @@ def test_read_tar_gz_text_file_accepts_exact_size_limit() -> None:
 
     result = read_tar_gz_text_file(
         archive_content,
-        "/Cargo.toml",
+        "crate/Cargo.toml",
         max_bytes=20,
     )
 
@@ -442,7 +460,7 @@ def test_read_tar_gz_text_file_accepts_single_byte_size_limit() -> None:
 
     result = read_tar_gz_text_file(
         archive_content,
-        "/Cargo.toml",
+        "crate/Cargo.toml",
         max_bytes=1,
     )
 
@@ -451,13 +469,13 @@ def test_read_tar_gz_text_file_accepts_single_byte_size_limit() -> None:
 
 def test_read_tar_gz_text_file_rejects_invalid_size_limit() -> None:
     with pytest.raises(ValueError) as exc_info:
-        read_tar_gz_text_file(b"archive", "/Cargo.toml", max_bytes=0)
+        read_tar_gz_text_file(b"archive", "crate/Cargo.toml", max_bytes=0)
     assert str(exc_info.value) == "max_bytes must be greater than zero"
 
 
 def test_read_tar_gz_text_file_rejects_invalid_member_limit() -> None:
     with pytest.raises(ValueError) as exc_info:
-        read_tar_gz_text_file(b"archive", "/Cargo.toml", max_members=0)
+        read_tar_gz_text_file(b"archive", "crate/Cargo.toml", max_members=0)
     assert str(exc_info.value) == "max_members must be greater than zero"
 
 
@@ -470,7 +488,7 @@ def test_read_tar_gz_text_file_rejects_too_many_members_before_match() -> None:
     )
 
     with pytest.raises(ValueError, match="Archive contains more than 1 members"):
-        read_tar_gz_text_file(archive_content, "/Cargo.toml", max_members=1)
+        read_tar_gz_text_file(archive_content, "crate/Cargo.toml", max_members=1)
 
 
 def test_read_tar_gz_text_file_rejects_large_unmatched_member_before_match() -> None:
@@ -487,7 +505,7 @@ def test_read_tar_gz_text_file_rejects_large_unmatched_member_before_match() -> 
     ):
         read_tar_gz_text_file(
             archive_content,
-            "/Cargo.toml",
+            "crate/Cargo.toml",
             max_bytes=20,
             max_members=2,
         )
@@ -495,7 +513,7 @@ def test_read_tar_gz_text_file_rejects_large_unmatched_member_before_match() -> 
 
 def test_read_tar_gz_text_file_rejects_malformed_archive() -> None:
     with pytest.raises(ValueError, match="Malformed gzip tar archive"):
-        read_tar_gz_text_file(b"not a gzip tar archive", "/Cargo.toml")
+        read_tar_gz_text_file(b"not a gzip tar archive", "crate/Cargo.toml")
 
 
 def test_bounded_reader_rejects_decompressed_stream_over_budget() -> None:

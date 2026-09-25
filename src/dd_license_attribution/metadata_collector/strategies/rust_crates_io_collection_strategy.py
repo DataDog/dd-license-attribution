@@ -432,7 +432,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
             )
             cargo_toml_content = read_tar_gz_text_file(
                 archive_content,
-                "/Cargo.toml",
+                f"{crate_name}-{version}/Cargo.toml",
             )
             if cargo_toml_content is None:
                 return []
