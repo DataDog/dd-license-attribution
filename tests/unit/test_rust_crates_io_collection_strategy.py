@@ -306,7 +306,10 @@ helper = { path = "." }
     )
     assert mock_download.call_count == 5
     mock_read_archive.assert_has_calls(
-        [call(b"crate archive", "/Cargo.toml"), call(b"crate archive", "/Cargo.toml")]
+        [
+            call(b"crate archive", "regex-1.13.0/Cargo.toml"),
+            call(b"crate archive", "tracing-subscriber-0.3.20/Cargo.toml"),
+        ]
     )
     assert mock_read_archive.call_count == 2
     assert mock_path_join.call_count == 5
@@ -454,7 +457,9 @@ def test_direct_root_package_is_enriched_from_manifest_version(
         ]
     )
     assert mock_download.call_count == 2
-    mock_read_archive.assert_called_once_with(b"crate archive", "/Cargo.toml")
+    mock_read_archive.assert_called_once_with(
+        b"crate archive", "serde-1.0.0/Cargo.toml"
+    )
 
 
 def test_repository_mode_ignores_manifest_ranges_without_lockfile(
@@ -672,7 +677,9 @@ def test_repository_mode_enriches_marked_rust_metadata(
         ]
     )
     assert mock_download.call_count == 2
-    mock_read_archive.assert_called_once_with(b"crate archive", "/Cargo.toml")
+    mock_read_archive.assert_called_once_with(
+        b"crate archive", "serde-1.0.228/Cargo.toml"
+    )
 
 
 def test_unavailable_repository_returns_metadata_unchanged() -> None:
@@ -932,7 +939,9 @@ def test_crates_io_cache_distinguishes_author_fetches(
         ]
     )
     assert mock_download.call_count == 3
-    mock_read_archive.assert_called_once_with(b"crate archive", "/Cargo.toml")
+    mock_read_archive.assert_called_once_with(
+        b"crate archive", "regex-1.13.0/Cargo.toml"
+    )
 
 
 @pytest.mark.parametrize(
@@ -1245,7 +1254,9 @@ def test_author_metadata_failures_preserve_other_crate_metadata(
     if isinstance(archive_result, OSError):
         mock_read_archive.assert_not_called()
     else:
-        mock_read_archive.assert_called_once_with(b"crate archive", "/Cargo.toml")
+        mock_read_archive.assert_called_once_with(
+            b"crate archive", "regex-1.0.0/Cargo.toml"
+        )
 
 
 @pytest.mark.parametrize(
