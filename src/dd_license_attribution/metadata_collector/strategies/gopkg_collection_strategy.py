@@ -108,7 +108,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             )
 
         module_data_list = self._run_go_list_modules(project_path)
-        if all(
+        if module_data_list and all(
             module_data["Path"] == SYNTHETIC_MODULE_NAME
             for module_data in module_data_list
         ):
@@ -116,6 +116,8 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             # import path is a module without an importable root package), so
             # there are no imported dependency packages to walk. Enumerate the
             # transitive dependency closure at the module level instead.
+            # An empty listing is not a fallback signal: it means `go list`
+            # itself failed, which is handled by the early return below.
             module_data_list = self._run_go_module_graph(project_path)
         if not module_data_list:
             return metadata

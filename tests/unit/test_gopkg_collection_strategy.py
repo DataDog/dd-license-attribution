@@ -977,22 +977,14 @@ def test_gopkg_local_project_path_empty_output_returns_metadata(
 
     result = strategy.augment_metadata(initial_metadata)
 
-    # Seed removed, empty output means no deps found (package listing and
-    # module graph both produced nothing)
+    # Seed removed, empty output means no deps found. An empty package
+    # listing is a `go list` failure, not a module-graph fallback signal, so
+    # the module graph must not be enumerated.
     assert len(result) == 0
-    mock_output_from_command.assert_has_calls(
-        [
-            call(
-                ["go", "list", "-json", "all"],
-                cwd="/tmp/go-resolve/testify",
-                env={"GOTOOLCHAIN": "auto"},
-            ),
-            call(
-                ["go", "list", "-m", "-json", "all"],
-                cwd="/tmp/go-resolve/testify",
-                env={"GOTOOLCHAIN": "auto"},
-            ),
-        ]
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="/tmp/go-resolve/testify",
+        env={"GOTOOLCHAIN": "auto"},
     )
 
 
