@@ -1263,7 +1263,7 @@ def test_gopkg_local_project_path_module_graph_fallback_only_root_project(
     "Version": "v1.10.2"
 }""" % (SYNTHETIC_MODULE_NAME)
 
-    mocker.patch(
+    mock_output_from_command = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
         side_effect=[package_list_json, module_graph_json],
     )
@@ -1285,6 +1285,19 @@ def test_gopkg_local_project_path_module_graph_fallback_only_root_project(
     assert len(result) == 1
     assert result[0].name == "github.com/DataDog/package-blast-radius"
     assert result[0].version == "v0.0.3"
+
+    mock_source_code_manager.get_code.assert_not_called()
+    assert mock_output_from_command.call_count == 2
+    mock_output_from_command.assert_any_call(
+        ["go", "list", "-json", "all"],
+        cwd="/tmp/go-resolve/github_com_DataDog_package-blast-radius",
+        env={"GOTOOLCHAIN": "auto"},
+    )
+    mock_output_from_command.assert_any_call(
+        ["go", "list", "-m", "-json", "all"],
+        cwd="/tmp/go-resolve/github_com_DataDog_package-blast-radius",
+        env={"GOTOOLCHAIN": "auto"},
+    )
 
 
 def test_gopkg_local_project_path_module_graph_empty_output(
@@ -1328,4 +1341,16 @@ def test_gopkg_local_project_path_module_graph_empty_output(
 
     # Seed removed, no modules found via either listing
     assert len(result) == 0
+
+    mock_source_code_manager.get_code.assert_not_called()
     assert mock_output_from_command.call_count == 2
+    mock_output_from_command.assert_any_call(
+        ["go", "list", "-json", "all"],
+        cwd="/tmp/go-resolve/github_com_DataDog_package-blast-radius",
+        env={"GOTOOLCHAIN": "auto"},
+    )
+    mock_output_from_command.assert_any_call(
+        ["go", "list", "-m", "-json", "all"],
+        cwd="/tmp/go-resolve/github_com_DataDog_package-blast-radius",
+        env={"GOTOOLCHAIN": "auto"},
+    )
