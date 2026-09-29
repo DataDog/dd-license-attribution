@@ -24,6 +24,12 @@ logger = logging.getLogger("dd_license_attribution")
 # Used by GoPkgMetadataCollectionStrategy to filter it from go list output.
 SYNTHETIC_MODULE_NAME = "ddla-go-resolve"
 
+# Marker in `go mod tidy` stderr that identifies the case where the import
+# path resolved to a module whose root directory has no importable Go package
+# (e.g. github.com/DataDog/package-blast-radius, whose code lives in cmd/ and
+# internal/ only).
+_MODULE_WITHOUT_ROOT_PACKAGE_ERROR_MARKER = "does not contain package"
+
 
 class GoPackageResolver:
     """Resolves a Go package/module specifier into a local project directory
@@ -66,6 +72,50 @@ class GoPackageResolver:
 
         return import_path, version
 
+    def _resolve_module_graph(
+        self, resolve_dir: str, main_go_path: str, go_package_spec: str
+    ) -> str | None:
+        """Resolve a module that has no importable root package.
+
+        ``go get`` has already added the module requirement to the synthetic
+        go.mod. This removes the unresolvable blank import (so that module
+        enumeration commands do not fail on it) and verifies the module graph
+        with ``go list -m all``. The transitive dependency closure is then
+        enumerated at the module level by the collection strategy using
+        ``go list -m -json all``.
+
+        Returns the resolve directory on success, None on failure.
+        """
+        write_file(main_go_path, "package main\n\nfunc main() {}\n")
+        try:
+            exit_code, output, error_output = run_command_with_check(
+                ["go", "list", "-m", "all"],
+                cwd=resolve_dir,
+                env={"GOTOOLCHAIN": "auto"},
+            )
+        except OSError as e:
+            logger.error("Failed to resolve Go package %s: %s", go_package_spec, e)
+            return None
+        if exit_code != 0:
+            logger.error(
+                "go list -m all failed for %s: %s",
+                go_package_spec,
+                format_command_output(output, error_output),
+            )
+            return None
+        module_paths = [line.split()[0] for line in output.splitlines() if line.strip()]
+        if not any(path != SYNTHETIC_MODULE_NAME for path in module_paths):
+            logger.error(
+                "go list -m all found no dependency modules for %s", go_package_spec
+            )
+            return None
+        logger.info(
+            "Import path %s resolved as a module without a root package; "
+            "enumerating its dependencies from the module graph instead",
+            go_package_spec,
+        )
+        return resolve_dir
+
     def resolve_package(self, go_package_spec: str) -> str | None:
         """Resolve a Go package spec into a local directory with a synthetic go.mod.
 
@@ -102,7 +152,7 @@ class GoPackageResolver:
         # The blank import ensures go mod tidy resolves the package's module
         # and all its transitive dependencies via GOPROXY.
         main_go_content = (
-            "package main\n" "\n" f'import _ "{import_path}"\n' "\n" "func main() {}\n"
+            f'package main\n\nimport _ "{import_path}"\n\nfunc main() {{}}\n'
         )
         main_go_path = path_join(resolve_dir, "main.go")
         write_file(main_go_path, main_go_content)
@@ -136,6 +186,14 @@ class GoPackageResolver:
                 env={"GOTOOLCHAIN": "auto"},
             )
             if exit_code != 0:
+                if _MODULE_WITHOUT_ROOT_PACKAGE_ERROR_MARKER in error_output:
+                    # The import path resolved to a module whose root has no
+                    # importable package. Fall back to module-graph resolution,
+                    # which keeps the requirement added by `go get` and lets
+                    # the collector enumerate modules with `go list -m all`.
+                    return self._resolve_module_graph(
+                        resolve_dir, main_go_path, go_package_spec
+                    )
                 logger.error(
                     "go mod tidy failed for %s: %s",
                     go_package_spec,

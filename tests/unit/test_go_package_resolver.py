@@ -387,3 +387,192 @@ class TestResolvePackage:
         assert result is None
         mock_run_command.assert_not_called()
         mock_create_dirs.assert_not_called()
+
+
+class TestResolvePackageModuleGraphFallback:
+    """Fallback for modules whose root has no importable package (OSPO-158)."""
+
+    def setup_method(self) -> None:
+        self.resolver = GoPackageResolver("/cache")
+
+    def _setup_mocks(
+        self,
+        mocker: pytest_mock.MockFixture,
+        go_list_m_return: tuple[int, str, str],
+    ) -> tuple[Any, Any, Any]:
+        def fake_path_join(*args: Any) -> str:
+            return "/".join(args)
+
+        mock_create_dirs = mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.create_dirs"
+        )
+        mock_write_file = mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.write_file"
+        )
+        mock_run_command = mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.run_command_with_check",
+            side_effect=[
+                (0, "go get completed", ""),
+                (
+                    1,
+                    "",
+                    "go: ddla-go-resolve imports\n\t"
+                    "github.com/DataDog/package-blast-radius: module "
+                    "github.com/DataDog/package-blast-radius@latest found "
+                    "(v0.0.3), but does not contain package "
+                    "github.com/DataDog/package-blast-radius",
+                ),
+                go_list_m_return,
+            ],
+        )
+        mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.path_exists",
+            return_value=True,
+        )
+        mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.path_join",
+            side_effect=fake_path_join,
+        )
+        mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.output_from_command",
+            return_value="go1.23.5\n",
+        )
+        return mock_create_dirs, mock_write_file, mock_run_command
+
+    def test_module_without_root_package_falls_back_to_module_graph(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        _, mock_write_file, mock_run_command = self._setup_mocks(
+            mocker,
+            go_list_m_return=(
+                0,
+                "ddla-go-resolve\ngithub.com/DataDog/package-blast-radius v0.0.3\n",
+                "",
+            ),
+        )
+
+        result = self.resolver.resolve_package(
+            "github.com/DataDog/package-blast-radius"
+        )
+
+        assert result == "/cache/github_com_DataDog_package-blast-radius"
+
+        # go.mod, main.go (with import), main.go (rewritten without import)
+        assert mock_write_file.call_count == 3
+        rewritten_main_go = mock_write_file.call_args_list[2]
+        assert rewritten_main_go[0][0] == (
+            "/cache/github_com_DataDog_package-blast-radius/main.go"
+        )
+        assert "import" not in rewritten_main_go[0][1]
+        assert "package main" in rewritten_main_go[0][1]
+
+        # go get, go mod tidy (failed), go list -m all
+        assert mock_run_command.call_count == 3
+        mock_run_command.assert_any_call(
+            ["go", "get", "github.com/DataDog/package-blast-radius"],
+            cwd="/cache/github_com_DataDog_package-blast-radius",
+            env={"GOTOOLCHAIN": "auto"},
+        )
+        mock_run_command.assert_any_call(
+            ["go", "mod", "tidy"],
+            cwd="/cache/github_com_DataDog_package-blast-radius",
+            env={"GOTOOLCHAIN": "auto"},
+        )
+        mock_run_command.assert_any_call(
+            ["go", "list", "-m", "all"],
+            cwd="/cache/github_com_DataDog_package-blast-radius",
+            env={"GOTOOLCHAIN": "auto"},
+        )
+
+    def test_module_graph_fallback_reports_module_graph_resolution(
+        self,
+        mocker: pytest_mock.MockFixture,
+        caplog: LogCaptureFixture,
+    ) -> None:
+        _, _, _ = self._setup_mocks(
+            mocker,
+            go_list_m_return=(
+                0,
+                "ddla-go-resolve\ngithub.com/DataDog/package-blast-radius v0.0.3\n",
+                "",
+            ),
+        )
+
+        with caplog.at_level(logging.INFO):
+            self.resolver.resolve_package("github.com/DataDog/package-blast-radius")
+
+        assert any(
+            "module without a root package" in record.message
+            for record in caplog.records
+        )
+
+    def test_module_graph_fallback_without_dependency_modules_returns_none(
+        self,
+        mocker: pytest_mock.MockFixture,
+        caplog: LogCaptureFixture,
+    ) -> None:
+        _, _, mock_run_command = self._setup_mocks(
+            mocker,
+            go_list_m_return=(0, "ddla-go-resolve\n", ""),
+        )
+
+        with caplog.at_level(logging.ERROR):
+            result = self.resolver.resolve_package(
+                "github.com/DataDog/package-blast-radius"
+            )
+
+        assert result is None
+        assert any(
+            "found no dependency modules" in record.message for record in caplog.records
+        )
+        # The go.sum existence check is never reached on failure
+        assert mock_run_command.call_count == 3
+
+    def test_module_graph_fallback_go_list_m_failure_returns_none(
+        self,
+        mocker: pytest_mock.MockFixture,
+        caplog: LogCaptureFixture,
+    ) -> None:
+        _, _, _ = self._setup_mocks(
+            mocker,
+            go_list_m_return=(1, "", "go: bad module"),
+        )
+
+        with caplog.at_level(logging.ERROR):
+            result = self.resolver.resolve_package(
+                "github.com/DataDog/package-blast-radius"
+            )
+
+        assert result is None
+        assert any(
+            "go list -m all failed" in record.message for record in caplog.records
+        )
+
+    def test_module_graph_fallback_go_list_m_exception_returns_none(
+        self,
+        mocker: pytest_mock.MockFixture,
+        caplog: LogCaptureFixture,
+    ) -> None:
+        _, _, _ = self._setup_mocks(
+            mocker,
+            go_list_m_return=(0, "", ""),  # value unused; side_effect below
+        )
+        mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.run_command_with_check",
+            side_effect=[
+                (0, "go get completed", ""),
+                (1, "", "does not contain package"),
+                OSError("go not found"),
+            ],
+        )
+
+        with caplog.at_level(logging.ERROR):
+            result = self.resolver.resolve_package(
+                "github.com/DataDog/package-blast-radius"
+            )
+
+        assert result is None
+        assert any(
+            "Failed to resolve Go package" in record.message
+            for record in caplog.records
+        )

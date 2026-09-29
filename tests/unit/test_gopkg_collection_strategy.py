@@ -977,9 +977,20 @@ def test_gopkg_local_project_path_empty_output_returns_metadata(
 
     result = strategy.augment_metadata(initial_metadata)
 
-    # Seed removed, empty output means no deps found
+    # Seed removed, empty output means no deps found (package listing and
+    # module graph both produced nothing)
     assert len(result) == 0
-    mock_output_from_command.assert_called_once()
+    assert mock_output_from_command.call_count == 2
+    mock_output_from_command.assert_any_call(
+        ["go", "list", "-json", "all"],
+        cwd="/tmp/go-resolve/testify",
+        env={"GOTOOLCHAIN": "auto"},
+    )
+    mock_output_from_command.assert_any_call(
+        ["go", "list", "-m", "-json", "all"],
+        cwd="/tmp/go-resolve/testify",
+        env={"GOTOOLCHAIN": "auto"},
+    )
 
 
 def test_gopkg_local_project_path_updates_existing_metadata(
@@ -1123,3 +1134,198 @@ def test_gopkg_local_project_path_indirect_dep_without_dir(
         cwd="/tmp/go-resolve/testify",
         env={"GOTOOLCHAIN": "auto"},
     )
+
+
+def test_gopkg_local_project_path_module_graph_fallback(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/DataDog/package-blast-radius",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/go-resolve/github_com_DataDog_package-blast-radius",
+    )
+
+    # Package listing contains only the synthetic main package: the resolver
+    # resolved a module without an importable root package.
+    package_list_json = """
+{
+    "ImportPath": "ddla-go-resolve",
+    "Module": {
+        "Path": "%s",
+        "Main": true,
+        "Dir": "/tmp/go-resolve/github_com_DataDog_package-blast-radius"
+    }
+}""" % (SYNTHETIC_MODULE_NAME)
+
+    # Module graph listing provides the transitive dependency closure.
+    module_graph_json = """
+{
+    "Path": "%s",
+    "Main": true,
+    "Dir": "/tmp/go-resolve/github_com_DataDog_package-blast-radius"
+}
+{
+    "Path": "github.com/DataDog/package-blast-radius",
+    "Version": "v0.0.3",
+    "Dir": "/tmp/go/pkg/mod/github.com/!data!dog/package-blast-radius@v0.0.3"
+}
+{
+    "Path": "github.com/spf13/cobra",
+    "Version": "v1.10.2"
+}""" % (SYNTHETIC_MODULE_NAME)
+
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=[package_list_json, module_graph_json],
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="github.com/DataDog/package-blast-radius",
+            origin="github.com/DataDog/package-blast-radius",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Seed entry replaced by module graph data, synthetic module filtered out
+    assert len(result) == 2
+    root = next(
+        m for m in result if m.name == "github.com/DataDog/package-blast-radius"
+    )
+    cobra = next(m for m in result if m.name == "github.com/spf13/cobra")
+
+    assert root.version == "v0.0.3"
+    assert (
+        root.local_src_path
+        == "/tmp/go/pkg/mod/github.com/!data!dog/package-blast-radius@v0.0.3"
+    )
+    assert root.origin == "https://github.com/DataDog/package-blast-radius"
+
+    assert cobra.version == "v1.10.2"
+    assert cobra.local_src_path is None
+    assert cobra.origin == "https://github.com/spf13/cobra"
+
+    assert not any(m.name == SYNTHETIC_MODULE_NAME for m in result)
+
+    mock_source_code_manager.get_code.assert_not_called()
+    assert mock_output_from_command.call_count == 2
+    mock_output_from_command.assert_any_call(
+        ["go", "list", "-json", "all"],
+        cwd="/tmp/go-resolve/github_com_DataDog_package-blast-radius",
+        env={"GOTOOLCHAIN": "auto"},
+    )
+    mock_output_from_command.assert_any_call(
+        ["go", "list", "-m", "-json", "all"],
+        cwd="/tmp/go-resolve/github_com_DataDog_package-blast-radius",
+        env={"GOTOOLCHAIN": "auto"},
+    )
+
+
+def test_gopkg_local_project_path_module_graph_fallback_only_root_project(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/DataDog/package-blast-radius",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+        local_project_path="/tmp/go-resolve/github_com_DataDog_package-blast-radius",
+    )
+
+    package_list_json = """
+{
+    "ImportPath": "ddla-go-resolve",
+    "Module": {
+        "Path": "%s",
+        "Main": true,
+        "Dir": "/tmp/go-resolve/github_com_DataDog_package-blast-radius"
+    }
+}""" % (SYNTHETIC_MODULE_NAME)
+
+    module_graph_json = """
+{
+    "Path": "%s",
+    "Main": true
+}
+{
+    "Path": "github.com/DataDog/package-blast-radius",
+    "Version": "v0.0.3"
+}
+{
+    "Path": "github.com/spf13/cobra",
+    "Version": "v1.10.2"
+}""" % (SYNTHETIC_MODULE_NAME)
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=[package_list_json, module_graph_json],
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="github.com/DataDog/package-blast-radius",
+            origin="github.com/DataDog/package-blast-radius",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Only the root module is kept in ONLY_ROOT_PROJECT scope
+    assert len(result) == 1
+    assert result[0].name == "github.com/DataDog/package-blast-radius"
+    assert result[0].version == "v0.0.3"
+
+
+def test_gopkg_local_project_path_module_graph_empty_output(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/DataDog/package-blast-radius",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/go-resolve/github_com_DataDog_package-blast-radius",
+    )
+
+    # Package listing only has the synthetic module; module graph is empty too
+    package_list_json = """
+{
+    "ImportPath": "ddla-go-resolve",
+    "Module": {
+        "Path": "%s",
+        "Main": true
+    }
+}""" % (SYNTHETIC_MODULE_NAME)
+
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=[package_list_json, ""],
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="github.com/DataDog/package-blast-radius",
+            origin="github.com/DataDog/package-blast-radius",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    # Seed removed, no modules found via either listing
+    assert len(result) == 0
+    assert mock_output_from_command.call_count == 2
