@@ -31,6 +31,24 @@ SYNTHETIC_MODULE_NAME = "ddla-go-resolve"
 _MODULE_WITHOUT_ROOT_PACKAGE_ERROR_MARKER = "does not contain package"
 
 
+def _is_rootless_module_tidy_failure(error_output: str, import_path: str) -> bool:
+    """Check whether a `go mod tidy` failure is the rootless-module case.
+
+    The failure specific to a module whose root has no importable package
+    names the requested import path as both the module (``module
+    <import_path>@<version>``) and the missing package (``but does not contain
+    package <import_path>``). Requiring both anchors prevents
+    misclassifying other ``does not contain package`` failures (e.g. a
+    missing transitive import inside a dependency module) as this case,
+    which would otherwise let resolution succeed with an incomplete SBOM.
+    """
+    return (
+        _MODULE_WITHOUT_ROOT_PACKAGE_ERROR_MARKER in error_output
+        and f"module {import_path}@" in error_output
+        and f"but does not contain package {import_path}" in error_output
+    )
+
+
 class GoPackageResolver:
     """Resolves a Go package/module specifier into a local project directory
     containing a synthetic go.mod with resolved dependencies."""
@@ -186,7 +204,7 @@ class GoPackageResolver:
                 env={"GOTOOLCHAIN": "auto"},
             )
             if exit_code != 0:
-                if _MODULE_WITHOUT_ROOT_PACKAGE_ERROR_MARKER in error_output:
+                if _is_rootless_module_tidy_failure(error_output, import_path):
                     # The import path resolved to a module whose root has no
                     # importable package. Fall back to module-graph resolution,
                     # which keeps the requirement added by `go get` and lets
