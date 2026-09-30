@@ -246,7 +246,6 @@
       ]
     }
   },
-
   {
     "override_type": "replace",
     "target": {
@@ -310,6 +309,92 @@
       ],
       "copyright": [
         "Timothy Edmund Crosley"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "component": "mutmut",
+      "origin": "mutmut"
+    },
+    "replacement": {
+      "name": "mutmut",
+      "origin": "mutmut",
+      "license": [
+        "BSD-3-Clause"
+      ],
+      "copyright": [
+        "Anders Hovm\u00f6ller"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "component": "mypy",
+      "origin": "mypy"
+    },
+    "replacement": {
+      "name": "mypy",
+      "origin": "mypy",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "Dropbox, Inc.",
+        "Jukka Lehtosalo and contributors"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "component": "pytest-mock",
+      "origin": "pytest-mock"
+    },
+    "replacement": {
+      "name": "pytest-mock",
+      "origin": "pytest-mock",
+      "license": [
+        "MIT"
+      ],
+      "copyright": [
+        "Bruno Oliveira"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "component": "types-pytz",
+      "origin": "types-pytz"
+    },
+    "replacement": {
+      "name": "types-pytz",
+      "origin": "types-pytz",
+      "license": [
+        "Apache-2.0"
+      ],
+      "copyright": [
+        "The typeshed authors"
+      ]
+    }
+  },
+  {
+    "override_type": "replace",
+    "target": {
+      "component": "types-requests",
+      "origin": "types-requests"
+    },
+    "replacement": {
+      "name": "types-requests",
+      "origin": "types-requests",
+      "license": [
+        "Apache-2.0"
+      ],
+      "copyright": [
+        "The typeshed authors"
       ]
     }
   }
