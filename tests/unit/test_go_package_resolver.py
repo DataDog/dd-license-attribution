@@ -190,8 +190,14 @@ class TestResolvePackage:
         main_go_content = main_go_call[0][1]
         assert 'import _ "github.com/stretchr/testify"' in main_go_content
 
-        # Verify go get was called to add the dependency, then go mod tidy
-        assert mock_run_command.call_count == 2
+        # Verify go get was called to add the dependency, then go mod tidy,
+        # then the go list verification step
+        assert mock_run_command.call_count == 3
+        mock_run_command.assert_any_call(
+            ["go", "list", "all"],
+            cwd="/cache/github_com_stretchr_testify",
+            env={"GOTOOLCHAIN": "auto"},
+        )
         mock_run_command.assert_any_call(
             ["go", "get", "github.com/stretchr/testify@v1.9.0"],
             cwd="/cache/github_com_stretchr_testify",
@@ -924,3 +930,166 @@ class TestResolvePackageModuleGraphFallback:
             mock_output_from_command,
         )
         self._assert_modules_not_downloaded(mock_run_command)
+
+
+class TestResolvePackageProgramImportFallback:
+    """Module-graph fallback for `package main` module roots (OSPO-158)."""
+
+    _RESOLVE_DIR = "/cache/github_com_mgechev_revive"
+    _PROGRAM_LIST_FAILURE = (
+        1,
+        "",
+        'main.go:3:8: import "github.com/mgechev/revive" is a program, '
+        "not an importable package",
+    )
+
+    def setup_method(self) -> None:
+        self.resolver = GoPackageResolver("/cache")
+
+    def _setup_mocks(
+        self,
+        mocker: pytest_mock.MockFixture,
+        go_list_all_return: tuple[int, str, str] | OSError,
+    ) -> tuple[Any, Any, Any, Any, Any, Any]:
+        def fake_path_join(*args: Any) -> str:
+            return "/".join(args)
+
+        mock_create_dirs = mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.create_dirs"
+        )
+        mock_write_file = mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.write_file"
+        )
+        mock_run_command = mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.run_command_with_check",
+            side_effect=[
+                (0, "go get completed", ""),
+                (0, "go mod tidy completed", ""),
+                go_list_all_return,
+                (
+                    0,
+                    "ddla-go-resolve\ngithub.com/mgechev/revive v1.5.0\n",
+                    "",
+                ),
+                (0, "download completed", ""),
+            ],
+        )
+        mock_path_exists = mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.path_exists",
+            return_value=True,
+        )
+        mock_path_join = mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.path_join",
+            side_effect=fake_path_join,
+        )
+        mock_output_from_command = mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.output_from_command",
+            return_value="go1.23.5\n",
+        )
+        return (
+            mock_create_dirs,
+            mock_write_file,
+            mock_run_command,
+            mock_path_exists,
+            mock_path_join,
+            mock_output_from_command,
+        )
+
+    def test_program_import_falls_back_to_module_graph(
+        self,
+        mocker: pytest_mock.MockFixture,
+        caplog: LogCaptureFixture,
+    ) -> None:
+        (
+            mock_create_dirs,
+            mock_write_file,
+            mock_run_command,
+            _,
+            _,
+            _,
+        ) = self._setup_mocks(mocker, self._PROGRAM_LIST_FAILURE)
+
+        with caplog.at_level(logging.INFO):
+            result = self.resolver.resolve_package("github.com/mgechev/revive")
+
+        assert result == self._RESOLVE_DIR
+        assert any(
+            "program (package main)" in record.message for record in caplog.records
+        )
+        mock_create_dirs.assert_called_once_with(self._RESOLVE_DIR)
+        mock_write_file.assert_has_calls(
+            [
+                call(
+                    f"{self._RESOLVE_DIR}/main.go",
+                    'package main\n\nimport _ "github.com/mgechev/revive"\n\nfunc main() {}\n',
+                ),
+                call(
+                    f"{self._RESOLVE_DIR}/main.go", "package main\n\nfunc main() {}\n"
+                ),
+            ]
+        )
+        mock_run_command.assert_has_calls(
+            [
+                call(
+                    ["go", "get", "github.com/mgechev/revive"],
+                    cwd=self._RESOLVE_DIR,
+                    env={"GOTOOLCHAIN": "auto"},
+                ),
+                call(
+                    ["go", "mod", "tidy"],
+                    cwd=self._RESOLVE_DIR,
+                    env={"GOTOOLCHAIN": "auto"},
+                ),
+                call(
+                    ["go", "list", "all"],
+                    cwd=self._RESOLVE_DIR,
+                    env={"GOTOOLCHAIN": "auto"},
+                ),
+                call(
+                    ["go", "list", "-m", "all"],
+                    cwd=self._RESOLVE_DIR,
+                    env={"GOTOOLCHAIN": "auto"},
+                ),
+                call(
+                    ["go", "mod", "download", "all"],
+                    cwd=self._RESOLVE_DIR,
+                    env={"GOTOOLCHAIN": "auto"},
+                ),
+            ]
+        )
+
+    def test_unrelated_go_list_failure_keeps_package_mode(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        (
+            _,
+            _,
+            mock_run_command,
+            _,
+            _,
+            _,
+        ) = self._setup_mocks(
+            mocker,
+            (1, "", "main.go:3:8: no required module provides package some/other"),
+        )
+
+        result = self.resolver.resolve_package("github.com/mgechev/revive")
+
+        # Unrelated go list failures keep the package-mode resolution; the
+        # collector's own go list handles them.
+        assert result == self._RESOLVE_DIR
+        module_graph_call = call(
+            ["go", "list", "-m", "all"],
+            cwd=self._RESOLVE_DIR,
+            env={"GOTOOLCHAIN": "auto"},
+        )
+        assert module_graph_call not in mock_run_command.call_args_list
+
+    def test_go_list_exception_returns_none(
+        self, mocker: pytest_mock.MockFixture
+    ) -> None:
+        _, _, _, _, _, _ = self._setup_mocks(mocker, OSError("go not found"))
+
+        result = self.resolver.resolve_package("github.com/mgechev/revive")
+
+        assert result is None

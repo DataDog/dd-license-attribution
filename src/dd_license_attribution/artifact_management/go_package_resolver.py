@@ -38,6 +38,11 @@ _MISSING_PACKAGE_PATTERN = re.compile(
     rf"but {_MODULE_WITHOUT_ROOT_PACKAGE_ERROR_MARKER} (\S+)"
 )
 
+# Marker in `go list` output for an import that targets `package main`:
+# the module resolves and `go mod tidy` succeeds, but the package cannot
+# be imported ("is a program, not an importable package").
+_PROGRAM_IMPORT_ERROR_MARKER = "is a program, not an importable package"
+
 
 def _is_rootless_module_tidy_failure(error_output: str, import_path: str) -> bool:
     """Check whether a `go mod tidy` failure is the rootless-module case.
@@ -258,6 +263,35 @@ class GoPackageResolver:
         if not path_exists(go_sum_path):
             logger.error("go mod tidy did not create go.sum in %s", resolve_dir)
             return None
+
+        # `go mod tidy` also succeeds for modules whose root is `package
+        # main`, but the package listing the collector runs later (`go list
+        # -json all`) refuses to load such an import ("is a program, not an
+        # importable package"), which would yield an empty dependency set.
+        # Verify the listing loads, and divert to module-graph resolution when
+        # the only problem is the program import.
+        try:
+            exit_code, output, error_output = run_command_with_check(
+                ["go", "list", "all"],
+                cwd=resolve_dir,
+                env={"GOTOOLCHAIN": "auto"},
+            )
+        except OSError as e:
+            logger.error("Failed to resolve Go package %s: %s", go_package_spec, e)
+            return None
+        if (
+            exit_code != 0
+            and f'import "{import_path}"' in error_output
+            and _PROGRAM_IMPORT_ERROR_MARKER in error_output
+        ):
+            logger.info(
+                "Import path %s resolved to a program (package main); "
+                "enumerating its dependencies from the module graph instead",
+                import_path,
+            )
+            return self._resolve_module_graph(
+                resolve_dir, main_go_path, go_package_spec
+            )
 
         logger.info(
             "Successfully resolved Go package %s to %s",
