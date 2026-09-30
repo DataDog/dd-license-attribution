@@ -434,6 +434,7 @@ class TestResolvePackageModuleGraphFallback:
                 (0, "go get completed", ""),
                 self._TIDY_FAILURE,
                 go_list_m_return,
+                (0, "download completed", ""),
             ],
         )
         mock_path_exists = mocker.patch(
@@ -494,6 +495,25 @@ class TestResolvePackageModuleGraphFallback:
             ]
         )
 
+    def _assert_modules_downloaded(self, mock_run_command: Any) -> None:
+        mock_run_command.assert_has_calls(
+            [
+                call(
+                    ["go", "mod", "download", "all"],
+                    cwd=self._RESOLVE_DIR,
+                    env={"GOTOOLCHAIN": "auto"},
+                )
+            ]
+        )
+
+    def _assert_modules_not_downloaded(self, mock_run_command: Any) -> None:
+        download_call = call(
+            ["go", "mod", "download", "all"],
+            cwd=self._RESOLVE_DIR,
+            env={"GOTOOLCHAIN": "auto"},
+        )
+        assert download_call not in mock_run_command.call_args_list
+
     def _assert_main_go_rewritten_without_import(self, mock_write_file: Any) -> None:
         mock_write_file.assert_has_calls(
             [
@@ -553,6 +573,7 @@ class TestResolvePackageModuleGraphFallback:
             mock_path_join,
             mock_output_from_command,
         )
+        self._assert_modules_downloaded(mock_run_command)
 
     def test_module_graph_fallback_reports_module_graph_resolution(
         self,
@@ -590,6 +611,7 @@ class TestResolvePackageModuleGraphFallback:
             mock_path_join,
             mock_output_from_command,
         )
+        self._assert_modules_downloaded(mock_run_command)
 
     def test_module_graph_fallback_without_dependency_modules_returns_none(
         self,
@@ -625,6 +647,7 @@ class TestResolvePackageModuleGraphFallback:
             mock_path_join,
             mock_output_from_command,
         )
+        self._assert_modules_not_downloaded(mock_run_command)
 
     def test_module_graph_fallback_go_list_m_failure_returns_none(
         self,
@@ -660,6 +683,7 @@ class TestResolvePackageModuleGraphFallback:
             mock_path_join,
             mock_output_from_command,
         )
+        self._assert_modules_not_downloaded(mock_run_command)
 
     def test_tidy_failure_for_other_package_does_not_trigger_fallback(
         self,
@@ -805,6 +829,65 @@ class TestResolvePackageModuleGraphFallback:
         )
         mock_path_exists.assert_not_called()
 
+    def test_module_graph_fallback_download_failure_returns_none(
+        self,
+        mocker: pytest_mock.MockFixture,
+        caplog: LogCaptureFixture,
+    ) -> None:
+        (
+            mock_create_dirs,
+            mock_write_file,
+            mock_run_command,
+            mock_path_exists,
+            mock_path_join,
+            mock_output_from_command,
+        ) = self._setup_mocks(
+            mocker,
+            go_list_m_return=(
+                0,
+                "ddla-go-resolve\ngithub.com/DataDog/package-blast-radius v0.0.3\n",
+                "",
+            ),
+        )
+        # Replace the download result with a failure.
+        mock_run_command = mocker.patch(
+            "dd_license_attribution.artifact_management.go_package_resolver.run_command_with_check",
+            side_effect=[
+                (0, "go get completed", ""),
+                self._TIDY_FAILURE,
+                (
+                    0,
+                    "ddla-go-resolve\ngithub.com/DataDog/package-blast-radius v0.0.3\n",
+                    "",
+                ),
+                (1, "", "go: download failed"),
+            ],
+        )
+
+        with caplog.at_level(logging.ERROR):
+            result = self.resolver.resolve_package(
+                "github.com/DataDog/package-blast-radius"
+            )
+
+        assert result is None
+        assert any(
+            "go mod download failed" in record.message for record in caplog.records
+        )
+        self._assert_common_setup(
+            mock_create_dirs, mock_path_join, mock_output_from_command
+        )
+        self._assert_fallback_command_sequence(mock_run_command)
+        mock_run_command.assert_has_calls(
+            [
+                call(
+                    ["go", "mod", "download", "all"],
+                    cwd=self._RESOLVE_DIR,
+                    env={"GOTOOLCHAIN": "auto"},
+                )
+            ]
+        )
+        mock_path_exists.assert_not_called()
+
     def test_module_graph_fallback_go_list_m_exception_returns_none(
         self,
         mocker: pytest_mock.MockFixture,
@@ -840,3 +923,4 @@ class TestResolvePackageModuleGraphFallback:
             mock_path_join,
             mock_output_from_command,
         )
+        self._assert_modules_not_downloaded(mock_run_command)

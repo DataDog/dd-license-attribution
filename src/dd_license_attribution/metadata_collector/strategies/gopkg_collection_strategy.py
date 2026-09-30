@@ -197,6 +197,8 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             logger.warning("go list -m produced no output in %s", project_path)
             return []
 
+        # go list -m -json emits consecutive JSON objects (no array wrapper or
+        # separators); stitch them into a JSON array so json.loads can parse it.
         corrected_output = "[{}]".format(output.replace("}\n{", "},\n{"))
         module_data_list: list[dict[str, Any]] = json.loads(corrected_output)
 

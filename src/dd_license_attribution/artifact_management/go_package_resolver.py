@@ -136,6 +136,28 @@ class GoPackageResolver:
                 "go list -m all found no dependency modules for %s", go_package_spec
             )
             return None
+        # Download every module in the graph so that each entry reported by
+        # `go list -m -json all` carries a source `Dir` at its pinned version.
+        # Without this, transitive modules are not in the local cache and the
+        # collector emits no local source paths, which makes downstream
+        # attribution clone the origin's default branch (potentially the
+        # wrong revision) or skip the dependency entirely.
+        try:
+            exit_code, output, error_output = run_command_with_check(
+                ["go", "mod", "download", "all"],
+                cwd=resolve_dir,
+                env={"GOTOOLCHAIN": "auto"},
+            )
+        except OSError as e:
+            logger.error("Failed to resolve Go package %s: %s", go_package_spec, e)
+            return None
+        if exit_code != 0:
+            logger.error(
+                "go mod download failed for %s: %s",
+                go_package_spec,
+                format_command_output(output, error_output),
+            )
+            return None
         logger.info(
             "Import path %s resolved as a module without a root package; "
             "enumerating its dependencies from the module graph instead",
