@@ -30,6 +30,14 @@ SYNTHETIC_MODULE_NAME = "ddla-go-resolve"
 # internal/ only).
 _MODULE_WITHOUT_ROOT_PACKAGE_ERROR_MARKER = "does not contain package"
 
+# Captures the package path token in a `go mod tidy` "does not contain
+# package <path>" failure (the path ends at the following whitespace or
+# punctuation). Used to require the missing package to be the requested
+# import path itself rather than a subpackage under it.
+_MISSING_PACKAGE_PATTERN = re.compile(
+    rf"but {_MODULE_WITHOUT_ROOT_PACKAGE_ERROR_MARKER} (\S+)"
+)
+
 
 def _is_rootless_module_tidy_failure(error_output: str, import_path: str) -> bool:
     """Check whether a `go mod tidy` failure is the rootless-module case.
@@ -37,15 +45,16 @@ def _is_rootless_module_tidy_failure(error_output: str, import_path: str) -> boo
     The failure specific to a module whose root has no importable package
     names the requested import path as both the module (``module
     <import_path>@<version>``) and the missing package (``but does not contain
-    package <import_path>``). Requiring both anchors prevents
-    misclassifying other ``does not contain package`` failures (e.g. a
-    missing transitive import inside a dependency module) as this case,
-    which would otherwise let resolution succeed with an incomplete SBOM.
+    package <import_path>``). Requiring the module anchor and an exact match
+    of the missing-package token prevents misclassifying other ``does not
+    contain package`` failures as this case: a missing subpackage under a
+    valid root module (``but does not contain package <import_path>/sub``)
+    or a missing transitive import inside a dependency module would otherwise
+    let resolution succeed with an incomplete SBOM.
     """
-    return (
-        _MODULE_WITHOUT_ROOT_PACKAGE_ERROR_MARKER in error_output
-        and f"module {import_path}@" in error_output
-        and f"but does not contain package {import_path}" in error_output
+    return f"module {import_path}@" in error_output and any(
+        match.group(1) == import_path
+        for match in _MISSING_PACKAGE_PATTERN.finditer(error_output)
     )
 
 
