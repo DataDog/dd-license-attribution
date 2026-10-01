@@ -108,6 +108,17 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             )
 
         module_data_list = self._run_go_list_modules(project_path)
+        if module_data_list and all(
+            module_data["Path"] == SYNTHETIC_MODULE_NAME
+            for module_data in module_data_list
+        ):
+            # The resolver fell back to module-graph resolution (the resolved
+            # import path is a module without an importable root package), so
+            # there are no imported dependency packages to walk. Enumerate the
+            # transitive dependency closure at the module level instead.
+            # An empty listing is not a fallback signal: it means `go list`
+            # itself failed, which is handled by the early return below.
+            module_data_list = self._run_go_module_graph(project_path)
         if not module_data_list:
             return metadata
 
@@ -165,6 +176,39 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             module_path = module["Path"]
             if module_path not in seen_modules:
                 seen_modules[module_path] = module
+
+        return list(seen_modules.values())
+
+    def _run_go_module_graph(self, project_path: str) -> list[dict[str, Any]]:
+        """Run go list -m -json all and return deduplicated module dicts.
+
+        Used in module-graph fallback mode (the resolved project has no
+        importable dependency packages): the module graph provides the
+        transitive dependency closure at the module level. The synthetic main
+        module is filtered out; every remaining entry is already shaped like a
+        module dict (Path, Version, and optionally Dir).
+        """
+        output = output_from_command(
+            ["go", "list", "-m", "-json", "all"],
+            cwd=project_path,
+            env={"GOTOOLCHAIN": "auto"},
+        )
+        if not output.strip():
+            logger.warning("go list -m produced no output in %s", project_path)
+            return []
+
+        # go list -m -json emits consecutive JSON objects (no array wrapper or
+        # separators); stitch them into a JSON array so json.loads can parse it.
+        corrected_output = "[{}]".format(output.replace("}\n{", "},\n{"))
+        module_data_list: list[dict[str, Any]] = json.loads(corrected_output)
+
+        seen_modules: dict[str, dict[str, Any]] = {}
+        for module_data in module_data_list:
+            module_path = module_data["Path"]
+            if module_path == SYNTHETIC_MODULE_NAME:
+                continue
+            if module_path not in seen_modules:
+                seen_modules[module_path] = module_data
 
         return list(seen_modules.values())
 

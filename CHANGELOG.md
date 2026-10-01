@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 
 ### Fixed
+- Go ecosystem scans (`--ecosystem go`) no longer fail with empty output for modules whose root directory contains no importable Go package — either no Go files at the module root (e.g. `github.com/DataDog/package-blast-radius`, whose code lives under `cmd/` and `internal/`) or a `package main` root that Go refuses to import (e.g. `github.com/mgechev/revive`): the synthetic project's blank import made `go mod tidy` or `go list` fail, which aborted the whole run. The resolver now detects both failures and falls back to module-graph resolution - the requirement added by `go get` is kept, the module sources are downloaded at their pinned versions, and dependencies are enumerated with `go list -m all` (OSPO-158).
 - Rust crate author lookups no longer read the first archive member ending in `/Cargo.toml` (which a nested manifest such as a test fixture could shadow ahead of the real one); the crates.io source archive is now searched for the exact root member `{crate}-{version}/Cargo.toml`, preventing wrong copyright attribution for crates containing nested manifests.
 - Rust crates.io metadata and author lookups now URL-encode crate names and versions (via `urllib.parse.quote`) in crates.io API URLs, preventing malformed requests for crates or versions containing URL-reserved characters.
 
