@@ -36,7 +36,7 @@ dependencies = [
 lint = [
     "black==26.5.1",
     "isort==9.0.1",
-    "ruff==0.16.8",
+    "ruff==0.16.9",
 ]
 dev = [
     "pytest==9.1.1",
@@ -45,7 +45,7 @@ dev = [
     "mypy==2.3.1",
     "black==26.5.1",
     "isort==9.0.1",
-    "ruff==0.16.8",
+    "ruff==0.16.9",
     "mutmut==3.8.0",
     "pytest-timeout==2.4.0",
     "types-pytz==2026.4.0.20260926",
