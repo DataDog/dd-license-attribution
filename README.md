@@ -124,8 +124,8 @@ The following optional parameters are available for `generate-sbom`:
 - `--no-rust-strategy`: Skips the strategy that collects dependencies from Cargo projects using dd-rust-license-tool.
 - `--no-scancode-strategy`: Skips the strategy that gets licenses and copyright attribution using ScanCode Toolkit.
 
-##### Experimental Three-Phase Collection
-- `--experimental-strategy`: Enables a three-phase collection pipeline that separates dependency discovery from metadata extraction.
+##### Three-Phase Collection (default)
+All `generate-sbom` runs use a three-phase collection pipeline that separates dependency discovery from metadata extraction.
 
   **Phase 0 — Pre-finders (once)**: Strategies that already perform full transitive closure run once on the root package only. For example, `GitHubSbomMetadataCollectionStrategy` queries GitHub's dependency graph API which already returns all transitive deps — re-running it on each discovered dependency would fetch unrelated dep trees.
 
@@ -133,17 +133,17 @@ The following optional parameters are available for `generate-sbom`:
 
   **Phase 2 — Enricher cascade**: Once the dependency set is stable, all metadata-enricher strategies run once to extract license and copyright information.
 
-  **Ecosystem-aware defaults**: When `--experimental-strategy` is combined with `--ecosystem`, only the ecosystem-relevant finder is enabled by default. For example, `--experimental-strategy --ecosystem python` enables only the PyPI finder. All `--no-*` flags still apply and override these defaults.
+  **Ecosystem-aware defaults**: When `--ecosystem` is used, only the ecosystem-relevant finder is enabled by default. For example, `--ecosystem python` enables only the PyPI finder. All `--no-*` flags still apply and override these defaults.
 
   ```bash
   # Three-phase collection for a Python package — only PyPI finder runs in Phase 1
-  dd-license-attribution generate-sbom --experimental-strategy --ecosystem python requests
+  dd-license-attribution generate-sbom --ecosystem python requests
 
   # Allow --no-* flags to further restrict strategies
-  dd-license-attribution generate-sbom --experimental-strategy --ecosystem python --no-scancode-strategy requests
+  dd-license-attribution generate-sbom --ecosystem python --no-scancode-strategy requests
   ```
 
-  > **Note**: This flag gates experimental behavior that is not yet stable. The strategy classification (pre-finder vs. finder vs. enricher) may change as the feature matures.
+- `--experimental-strategy`: Deprecated no-op. The three-phase pipeline described above is the default and only collection strategy (the classic single-pass collector has been removed after full-scale validation showed indistinguishable results). The flag is kept for backward compatibility and as the gate for future strategy improvements; passing it has no effect.
 
 #### Output Options
 - `--format <csv|spdx|markdown>`: Selects the SBOM output format. Defaults to `csv`. Repeat this option to request multiple formats in one run, for example `--format csv --format markdown --format spdx`.

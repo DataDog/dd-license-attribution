@@ -6,6 +6,7 @@
 # Copyright 2024-present Datadog, Inc.
 
 import os
+from typing import Any
 from unittest.mock import ANY, Mock, patch
 
 import pytest
@@ -21,6 +22,12 @@ from dd_license_attribution.metadata_collector.strategies.rust_collection_strate
 )
 
 runner = CliRunner()
+
+
+def _all_collector_strategies(collector_mock: Mock) -> list[Any]:
+    """All strategies ThreePhaseMetadataCollector receives, across its three phases."""
+    kwargs = collector_mock.call_args.kwargs
+    return [*kwargs["pre_finders"], *kwargs["finders"], *kwargs["enrichers"]]
 
 
 def test_basic_run() -> None:
@@ -80,16 +87,16 @@ def test_github_auth_env() -> None:
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_skip_strategies_options(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     arg: list[str],
     strategy_name: str,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
         "https://github.com/org/repo",
         None,
@@ -102,7 +109,7 @@ def test_skip_strategies_options(
     )
     assert result.exit_code == 0
 
-    strategies = mock_metadata_collector.call_args[0][0]
+    strategies = _all_collector_strategies(mock_three_phase_collector)
 
     strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
     assert strategy_name not in strategy_classes
@@ -111,14 +118,14 @@ def test_skip_strategies_options(
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_skip_all_strategies(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
         "https://github.com/org/repo",
         None,
@@ -139,7 +146,7 @@ def test_skip_all_strategies(
     )
     assert result.exit_code == 0
 
-    strategies = mock_metadata_collector.call_args[0][0]
+    strategies = _all_collector_strategies(mock_three_phase_collector)
     strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
 
     assert "PythonPipMetadataCollectionStrategy" not in strategy_classes
@@ -156,9 +163,9 @@ def test_skip_all_strategies(
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_default_repository_rust_project_preflight_failure_exits_before_collection(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
@@ -195,7 +202,7 @@ def test_default_repository_rust_project_preflight_failure_exits_before_collecti
     )
     mock_walk_directory.assert_called_once_with("/cache/org-rust-repo")
     mock_ensure_rust_license_tool_installed.assert_called_once_with()
-    mock_metadata_collector.assert_not_called()
+    mock_three_phase_collector.assert_not_called()
     mock_python_env_manager.assert_not_called()
     mock_github.assert_called_once_with()
 
@@ -207,16 +214,16 @@ def test_default_repository_rust_project_preflight_failure_exits_before_collecti
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_default_repository_without_cargo_skips_rust_tool_preflight(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_walk_directory: Mock,
     mock_ensure_rust_license_tool_installed: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     source_code_ref = SourceCodeReference(
         repo_url="https://github.com/org/python-repo",
         branch="main",
@@ -242,7 +249,7 @@ def test_default_repository_without_cargo_skips_rust_tool_preflight(
     )
 
     assert result.exit_code == 0
-    strategies = mock_metadata_collector.call_args[0][0]
+    strategies = _all_collector_strategies(mock_three_phase_collector)
     strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
 
     mock_source_code_manager.return_value.get_code.assert_called_once_with(
@@ -252,7 +259,7 @@ def test_default_repository_without_cargo_skips_rust_tool_preflight(
     mock_ensure_rust_license_tool_installed.assert_not_called()
     assert "RustMetadataCollectionStrategy" not in strategy_classes
     assert "RustCratesIoMetadataCollectionStrategy" not in strategy_classes
-    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+    mock_three_phase_collector.return_value.collect_metadata.assert_called_once_with(
         "https://github.com/org/python-repo"
     )
     mock_python_env_manager.assert_called_once_with(ANY, 86400)
@@ -266,16 +273,16 @@ def test_default_repository_without_cargo_skips_rust_tool_preflight(
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_default_repository_ignores_cargo_files_in_test_fixtures(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_walk_directory: Mock,
     mock_ensure_rust_license_tool_installed: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     source_code_ref = SourceCodeReference(
         repo_url="https://github.com/org/python-repo",
         branch="main",
@@ -306,7 +313,7 @@ def test_default_repository_ignores_cargo_files_in_test_fixtures(
     )
 
     assert result.exit_code == 0
-    strategies = mock_metadata_collector.call_args[0][0]
+    strategies = _all_collector_strategies(mock_three_phase_collector)
     strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
 
     mock_source_code_manager.return_value.get_code.assert_called_once_with(
@@ -316,7 +323,7 @@ def test_default_repository_ignores_cargo_files_in_test_fixtures(
     mock_ensure_rust_license_tool_installed.assert_not_called()
     assert "RustMetadataCollectionStrategy" not in strategy_classes
     assert "RustCratesIoMetadataCollectionStrategy" not in strategy_classes
-    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+    mock_three_phase_collector.return_value.collect_metadata.assert_called_once_with(
         "https://github.com/org/python-repo"
     )
     mock_python_env_manager.assert_called_once_with(ANY, 86400)
@@ -334,16 +341,16 @@ def test_missing_package() -> None:
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_use_mirrors_invalid_json(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_open_file: Mock,
 ) -> None:
     mock_open_file.return_value = "invalid json"
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     result = runner.invoke(
         app,
         [
@@ -364,9 +371,9 @@ def test_use_mirrors_invalid_json(
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_use_mirrors_valid_config(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
@@ -381,7 +388,7 @@ def test_use_mirrors_valid_config(
             }
         }
     ]"""
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
         "test",
         None,
@@ -404,14 +411,14 @@ def test_use_mirrors_valid_config(
 @patch("dd_license_attribution.cli.generate_sbom_command.NpmPackageResolver")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_npm_builds_correct_strategy_pipeline(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_npm_resolver: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_npm_resolver.return_value.resolve_package.return_value = (
         "/tmp/npm_resolve/express"
     )
@@ -428,7 +435,7 @@ def test_ecosystem_npm_builds_correct_strategy_pipeline(
     )
     assert result.exit_code == 0
 
-    strategies = mock_metadata_collector.call_args[0][0]
+    strategies = _all_collector_strategies(mock_three_phase_collector)
     strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
 
     # npm ecosystem pipeline should include these strategies
@@ -469,9 +476,9 @@ def test_ecosystem_invalid_value_rejected() -> None:
 @patch("dd_license_attribution.cli.generate_sbom_command.NpmPackageResolver")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_npm_resolver_failure_exits(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_npm_resolver: Mock,
@@ -497,14 +504,14 @@ def test_ecosystem_npm_resolver_failure_exits(
 @patch("dd_license_attribution.cli.generate_sbom_command.NpmPackageResolver")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_npm_passes_local_project_path_to_strategy(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_npm_resolver: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_npm_resolver.return_value.resolve_package.return_value = (
         "/tmp/npm_resolve/express"
     )
@@ -521,7 +528,7 @@ def test_ecosystem_npm_passes_local_project_path_to_strategy(
     )
     assert result.exit_code == 0
 
-    strategies = mock_metadata_collector.call_args[0][0]
+    strategies = _all_collector_strategies(mock_three_phase_collector)
     npm_strategy = next(
         s for s in strategies if s.__class__.__name__ == "NpmMetadataCollectionStrategy"
     )
@@ -532,15 +539,15 @@ def test_ecosystem_npm_passes_local_project_path_to_strategy(
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_python_builds_correct_strategy_pipeline(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_python_env_manager: Mock,
     mock_pypi_resolver: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_pypi_resolver.return_value.resolve_package.return_value = (
         "/tmp/pypi_resolve/requests"
     )
@@ -557,7 +564,7 @@ def test_ecosystem_python_builds_correct_strategy_pipeline(
     )
     assert result.exit_code == 0
 
-    strategies = mock_metadata_collector.call_args[0][0]
+    strategies = _all_collector_strategies(mock_three_phase_collector)
     strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
 
     # python ecosystem pipeline should include these strategies
@@ -580,15 +587,15 @@ def test_ecosystem_python_builds_correct_strategy_pipeline(
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_pypi_alias_builds_same_pipeline(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_python_env_manager: Mock,
     mock_pypi_resolver: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_pypi_resolver.return_value.resolve_package.return_value = (
         "/tmp/pypi_resolve/requests"
     )
@@ -605,7 +612,7 @@ def test_ecosystem_pypi_alias_builds_same_pipeline(
     )
     assert result.exit_code == 0
 
-    strategies = mock_metadata_collector.call_args[0][0]
+    strategies = _all_collector_strategies(mock_three_phase_collector)
     strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
 
     assert "PypiMetadataCollectionStrategy" in strategy_classes
@@ -621,9 +628,9 @@ def test_ecosystem_pypi_alias_builds_same_pipeline(
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_python_resolver_failure_exits(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_python_env_manager: Mock,
@@ -651,15 +658,15 @@ def test_ecosystem_python_resolver_failure_exits(
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_python_passes_local_project_path_to_strategy(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_python_env_manager: Mock,
     mock_pypi_resolver: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_pypi_resolver.return_value.resolve_package.return_value = (
         "/tmp/pypi_resolve/requests"
     )
@@ -676,7 +683,7 @@ def test_ecosystem_python_passes_local_project_path_to_strategy(
     )
     assert result.exit_code == 0
 
-    strategies = mock_metadata_collector.call_args[0][0]
+    strategies = _all_collector_strategies(mock_three_phase_collector)
     pypi_strategy = next(
         s
         for s in strategies
@@ -688,14 +695,14 @@ def test_ecosystem_python_passes_local_project_path_to_strategy(
 @patch("dd_license_attribution.cli.generate_sbom_command.GoPackageResolver")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_go_builds_correct_strategy_pipeline(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_go_resolver: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_go_resolver.return_value.resolve_package.return_value = (
         "/tmp/go_resolve/github_com_stretchr_testify"
     )
@@ -712,7 +719,7 @@ def test_ecosystem_go_builds_correct_strategy_pipeline(
     )
     assert result.exit_code == 0
 
-    strategies = mock_metadata_collector.call_args[0][0]
+    strategies = _all_collector_strategies(mock_three_phase_collector)
     strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
 
     # go ecosystem pipeline should include these strategies
@@ -736,9 +743,9 @@ def test_ecosystem_go_builds_correct_strategy_pipeline(
 @patch("dd_license_attribution.cli.generate_sbom_command.GoPackageResolver")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_go_resolver_failure_exits(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_go_resolver: Mock,
@@ -764,14 +771,14 @@ def test_ecosystem_go_resolver_failure_exits(
 @patch("dd_license_attribution.cli.generate_sbom_command.GoPackageResolver")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_go_passes_local_project_path_to_strategy(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_go_resolver: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_go_resolver.return_value.resolve_package.return_value = (
         "/tmp/go_resolve/github_com_stretchr_testify"
     )
@@ -788,7 +795,7 @@ def test_ecosystem_go_passes_local_project_path_to_strategy(
     )
     assert result.exit_code == 0
 
-    strategies = mock_metadata_collector.call_args[0][0]
+    strategies = _all_collector_strategies(mock_three_phase_collector)
     gopkg_strategy = next(
         s
         for s in strategies
@@ -806,15 +813,15 @@ def test_ecosystem_go_passes_local_project_path_to_strategy(
 )
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_rust_builds_correct_strategy_pipeline(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_ensure_rust_license_tool_installed: Mock,
     mock_rust_resolver: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_rust_resolver.return_value.resolve_package.return_value = (
         "/tmp/rust_resolve/serde"
     )
@@ -831,7 +838,7 @@ def test_ecosystem_rust_builds_correct_strategy_pipeline(
     )
     assert result.exit_code == 0
 
-    strategies = mock_metadata_collector.call_args[0][0]
+    strategies = _all_collector_strategies(mock_three_phase_collector)
     strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
 
     assert "RustMetadataCollectionStrategy" in strategy_classes
@@ -859,9 +866,9 @@ def test_ecosystem_rust_builds_correct_strategy_pipeline(
 )
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_rust_resolver_failure_exits(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_ensure_rust_license_tool_installed: Mock,
@@ -885,7 +892,7 @@ def test_ecosystem_rust_resolver_failure_exits(
         "missing-crate"
     )
     mock_ensure_rust_license_tool_installed.assert_called_once_with()
-    mock_metadata_collector.assert_not_called()
+    mock_three_phase_collector.assert_not_called()
 
 
 @patch("dd_license_attribution.cli.generate_sbom_command.RustPackageResolver")
@@ -894,15 +901,15 @@ def test_ecosystem_rust_resolver_failure_exits(
 )
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_rust_passes_local_project_path_to_strategy(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_ensure_rust_license_tool_installed: Mock,
     mock_rust_resolver: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_rust_resolver.return_value.resolve_package.return_value = (
         "/tmp/rust_resolve/serde"
     )
@@ -919,7 +926,7 @@ def test_ecosystem_rust_passes_local_project_path_to_strategy(
     )
     assert result.exit_code == 0
 
-    strategies = mock_metadata_collector.call_args[0][0]
+    strategies = _all_collector_strategies(mock_three_phase_collector)
     rust_strategy = next(
         s
         for s in strategies
@@ -941,15 +948,15 @@ def test_ecosystem_rust_passes_local_project_path_to_strategy(
 )
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_rust_binary_fallback_passes_source_path_to_strategy(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_ensure_rust_license_tool_installed: Mock,
     mock_rust_resolver: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_rust_resolver.return_value.resolve_package.return_value = (
         "/tmp/rust_resolve/dd-rust-license-tool/crate-source/"
         "dd-rust-license-tool-1.0.6"
@@ -967,7 +974,7 @@ def test_ecosystem_rust_binary_fallback_passes_source_path_to_strategy(
     )
     assert result.exit_code == 0
 
-    strategies = mock_metadata_collector.call_args[0][0]
+    strategies = _all_collector_strategies(mock_three_phase_collector)
     rust_strategy = next(
         s
         for s in strategies
@@ -1000,15 +1007,15 @@ def test_ecosystem_rust_binary_fallback_passes_source_path_to_strategy(
 )
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_rust_no_rust_strategy_skips_tool_preflight(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_ensure_rust_license_tool_installed: Mock,
     mock_rust_resolver: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_rust_resolver.return_value.resolve_package.return_value = (
         "/tmp/rust_resolve/serde"
     )
@@ -1026,7 +1033,7 @@ def test_ecosystem_rust_no_rust_strategy_skips_tool_preflight(
     )
     assert result.exit_code == 0
 
-    strategies = mock_metadata_collector.call_args[0][0]
+    strategies = _all_collector_strategies(mock_three_phase_collector)
     strategy_classes = [strategy.__class__.__name__ for strategy in strategies]
 
     assert "RustMetadataCollectionStrategy" not in strategy_classes
@@ -1043,9 +1050,9 @@ def test_ecosystem_rust_no_rust_strategy_skips_tool_preflight(
 )
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_rust_missing_tool_error_exits_cleanly(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_ensure_rust_license_tool_installed: Mock,
@@ -1054,7 +1061,7 @@ def test_ecosystem_rust_missing_tool_error_exits_cleanly(
     mock_rust_resolver.return_value.resolve_package.return_value = (
         "/tmp/rust_resolve/serde"
     )
-    mock_metadata_collector.return_value.collect_metadata.side_effect = (
+    mock_three_phase_collector.return_value.collect_metadata.side_effect = (
         RustLicenseToolNotInstalledError(RUST_LICENSE_TOOL_INSTALL_HINT)
     )
 
@@ -1072,7 +1079,7 @@ def test_ecosystem_rust_missing_tool_error_exits_cleanly(
     assert result.exit_code == 1
     assert RUST_LICENSE_TOOL_INSTALL_HINT in result.stderr
     mock_rust_resolver.return_value.resolve_package.assert_called_once_with("serde@1.0")
-    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+    mock_three_phase_collector.return_value.collect_metadata.assert_called_once_with(
         "serde@1.0"
     )
     mock_ensure_rust_license_tool_installed.assert_called_once_with()
@@ -1084,9 +1091,9 @@ def test_ecosystem_rust_missing_tool_error_exits_cleanly(
 )
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_ecosystem_rust_preflight_failure_exits_before_resolver(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_ensure_rust_license_tool_installed: Mock,
@@ -1111,7 +1118,7 @@ def test_ecosystem_rust_preflight_failure_exits_before_resolver(
     assert RUST_LICENSE_TOOL_INSTALL_HINT in result.stderr
     mock_ensure_rust_license_tool_installed.assert_called_once_with()
     mock_rust_resolver.assert_not_called()
-    mock_metadata_collector.assert_not_called()
+    mock_three_phase_collector.assert_not_called()
 
 
 # NOTE: test_cache_ttl_without_cache_dir and test_transitive_root_same_time must

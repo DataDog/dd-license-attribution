@@ -95,7 +95,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             m.name.split("@")[0] for m in metadata if m.name is not None
         }
 
-        # Remove the seed entry created by MetadataCollector
+        # Remove the seed entry created by the collector
         metadata = [
             m
             for m in metadata
