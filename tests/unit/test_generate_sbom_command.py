@@ -25,7 +25,6 @@ _SKIP_DEPENDENCY_STRATEGIES = [
 
 
 @patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
@@ -35,7 +34,6 @@ def test_experimental_strategy_uses_three_phase_collector(
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
-    mock_metadata_collector: Mock,
     mock_three_phase_collector: Mock,
 ) -> None:
     mock_three_phase_collector.return_value.collect_metadata.return_value = []
@@ -58,11 +56,9 @@ def test_experimental_strategy_uses_three_phase_collector(
 
     assert result.exit_code == 0, result.output
     mock_three_phase_collector.assert_called_once()
-    mock_metadata_collector.assert_not_called()
 
 
 @patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
@@ -72,7 +68,6 @@ def test_experimental_github_repo_puts_github_sbom_in_pre_finders_not_finders(
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
-    mock_metadata_collector: Mock,
     mock_three_phase_collector: Mock,
 ) -> None:
     mock_three_phase_collector.return_value.collect_metadata.return_value = []
@@ -102,20 +97,18 @@ def test_experimental_github_repo_puts_github_sbom_in_pre_finders_not_finders(
 
 
 @patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
-def test_without_experimental_strategy_uses_metadata_collector(
+def test_without_experimental_strategy_still_uses_three_phase_collector(
     mock_csv: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
-    mock_metadata_collector: Mock,
     mock_three_phase_collector: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
         "https://github.com/org/repo",
         None,
@@ -129,12 +122,10 @@ def test_without_experimental_strategy_uses_metadata_collector(
     )
 
     assert result.exit_code == 0, result.output
-    mock_metadata_collector.assert_called_once()
-    mock_three_phase_collector.assert_not_called()
+    mock_three_phase_collector.assert_called_once()
 
 
 @patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
@@ -144,7 +135,6 @@ def test_experimental_strategy_no_scancode_excludes_it_from_enrichers(
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
-    mock_metadata_collector: Mock,
     mock_three_phase_collector: Mock,
 ) -> None:
     mock_three_phase_collector.return_value.collect_metadata.return_value = []
@@ -174,7 +164,6 @@ def test_experimental_strategy_no_scancode_excludes_it_from_enrichers(
 
 @patch("dd_license_attribution.cli.generate_sbom_command.PypiPackageResolver")
 @patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
@@ -184,7 +173,6 @@ def test_experimental_ecosystem_python_puts_pypi_in_finders(
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
-    mock_metadata_collector: Mock,
     mock_three_phase_collector: Mock,
     mock_pypi_resolver: Mock,
 ) -> None:
@@ -221,7 +209,6 @@ def test_experimental_ecosystem_python_puts_pypi_in_finders(
 
 @patch("dd_license_attribution.cli.generate_sbom_command.GoPackageResolver")
 @patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
@@ -231,7 +218,6 @@ def test_experimental_ecosystem_go_puts_gopkg_in_finders(
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
-    mock_metadata_collector: Mock,
     mock_three_phase_collector: Mock,
     mock_go_resolver: Mock,
 ) -> None:
@@ -268,7 +254,6 @@ def test_experimental_ecosystem_go_puts_gopkg_in_finders(
 
 @patch("dd_license_attribution.cli.generate_sbom_command.NpmPackageResolver")
 @patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
@@ -278,7 +263,6 @@ def test_experimental_ecosystem_npm_puts_npm_in_finders(
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
-    mock_metadata_collector: Mock,
     mock_three_phase_collector: Mock,
     mock_npm_resolver: Mock,
 ) -> None:
@@ -315,7 +299,6 @@ def test_experimental_ecosystem_npm_puts_npm_in_finders(
 
 @patch("dd_license_attribution.cli.generate_sbom_command.PypiPackageResolver")
 @patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
@@ -325,7 +308,6 @@ def test_experimental_ecosystem_python_no_pypi_strategy_yields_empty_finders(
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
-    mock_metadata_collector: Mock,
     mock_three_phase_collector: Mock,
     mock_pypi_resolver: Mock,
 ) -> None:
@@ -372,16 +354,16 @@ def test_root_help_hides_deprecated_generate_sbom_csv_alias() -> None:
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.SPDXReportingWritter")
 @patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_generate_sbom_defaults_to_csv(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_csv_reporting_writter: Mock,
     mock_spdx_reporting_writter: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
         "https://github.com/org/repo",
         None,
@@ -408,8 +390,8 @@ def test_generate_sbom_defaults_to_csv(
         ]
     )
     mock_python_env_manager.assert_called_once_with(ANY, 86400)
-    mock_metadata_collector.assert_called_once_with(ANY)
-    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+    mock_three_phase_collector.assert_called_once()
+    mock_three_phase_collector.return_value.collect_metadata.assert_called_once_with(
         "https://github.com/org/repo"
     )
     mock_csv_reporting_writter.assert_called_once_with()
@@ -422,16 +404,16 @@ def test_generate_sbom_defaults_to_csv(
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.SPDXReportingWritter")
 @patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_generate_sbom_supports_spdx_format(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_csv_reporting_writter: Mock,
     mock_spdx_reporting_writter: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
         "https://github.com/org/repo",
         None,
@@ -464,8 +446,8 @@ def test_generate_sbom_supports_spdx_format(
         ]
     )
     mock_python_env_manager.assert_called_once_with(ANY, 86400)
-    mock_metadata_collector.assert_called_once_with(ANY)
-    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+    mock_three_phase_collector.assert_called_once()
+    mock_three_phase_collector.return_value.collect_metadata.assert_called_once_with(
         "https://github.com/org/repo"
     )
     mock_spdx_reporting_writter.assert_called_once_with(
@@ -478,14 +460,14 @@ def test_generate_sbom_supports_spdx_format(
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_generate_sbom_supports_markdown_format_stdout(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = [
+    mock_three_phase_collector.return_value.collect_metadata.return_value = [
         Metadata(
             name="repo",
             version="1.0.0",
@@ -517,8 +499,8 @@ def test_generate_sbom_supports_markdown_format_stdout(
         ANY, mock_github.return_value, 86400, None
     )
     mock_python_env_manager.assert_called_once_with(ANY, 86400)
-    mock_metadata_collector.assert_called_once_with(ANY)
-    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+    mock_three_phase_collector.assert_called_once()
+    mock_three_phase_collector.return_value.collect_metadata.assert_called_once_with(
         "https://github.com/org/repo"
     )
 
@@ -528,9 +510,9 @@ def test_generate_sbom_supports_markdown_format_stdout(
 @patch("dd_license_attribution.cli.generate_sbom_command.PypiPackageResolver")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.MarkdownReportingWritter")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_generate_sbom_canonicalizes_python_ecosystem_for_markdown_writer(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_markdown_reporting_writter: Mock,
     mock_python_env_manager: Mock,
     mock_pypi_resolver: Mock,
@@ -540,7 +522,7 @@ def test_generate_sbom_canonicalizes_python_ecosystem_for_markdown_writer(
     mock_pypi_resolver.return_value.resolve_package.return_value = (
         "/tmp/pypi_resolve/requests"
     )
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_markdown_reporting_writter.return_value.write.return_value = "markdown-output"
 
     result = runner.invoke(
@@ -569,8 +551,8 @@ def test_generate_sbom_canonicalizes_python_ecosystem_for_markdown_writer(
         "requests==2.31.0"
     )
     mock_python_env_manager.assert_called_once_with(ANY, 86400)
-    mock_metadata_collector.assert_called_once_with(ANY)
-    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+    mock_three_phase_collector.assert_called_once()
+    mock_three_phase_collector.return_value.collect_metadata.assert_called_once_with(
         "requests==2.31.0"
     )
     mock_markdown_reporting_writter.assert_called_once_with(
@@ -603,15 +585,15 @@ def test_generate_sbom_rejects_multiple_formats_without_output_dir() -> None:
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_generate_sbom_deduplicates_repeated_stdout_format(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_csv_reporting_writter: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
         "https://github.com/org/repo",
         None,
@@ -639,8 +621,8 @@ def test_generate_sbom_deduplicates_repeated_stdout_format(
         ANY, mock_github.return_value, 86400, None
     )
     mock_python_env_manager.assert_called_once_with(ANY, 86400)
-    mock_metadata_collector.assert_called_once_with(ANY)
-    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+    mock_three_phase_collector.assert_called_once()
+    mock_three_phase_collector.return_value.collect_metadata.assert_called_once_with(
         "https://github.com/org/repo"
     )
     mock_csv_reporting_writter.assert_called_once_with()
@@ -652,16 +634,16 @@ def test_generate_sbom_deduplicates_repeated_stdout_format(
 @patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_generate_sbom_writes_multiple_output_formats_to_directory(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
     mock_create_dirs: Mock,
     mock_write_file: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = [
+    mock_three_phase_collector.return_value.collect_metadata.return_value = [
         Metadata(
             name="repo",
             version="1.0.0",
@@ -702,8 +684,8 @@ def test_generate_sbom_writes_multiple_output_formats_to_directory(
         ANY, mock_github.return_value, 86400, None
     )
     mock_python_env_manager.assert_called_once_with(ANY, 86400)
-    mock_metadata_collector.assert_called_once_with(ANY)
-    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+    mock_three_phase_collector.assert_called_once()
+    mock_three_phase_collector.return_value.collect_metadata.assert_called_once_with(
         "git@github.com:org/repo"
     )
     mock_create_dirs.assert_called_once_with("/tmp/ddla-out")
@@ -754,16 +736,16 @@ def test_generate_sbom_missing_package_with_option_shows_usage_error() -> None:
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.SPDXReportingWritter")
 @patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
-@patch("dd_license_attribution.cli.generate_sbom_command.MetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
 def test_generate_sbom_csv_deprecated_alias_uses_csv(
-    mock_metadata_collector: Mock,
+    mock_three_phase_collector: Mock,
     mock_csv_reporting_writter: Mock,
     mock_spdx_reporting_writter: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
 ) -> None:
-    mock_metadata_collector.return_value.collect_metadata.return_value = []
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
         "https://github.com/org/repo",
         None,
@@ -791,8 +773,8 @@ def test_generate_sbom_csv_deprecated_alias_uses_csv(
         ]
     )
     mock_python_env_manager.assert_called_once_with(ANY, 86400)
-    mock_metadata_collector.assert_called_once_with(ANY)
-    mock_metadata_collector.return_value.collect_metadata.assert_called_once_with(
+    mock_three_phase_collector.assert_called_once()
+    mock_three_phase_collector.return_value.collect_metadata.assert_called_once_with(
         "https://github.com/org/repo"
     )
     mock_csv_reporting_writter.assert_called_once_with()

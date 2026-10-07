@@ -19,7 +19,7 @@ src/dd_license_attribution/
 │   └── clean_spdx_id_command.py       # AI-powered SPDX license cleaning
 ├── metadata_collector/
 │   ├── metadata.py               # Metadata dataclass (core data model)
-│   ├── metadata_collector.py     # Orchestrator: seeds metadata, runs strategy pipeline
+│   ├── three_phase_metadata_collector.py  # Orchestrator: seeds metadata, runs the three-phase (pre-find / find / enrich) pipeline
 │   ├── project_scope.py          # Enum: ONLY_ROOT_PROJECT, ONLY_TRANSITIVE_DEPENDENCIES, ALL
 │   ├── license_checker.py        # Warns about copyleft/cautionary licenses
 │   └── strategies/               # All metadata collection strategies
@@ -85,27 +85,28 @@ class MetadataCollectionStrategy(ABC):
 
 ### How the Pipeline Runs
 
-1. `MetadataCollector.collect_metadata(package)` creates a **seed entry**: `Metadata(name=package, version=None, origin=package)`.
-2. The seed list is passed through each strategy in order.
-3. Each strategy returns a (possibly modified) list of `Metadata`.
-4. The final list goes to the report generator.
+1. `ThreePhaseMetadataCollector.collect_metadata(package)` creates a **seed entry**: `Metadata(name=package, version=None, origin=package)`.
+2. **Phase 0 — pre-finders** run once on the root seed: strategies that already resolve the full transitive closure themselves (e.g. the GitHub SBOM strategy).
+3. **Phase 1 — finders** run in a fixpoint loop (up to 5 iterations) until the dependency set stops growing, so transitive dependencies discovered by one finder are seen by the others.
+4. **Phase 2 — enrichers** run once over the complete, stable dependency set to extract license and copyright metadata.
+5. The final list goes to the report generator.
 
 ### Strategy Execution Order
 
-The `generate-sbom` command builds the pipeline based on CLI flags. A typical full pipeline:
+The `generate-sbom` command builds the strategy pipeline based on CLI flags and runs it through `ThreePhaseMetadataCollector`. A typical full pipeline:
 
-| Order | Strategy | Purpose |
+| Phase | Strategy | Purpose |
 |-------|----------|---------|
-| 1 | **OverrideCollectionStrategy** (early) | Apply ADD overrides before other strategies |
-| 2 | **GitHubSbomMetadataCollectionStrategy** | Fetch GitHub-generated SBOM via API; populates names, versions, origins |
-| 3 | **GoPkgMetadataCollectionStrategy** | Parse `go.mod` / `go list -json all` for Go dependencies |
-| 4 | **PypiMetadataCollectionStrategy** | Query PyPI API, create venvs, extract Python package metadata |
-| 5 | **NpmMetadataCollectionStrategy** | Parse `package-lock.json` / `yarn.lock` for npm dependencies |
-| 6 | **License3rdPartyMetadataCollectionStrategy** | Merge data from existing `LICENSE-3rdparty.csv` |
-| 7 | **ScanCodeToolkitMetadataCollectionStrategy** | Deep scan source files for license/copyright text |
-| 8 | **GitHubRepositoryMetadataCollectionStrategy** | Fetch license/owner from GitHub repo API |
-| 9 | **OverrideCollectionStrategy** (late) | Apply REMOVE and REPLACE overrides after collection |
-| 10 | **CleanupCopyrightMetadataStrategy** | Normalize copyright strings (remove years, "(c)", deduplicate) |
+| 0 (once on root) | **GitHubSbomMetadataCollectionStrategy** | Fetch GitHub-generated SBOM via API; populates names, versions, origins |
+| 1 (fixpoint loop) | **GoPkgMetadataCollectionStrategy** | Parse `go.mod` / `go list -json all` for Go dependencies |
+| 1 (fixpoint loop) | **PypiMetadataCollectionStrategy** | Query PyPI API, create venvs, extract Python package metadata |
+| 1 (fixpoint loop) | **NpmMetadataCollectionStrategy** | Parse `package-lock.json` / `yarn.lock` for npm dependencies |
+| 2 (once per dep) | **RustMetadataCollectionStrategy** | Collect dependencies from Cargo projects using dd-rust-license-tool (when a Cargo project is detected) |
+| 2 (once per dep) | **RustCratesIoMetadataCollectionStrategy** | Enrich Rust crate metadata from crates.io |
+| 2 (once per dep) | **ScanCodeToolkitMetadataCollectionStrategy** | Deep scan source files for license/copyright text |
+| 2 (once per dep) | **GitHubRepositoryMetadataCollectionStrategy** | Fetch license/owner from GitHub repo API |
+| 2 (once per dep) | **CleanupCopyrightMetadataStrategy** | Normalize copyright strings (remove years, "(c)", deduplicate) |
+| all phases | **OverrideCollectionStrategy** | Runs after Phase 0, after each finder iteration, and after each enricher, so overrides always see the latest dependency set |
 
 By default, all strategies are included in the pipeline. Individual strategies can be excluded using opt-out flags: `--no-pypi-strategy`, `--no-gopkg-strategy`, `--no-github-sbom-strategy`, `--no-npm-strategy`, `--no-scancode-strategy`.
 
@@ -221,13 +222,17 @@ CLI invocation (generate-sbom)
     ├── Build strategy pipeline from CLI flags
     │
     ▼
-MetadataCollector.collect_metadata(package)
+ThreePhaseMetadataCollector.collect_metadata(package)
     │
     ├── Create seed: Metadata(name=package, version=None, origin=package)
-    ├── Strategy 1: augment_metadata([seed]) → [entries...]
-    ├── Strategy 2: augment_metadata([entries...]) → [entries...]
-    ├── ...
-    └── Strategy N: augment_metadata([entries...]) → [final entries]
+    ├── Phase 0: pre-finder.augment_metadata([seed]) → [entries...] (once on root)
+    ├── Phase 1: for each iteration (up to 5):
+    │       ├── finder.augment_metadata([entries...]) for each finder
+    │       └── override.augment_metadata(...) (removals applied before stability check)
+    │       └── stop early when the dependency set stops growing
+    ├── Phase 2: enricher.augment_metadata([entries...]) for each enricher,
+    │       override.augment_metadata(...) after each enricher
+    └── → [final entries]
     │
     ▼
 LicenseChecker.check_cautionary_licenses()
@@ -272,7 +277,7 @@ tests/
 1. **Adaptor pattern for OS operations**: Enables pure unit tests with no filesystem or subprocess calls.
 2. **Strategy pipeline**: New metadata sources can be added as new strategies without modifying existing code.
 3. **Dependency injection**: All classes receive their dependencies (adaptors, managers) via constructor, making them testable.
-4. **Seed-based collection**: `MetadataCollector` creates a minimal seed entry; strategies enrich it progressively.
+4. **Seed-based collection**: the collector creates a minimal seed entry; strategies enrich it progressively.
 5. **Separate cache directories**: NpmPackageResolver and PypiPackageResolver use their own temp dirs to avoid collisions with SourceCodeManager's cache.
 6. **Override interleaving**: Override strategy can appear at multiple points in the pipeline (early ADD, late REMOVE/REPLACE).
 

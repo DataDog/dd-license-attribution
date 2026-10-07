@@ -17,7 +17,7 @@ class MetadataCollectionStrategy(ABC):
 
 
 class DependencyFinderStrategy(MetadataCollectionStrategy):
-    """Base for experimental strategies that only grow the dependency graph.
+    """Base for finder strategies that only grow the dependency graph.
 
     Implementations must append new Metadata entries but must not set license
     or copyright — those are the exclusive concern of MetadataEnricherStrategy.
@@ -29,7 +29,7 @@ class DependencyFinderStrategy(MetadataCollectionStrategy):
 
 
 class MetadataEnricherStrategy(MetadataCollectionStrategy):
-    """Base for experimental strategies that only extract license and copyright.
+    """Base for enricher strategies that only extract license and copyright.
 
     Implementations must not add new Metadata entries — dependency discovery is
     the exclusive concern of DependencyFinderStrategy.  Data already fetched

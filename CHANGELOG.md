@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- The classic single-pass collector has been removed: the three-phase collector (pre-find / find / enrich, previously gated behind `--experimental-strategy`) is now the only collection strategy for `generate-sbom`. Output is unchanged — before the switch, both paths were validated at full scale (all npm/Python packages and 1,130 Go packages) with indistinguishable results. `--experimental-strategy` is now a deprecated no-op: the flag is kept for backward compatibility (the composite GitHub Action still passes it through) and as the gate for future strategy improvements; passing it has no effect on collection (OSPO-791).
+
 ## [0.7.2] - 2026-10-02
 
 ### Fixed

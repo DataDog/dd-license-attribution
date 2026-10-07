@@ -21,7 +21,7 @@ _FINDER_LOOP_MAX_ITERATIONS: int = 5
 
 
 class ThreePhaseMetadataCollector:
-    """Three-phase (pre-find / find / enrich) collector for the experimental strategy pipeline.
+    """Three-phase (pre-find / find / enrich) collector: the default and only collection pipeline.
 
     Phase 0 runs pre_finders once on the root seed — for strategies that already
     perform full transitive closure themselves (e.g. GitHub SBOM) and must not be
