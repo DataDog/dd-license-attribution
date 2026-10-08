@@ -59,12 +59,19 @@ jobs:
       - name: Run full-tree mutation testing on main
         id: mutmut-run
         run: |
-          # Record the exact generator so PRs can detect a mutmut version
-          # skew against this baseline (see the compatibility check in
-          # mutation-regression.yml). Mutant IDs are positional per
-          # function, so a different mutmut version can renumber mutants
-          # and change the per-module mutant population.
-          mutmut --version > mutmut-base-tool.txt
+          # Record the exact mutation harness (generator + test runner +
+          # plugins) so PRs can detect a version skew against this baseline
+          # (see the compatibility check in mutation-regression.yml). Mutant
+          # IDs are positional per function, so a different mutmut version
+          # can renumber mutants and change the per-module mutant
+          # population; a different pytest/pytest-* version can change
+          # kill/timeout outcomes. A skewed harness must not be compared
+          # against a PR's run.
+          {
+            mutmut --version
+            pip show mutmut pytest pytest-timeout pytest-cov pytest-mock \
+              | grep -E '^(Name|Version):' || true
+          } > mutmut-base-tool.txt
           # paths_to_mutate = ["src/"] from pyproject.toml covers the full
           # mutable tree and honors the do_not_mutate excludes for
           # cli/adaptors/config; no pyproject rewrite is needed here.
