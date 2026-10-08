@@ -49,7 +49,7 @@ dev = [
     "mutmut==3.8.0",
     "pytest-timeout==2.4.0",
     "types-pytz==2026.4.0.20260926",
-    "types-requests==2.33.0.20260906"
+    "types-requests==2.33.0.20261006"
 ]
 
 [project.scripts]
