@@ -123,6 +123,19 @@ jobs:
               mutmut-base-output.txt mutmut-base-mutated.txt mutmut-base-tool.txt
           fi
 
+      - name: Prepare the PR head after a baseline cache hit
+        # The skipped target-branch step normally ends by checking out the PR
+        # head and reinstalling; the cache-hit path must do the same, or the
+        # subsequent PR mutation run would test the pull_request event's
+        # synthetic merge commit instead of the PR head (cached and uncached
+        # runs must mutation-test the same commit).
+        if: steps.changed-files.outputs.paths != '' && steps.base-cache-check.outputs.usable == 'true'
+        env:
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git checkout "${PR_HEAD_SHA}"
+          pip install -e "." --quiet
+
       - name: Run mutation testing on target branch
         if: steps.changed-files.outputs.paths != '' && steps.base-cache-check.outputs.usable != 'true'
         env:
