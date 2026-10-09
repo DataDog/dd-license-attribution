@@ -127,4 +127,4 @@ select = ["S101", "BLE001", "S602", "S605", "S606"]
 profile = "black"
 
 [tool.black]
-required-version = "26.5.1"
+required-version = "26.10.0"
