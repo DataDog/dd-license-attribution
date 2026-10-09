@@ -34,7 +34,7 @@ dependencies = [
 
 [project.optional-dependencies]
 lint = [
-    "black==26.5.1",
+    "black==26.10.0",
     "isort==9.0.2",
     "ruff==0.16.9",
 ]
@@ -43,7 +43,7 @@ dev = [
     "pytest-cov==7.1.0",
     "pytest-mock==3.16.0",
     "mypy==2.4.0",
-    "black==26.5.1",
+    "black==26.10.0",
     "isort==9.0.2",
     "ruff==0.16.9",
     "mutmut==3.8.0",
@@ -127,4 +127,4 @@ select = ["S101", "BLE001", "S602", "S605", "S606"]
 profile = "black"
 
 [tool.black]
-required-version = "26.5.1"
+required-version = "26.10.0"
