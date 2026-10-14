@@ -93,6 +93,22 @@ class PythonEnvManager(ArtifactManager):
     def get_environment(
         self, resource_path: str, force_update: bool = False
     ) -> str | None:
+        """Return the scan virtualenv for a Python project, or None.
+
+        Args:
+            resource_path: The local path of the scanned project.
+            force_update: Recreate the environment even when a cached one
+                exists.
+
+        Returns:
+            The path of the virtualenv holding the project's dependencies,
+            or None when the project is not a Python project or has no
+            dependency source this manager can install (neither a
+            pylock.toml nor a build manifest): a bare (or partially
+            pruned) virtualenv would enumerate only its bootstrap
+            toolchain and feed spurious rows into the SBOM, so callers
+            skip enumeration instead.
+        """
         files = list_dir(resource_path)
         is_python_project = False
         python_project_files = [
@@ -112,13 +128,27 @@ class PythonEnvManager(ArtifactManager):
         # `pip install .` needs a build manifest; a lock-only project (just a
         # pylock.toml) has none, so the unpinned fallback does not apply to it.
         has_build_manifest = "pyproject.toml" in files or "setup.py" in files
+        if not has_lockfile and not has_build_manifest:
+            # Manifests like requirements.txt or Pipfile are detection
+            # markers only - neither installable directly - so there is no
+            # dependency source to enumerate from: returning no environment
+            # (before even creating one) beats one whose only content is the
+            # venv's bootstrap toolchain.
+            logger.warning(
+                "Python project at %s has neither a pylock.toml nor a build "
+                "manifest (pyproject.toml/setup.py) to install dependencies "
+                "from; returning no Python environment for it",
+                resource_path,
+            )
+            return None
         normalized_rsc_path = resource_path.replace("/", "_")
         cached_env = self._get_cached(normalized_rsc_path)
         if cached_env is None or force_update:
             cached_env = self._create_python_env(resource_path, normalized_rsc_path)
-        self._install_pip_dependencies(
+        if not self._install_pip_dependencies(
             resource_path, cached_env, has_lockfile, has_build_manifest
-        )
+        ):
+            return None
         return cached_env
 
     def _create_python_env(self, resource_path: str, normalized_rsc_path: str) -> str:
@@ -134,25 +164,48 @@ class PythonEnvManager(ArtifactManager):
         venv_path: str,
         has_lockfile: bool,
         has_build_manifest: bool,
-    ) -> None:
+    ) -> bool:
+        """Install the scanned project's dependencies into the virtualenv.
+
+        Args:
+            resource_path: The local path of the scanned project.
+            venv_path: The path of the scan virtualenv.
+            has_lockfile: Whether the project holds a pylock.toml.
+            has_build_manifest: Whether the project holds a build manifest
+                (pyproject.toml/setup.py) for an unpinned `pip install .`.
+
+        Returns:
+            True when the environment holds a usable dependency set (the
+            lockfile's pinned closure or an unpinned install), False when
+            nothing could be installed - the caller must then not use the
+            environment, whose enumeration would otherwise report the
+            venv's bootstrap toolchain (or a partially pruned closure) as
+            if they were project dependencies.
+
+        Raises:
+            PyEnvRuntimeError: when the unpinned install fails.
+        """
         change_directory(resource_path)
         if has_lockfile and self._sync_locked_dependencies(venv_path):
-            return
+            return True
         if not has_build_manifest:
-            # A lock-only project has no build backend for `pip install .`;
-            # degrade gracefully instead of raising.
+            # A lock-only project whose lock sync failed has no build
+            # backend for `pip install .`: returning no environment beats
+            # enumerating a partly pruned one as if it held the project's
+            # dependencies.
             logger.warning(
                 "Could not install the pinned dependencies from pylock.toml "
                 "for %s and the project has no build manifest "
                 "(pyproject.toml/setup.py) for an unpinned install; "
-                "dependency enumeration may be incomplete",
+                "returning no Python environment",
                 resource_path,
             )
-            return
+            return False
         if run_command([f"{venv_path}/bin/python", "-m", "pip", "install", "."]) != 0:
             raise PyEnvRuntimeError(
                 "Failed to install dependencies when creating Python virtualenv cache"
             )
+        return True
 
     @staticmethod
     def _invalidate_stale_deps(deps_path: str) -> None:

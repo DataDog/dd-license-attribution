@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Python projects with no installable dependency source no longer get a scan environment whose only content is the virtualenv's bootstrap toolchain: `PythonEnvManager.get_environment` now returns no environment for a project with neither a `pylock.toml` nor a build manifest (`pyproject.toml`/`setup.py`) - before even creating one - and also for a lock-only project whose `pylock.toml` install fails with no build manifest for the unpinned `pip install .` fallback. Previously such projects (e.g. only a `requirements.txt` or `Pipfile`) produced a bare or partly pruned virtualenv whose `pip list` enumeration reported the venv's own pip as a spurious dependency row in the SBOM while the declared dependencies were omitted; the PyPI collection strategy now cleanly skips enumeration for them instead.
+
 ### Changed
 - The classic single-pass collector has been removed: the three-phase collector (pre-find / find / enrich, previously gated behind `--experimental-strategy`) is now the only collection strategy for `generate-sbom`. Output is unchanged — before the switch, both paths were validated at full scale (all npm/Python packages and 1,130 Go packages) with indistinguishable results. `--experimental-strategy` is now a deprecated no-op: the flag is kept for backward compatibility (the composite GitHub Action still passes it through) and as the gate for future strategy improvements; passing it has no effect on collection (OSPO-791).
 
