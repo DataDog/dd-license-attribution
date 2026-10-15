@@ -19,6 +19,20 @@ classifiers = [
 ]
 dependencies = [
     "agithub",
+    # Constraint, not a direct import. pluggy 1.7.0 (released 2026-10-15)
+    # hardened hookspec discovery to static attribute lookup: a module-level
+    # class decorated with HookspecMarker is no longer a discoverable spec
+    # carrier. plugincode 32.0.0 (a dependency of scancode-toolkit, which we
+    # import through scancode.api) uses exactly that pattern, so under
+    # pluggy>=1.7 importing dd_license_attribution raises
+    # "ValueError: did not find any 'plugincode.location_provider' hooks".
+    # Everything importing this package shares that chain, so the constraint
+    # belongs in the published metadata, not just CI.
+    # DO NOT REMOVE OR BUMP until a plugincode / scancode-toolkit release
+    # supports pluggy>=1.7 (upstream: aboutcode-org/plugincode), verified
+    # against tests/contract/ - then delete this pin and the matching step
+    # in integration-test.yml (action-published-package job).
+    "pluggy<1.7",
     "scancode-toolkit",
     "typer>=0.27.0",
     "pytz",
