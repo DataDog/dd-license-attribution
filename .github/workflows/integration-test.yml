@@ -265,6 +265,29 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up Python
+        # Matches the composite action's internal python-version default
+        # ("3.14") so the action's own setup-python step reuses this same
+        # tool-cache installation instead of provisioning a fresh one -
+        # required for the pluggy preinstall below to land in the
+        # environment the published package is actually installed into.
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14"
+
+      - name: Constrain pluggy for the published package
+        # This job installs datadog-license-attribution from PyPI BY DESIGN,
+        # so the pluggy<1.7 pin in pyproject.toml (see the comment there for
+        # the full rationale) is not yet part of the published wheel's
+        # metadata. Without this step, pip resolves pluggy 1.7.x freely and
+        # the action crashes at import time on the plugincode/scancode
+        # incompatibility. Preinstalling a satisfying version into the same
+        # tool-cache Python the action will use keeps the resolver from
+        # upgrading it. Drop this step (and the matching setup-python above,
+        # if nothing else needs it) once action.yml pins a published version
+        # whose own metadata carries the constraint.
+        run: python -m pip install "pluggy<1.7"
+
       - name: Validate action with published PyPI package
         id: validate-published
         uses: ./
