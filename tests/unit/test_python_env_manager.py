@@ -177,14 +177,14 @@ def test_python_env_creation_depends_on_the_project_dependency_sources(
         logger_mock.warning.assert_has_calls(
             [
                 mocker.call(
-                    "Failed to parse pylock.toml; falling back to an unpinned "
-                    "install, so dependency enumeration may not be reproducible"
+                    "Failed to parse pylock.toml and the project has no build "
+                    "manifest (pyproject.toml/setup.py) for an unpinned install"
                 ),
                 mocker.call(
                     "Could not install the pinned dependencies from pylock.toml "
                     "for %s and the project has no build manifest "
                     "(pyproject.toml/setup.py) for an unpinned install; "
-                    "returning no Python environment",
+                    "its Python dependencies will be omitted from the SBOM",
                     resource_path,
                 ),
             ]
@@ -200,7 +200,7 @@ def test_python_env_creation_depends_on_the_project_dependency_sources(
         logger_mock.warning.assert_called_once_with(
             "Python project at %s has neither a pylock.toml nor a build "
             "manifest (pyproject.toml/setup.py) to install dependencies "
-            "from; returning no Python environment for it",
+            "from; its Python dependencies will be omitted from the SBOM",
             resource_path,
         )
 
@@ -1287,14 +1287,14 @@ def test_python_env_lock_only_project_returns_none_when_lock_install_fails(
             call(
                 "Failed to install dependencies from pylock.toml (requires a "
                 "pip with PEP 751 lockfile support and wheels matching this "
-                "platform); falling back to an unpinned install, so "
-                "dependency enumeration may not be reproducible"
+                "platform) and the project has no build manifest "
+                "(pyproject.toml/setup.py) for an unpinned install"
             ),
             mocker.call(
                 "Could not install the pinned dependencies from pylock.toml "
                 "for %s and the project has no build manifest "
                 "(pyproject.toml/setup.py) for an unpinned install; "
-                "returning no Python environment",
+                "its Python dependencies will be omitted from the SBOM",
                 resource_path,
             ),
         ]
