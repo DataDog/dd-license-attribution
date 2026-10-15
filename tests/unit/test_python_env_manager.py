@@ -73,9 +73,16 @@ def test_python_env_is_not_created_if_not_python_project_detected(
         ("Pipfile.lock", False),
     ],
 )
-def test_python_env_is_created_if_python_project_detected_and_not_cached(
+def test_python_env_creation_depends_on_the_project_dependency_sources(
     mocker: MockFixture, py_file: str, buildable: bool
 ) -> None:
+    """Only projects with an installable dependency source get an environment.
+
+    A bare virtualenv holds nothing but its bootstrap toolchain, which the
+    pip-list enumeration would report as project dependencies: a project
+    with neither a pylock.toml nor a build manifest gets no environment at
+    all - before one is even created.
+    """
     get_datetime_now_mock = mocker.patch(
         "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
         side_effect=[
@@ -101,12 +108,16 @@ def test_python_env_is_created_if_python_project_detected_and_not_cached(
         "dd_license_attribution.artifact_management.python_env_manager.run_command",
         return_value=0,
     )
+    logger_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.logger"
+    )
     if py_file == "pylock.toml":
         # A lock-only project (pylock.toml, no build manifest) is detected
-        # as a Python project and still gets an environment: the lock sync
-        # fails gracefully here (unparseable lockfile) and, with no build
-        # manifest, there is no `pip install .` fallback - the virtualenv
-        # creation is the only run_command call.
+        # as a Python project and gets an environment created, but its
+        # lock sync fails here (unparseable lockfile) and with no build
+        # manifest there is no `pip install .` fallback - so the virtualenv
+        # creation is the only run_command call and no environment is
+        # returned in the end.
         python_env_path_exists_mock = mocker.patch(
             "dd_license_attribution.artifact_management.python_env_manager.path_exists",
             return_value=False,
@@ -125,62 +136,72 @@ def test_python_env_is_created_if_python_project_detected_and_not_cached(
 
     env_path = python_env_manager.get_environment(resource_path)
 
-    assert (
-        env_path
-        == "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
-    )
     get_datetime_now_mock.assert_called_once()
     artifact_path_exists_mock.assert_called_once_with("cache_dir")
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
-    python_env_list_dir_mock.assert_has_calls([call(resource_path), call("cache_dir")])
-    chdir_mock.assert_has_calls([call(resource_path), call(resource_path)])
-    expected_calls = [
-        mocker.call(
-            [
-                "python",
-                "-m",
-                "venv",
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv",
-            ]
-        )
-    ]
+    venv_path = "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
     if buildable:
         # Only projects with a build manifest (pyproject.toml/setup.py) can
         # be installed with `pip install .`
-        expected_calls.append(
-            mocker.call(
-                [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
-                    "-m",
-                    "pip",
-                    "install",
-                    ".",
-                ]
-            )
+        assert env_path == venv_path
+        python_env_list_dir_mock.assert_has_calls(
+            [call(resource_path), call("cache_dir")]
         )
-    run_command_mock.assert_has_calls(expected_calls)
-    if py_file == "pylock.toml":
-        # Exact call list: the virtualenv creation is the ONLY run_command
-        # call - a lock-only project never reaches the unpinned
-        # `pip install .` fallback.
+        chdir_mock.assert_has_calls([call(resource_path), call(resource_path)])
+        run_command_mock.assert_has_calls(
+            [
+                mocker.call(["python", "-m", "venv", venv_path]),
+                mocker.call([f"{venv_path}/bin/python", "-m", "pip", "install", "."]),
+            ]
+        )
+        logger_mock.warning.assert_not_called()
+    elif py_file == "pylock.toml":
+        # The lock sync failed and there is no build manifest for an
+        # unpinned fallback: no environment is returned and the unpinned
+        # `pip install .` is never attempted
+        assert env_path is None
+        python_env_list_dir_mock.assert_has_calls(
+            [call(resource_path), call("cache_dir")]
+        )
+        chdir_mock.assert_has_calls([call(resource_path), call(resource_path)])
+        expected_calls = [mocker.call(["python", "-m", "venv", venv_path])]
         assert run_command_mock.mock_calls == expected_calls
         python_env_open_file_mock.assert_called_once_with("pylock.toml")
         assert python_env_path_exists_mock.mock_calls == [
-            call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
-            ),
-            call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps"
-            ),
+            call(f"{venv_path}/.ddla-pylock-synced"),
+            call(f"{venv_path}/.ddla-pylock-deps"),
         ]
         python_env_output_mock.assert_called_once_with(
+            [f"{venv_path}/bin/python", "-m", "pip", "freeze", "--all"]
+        )
+        logger_mock.warning.assert_has_calls(
             [
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
-                "-m",
-                "pip",
-                "freeze",
-                "--all",
+                mocker.call(
+                    "Failed to parse pylock.toml; falling back to an unpinned "
+                    "install, so dependency enumeration may not be reproducible"
+                ),
+                mocker.call(
+                    "Could not install the pinned dependencies from pylock.toml "
+                    "for %s and the project has no build manifest "
+                    "(pyproject.toml/setup.py) for an unpinned install; "
+                    "returning no Python environment",
+                    resource_path,
+                ),
             ]
+        )
+    else:
+        # Neither a lockfile nor a build manifest (requirements.txt,
+        # setup.cfg, Pipfile, Pipfile.lock are detection markers only): no
+        # environment is created at all
+        assert env_path is None
+        python_env_list_dir_mock.assert_called_once_with(resource_path)
+        chdir_mock.assert_not_called()
+        run_command_mock.assert_not_called()
+        logger_mock.warning.assert_called_once_with(
+            "Python project at %s has neither a pylock.toml nor a build "
+            "manifest (pyproject.toml/setup.py) to install dependencies "
+            "from; returning no Python environment for it",
+            resource_path,
         )
 
 
@@ -1138,10 +1159,14 @@ def test_python_env_recreates_virtualenv_when_prune_fails(
     )
 
 
-def test_python_env_lock_only_project_degrades_gracefully_when_lock_install_fails(
+def test_python_env_lock_only_project_returns_none_when_lock_install_fails(
     mocker: MockFixture,
 ) -> None:
-    """A lock-only project (no build manifest) never runs `pip install .` - it degrades with a warning."""
+    """A lock-only project (no build manifest) whose lock install fails gets no environment.
+
+    The partly pruned virtualenv would enumerate only what the failed sync
+    left behind, so it is never handed back: callers skip the enumeration.
+    """
     get_datetime_now_mock = mocker.patch(
         "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
         side_effect=[datetime.fromisoformat("2022-01-01T00:00:00+00:00")],
@@ -1191,14 +1216,12 @@ def test_python_env_lock_only_project_degrades_gracefully_when_lock_install_fail
     python_env_manager = PythonEnvManager("cache_dir", 86400)
     resource_path = "cache_dir/20210901_000000Z/python_project"
 
-    # The environment is returned (no PyEnvRuntimeError): a lock-only project
-    # has no build backend for `pip install .`
+    # No environment is returned: a lock-only project has no build backend
+    # for `pip install .`, and a partly pruned venv must not be enumerated
+    # as if it held the project's dependencies
     env_path = python_env_manager.get_environment(resource_path)
 
-    assert (
-        env_path
-        == "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
-    )
+    assert env_path is None
     get_datetime_now_mock.assert_called_once()
     artifact_path_exists_mock.assert_called_once_with("cache_dir")
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
@@ -1257,8 +1280,8 @@ def test_python_env_lock_only_project_degrades_gracefully_when_lock_install_fail
             ),
         ]
     )
-    # No unpinned fallback for a lock-only project: a warning explains the
-    # degraded enumeration, and no marker is written
+    # No unpinned fallback for a lock-only project: a warning explains that
+    # no environment is returned, and no marker is written
     logger_mock.warning.assert_has_calls(
         [
             call(
@@ -1271,7 +1294,7 @@ def test_python_env_lock_only_project_degrades_gracefully_when_lock_install_fail
                 "Could not install the pinned dependencies from pylock.toml "
                 "for %s and the project has no build manifest "
                 "(pyproject.toml/setup.py) for an unpinned install; "
-                "dependency enumeration may be incomplete",
+                "returning no Python environment",
                 resource_path,
             ),
         ]
