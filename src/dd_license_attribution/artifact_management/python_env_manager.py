@@ -137,7 +137,7 @@ class PythonEnvManager(ArtifactManager):
             logger.warning(
                 "Python project at %s has neither a pylock.toml nor a build "
                 "manifest (pyproject.toml/setup.py) to install dependencies "
-                "from; returning no Python environment for it",
+                "from; its Python dependencies will be omitted from the SBOM",
                 resource_path,
             )
             return None
@@ -186,7 +186,9 @@ class PythonEnvManager(ArtifactManager):
             PyEnvRuntimeError: when the unpinned install fails.
         """
         change_directory(resource_path)
-        if has_lockfile and self._sync_locked_dependencies(venv_path):
+        if has_lockfile and self._sync_locked_dependencies(
+            venv_path, has_build_manifest
+        ):
             return True
         if not has_build_manifest:
             # A lock-only project whose lock sync failed has no build
@@ -197,7 +199,7 @@ class PythonEnvManager(ArtifactManager):
                 "Could not install the pinned dependencies from pylock.toml "
                 "for %s and the project has no build manifest "
                 "(pyproject.toml/setup.py) for an unpinned install; "
-                "returning no Python environment",
+                "its Python dependencies will be omitted from the SBOM",
                 resource_path,
             )
             return False
@@ -338,7 +340,9 @@ class PythonEnvManager(ArtifactManager):
                 f"Failed to clean or recreate the Python virtualenv at {venv_path}"
             )
 
-    def _sync_locked_dependencies(self, venv_path: str) -> bool:
+    def _sync_locked_dependencies(
+        self, venv_path: str, has_build_manifest: bool
+    ) -> bool:
         """Install the pinned dependency closure from the pylock.toml in the
         current working directory (the scanned project).
 
@@ -357,11 +361,16 @@ class PythonEnvManager(ArtifactManager):
 
         Args:
             venv_path: The path of the scan virtualenv.
+            has_build_manifest: Whether the project holds a build manifest
+                (pyproject.toml/setup.py) for the unpinned `pip install .`
+                fallback; without one there is nothing to fall back to and
+                the warnings must not promise an unpinned install.
 
         Returns:
             True when the environment holds the lockfile's pinned closure,
             False when the lockfile could not be installed (the caller
-            falls back to an unpinned install).
+            falls back to an unpinned install when the project has a build
+            manifest, and returns no environment otherwise).
         """
         python = f"{venv_path}/bin/python"
         lock_content = open_file("pylock.toml")
@@ -390,10 +399,16 @@ class PythonEnvManager(ArtifactManager):
         try:
             locked_versions = self._parse_locked_versions(lock_content)
         except tomllib.TOMLDecodeError:
-            logger.warning(
-                "Failed to parse pylock.toml; falling back to an unpinned "
-                "install, so dependency enumeration may not be reproducible"
-            )
+            if has_build_manifest:
+                logger.warning(
+                    "Failed to parse pylock.toml; falling back to an unpinned "
+                    "install, so dependency enumeration may not be reproducible"
+                )
+            else:
+                logger.warning(
+                    "Failed to parse pylock.toml and the project has no build "
+                    "manifest (pyproject.toml/setup.py) for an unpinned install"
+                )
             # The environment still holds the previously synced closure: it
             # must be pruned or the unpinned fallback enumeration (pip
             # list) would report stale packages.
@@ -417,12 +432,20 @@ class PythonEnvManager(ArtifactManager):
             )
             != 0
         ):
-            logger.warning(
-                "Failed to install dependencies from pylock.toml (requires a "
-                "pip with PEP 751 lockfile support and wheels matching this "
-                "platform); falling back to an unpinned install, so "
-                "dependency enumeration may not be reproducible"
-            )
+            if has_build_manifest:
+                logger.warning(
+                    "Failed to install dependencies from pylock.toml (requires a "
+                    "pip with PEP 751 lockfile support and wheels matching this "
+                    "platform); falling back to an unpinned install, so "
+                    "dependency enumeration may not be reproducible"
+                )
+            else:
+                logger.warning(
+                    "Failed to install dependencies from pylock.toml (requires a "
+                    "pip with PEP 751 lockfile support and wheels matching this "
+                    "platform) and the project has no build manifest "
+                    "(pyproject.toml/setup.py) for an unpinned install"
+                )
             self._invalidate_stale_deps(deps_path)
             return False
         # The sidecar enumerates what pip ACTUALLY installed, intersected
