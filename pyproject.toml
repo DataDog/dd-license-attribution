@@ -30,8 +30,10 @@ dependencies = [
     # belongs in the published metadata, not just CI.
     # DO NOT REMOVE OR BUMP until a plugincode / scancode-toolkit release
     # supports pluggy>=1.7 (upstream: aboutcode-org/plugincode), verified
-    # against tests/contract/ - then delete this pin and the matching step
-    # in integration-test.yml (action-published-package job).
+    # against tests/contract/ - then delete this pin. (The matching CI
+    # constrain step in integration-test.yml was already removed when the
+    # action default moved to 0.8.0, whose published metadata carries this
+    # constraint.)
     "pluggy<1.7",
     "scancode-toolkit",
     "typer>=0.27.0",
