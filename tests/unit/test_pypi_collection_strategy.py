@@ -2063,14 +2063,20 @@ def test_pypi_collection_strategy_logs_fetched_pypi_metadata_at_debug_level(
     with caplog.at_level(logging.DEBUG, logger="dd_license_attribution"):
         strategy.augment_metadata(initial_metadata)
 
-    debug_messages = [record.getMessage() for record in caplog.records]
-    pypi_metadata_messages = [
-        message for message in debug_messages if message.startswith("pypi_metadata: ")
+    pypi_metadata_records = [
+        record
+        for record in caplog.records
+        if record.getMessage().startswith("pypi_metadata: ")
     ]
-    assert pypi_metadata_messages, (debug_messages,)
+    captured_messages = [record.getMessage() for record in caplog.records]
+    assert pypi_metadata_records, (captured_messages,)
+    assert all(record.levelname == "DEBUG" for record in pypi_metadata_records), [
+        (record.levelname, record.getMessage()) for record in pypi_metadata_records
+    ]
     assert any(
-        "package_debug_logged" in message for message in pypi_metadata_messages
-    ), (debug_messages,)
+        "package_debug_logged" in record.getMessage()
+        for record in pypi_metadata_records
+    ), (captured_messages,)
     get_dependencies_mock.assert_called_once_with("/tmp/top_pkg_venv")
     mock_request.assert_called_once_with(
         "https://pypi.org/pypi/package_debug_logged/1.0.0/json"
