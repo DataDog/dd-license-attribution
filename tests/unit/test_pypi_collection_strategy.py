@@ -5,8 +5,10 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
+import logging
 import typing
 
+import pytest
 import pytest_mock
 
 from dd_license_attribution.artifact_management.artifact_manager import (
@@ -1776,3 +1778,306 @@ def test_git_repo_path_only_transitive_excludes_top_package(
     )
     get_dependencies_mock.assert_called_once_with("cache_dir/org_package1_venv")
     mock_request.assert_called_once_with("https://pypi.org/pypi/package3/1.0.0/json")
+
+
+def test_local_project_path_guard_raises_with_expected_message(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """The local-path guard rejects a call without a local project path.
+
+    The guard in _augment_metadata_from_local_path protects against invoking
+    the method while local_project_path is unset, so it is exercised directly.
+    """
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = ("top_pkg", None)
+    python_env_manager_mock = mocker.Mock()
+
+    strategy = PypiMetadataCollectionStrategy(
+        "top_pkg",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+        local_project_path="/tmp/top_pkg",
+    )
+    strategy.local_project_path = None
+
+    with pytest.raises(
+        ValueError,
+        match="^local_project_path must be set before calling this method$",
+    ):
+        strategy._augment_metadata_from_local_path([])
+
+    # The guard fires before any environment setup happens.
+    python_env_manager_mock.get_environment.assert_not_called()
+
+
+def test_pypi_collection_strategy_uses_code_project_url_key_as_origin(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A valid GitHub URL under the 'code' project_urls key becomes the origin.
+
+    The 'code' key is one of the recognized project URL keys and must be
+    preferred over the default 'pypi:<name>' origin for new entries.
+    """
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = ("top_pkg", None)
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = "/tmp/top_pkg_venv"
+    get_dependencies_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[("package_with_code_url", "1.0.0")],
+    )
+    mock_request = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy.requests.get"
+    )
+    mock_request.return_value = MockedRequestsResponse(
+        200,
+        {
+            "info": {
+                "name": "package_with_code_url",
+                "version": "1.0.0",
+                "license": "MIT",
+                "author": "Author E",
+                "project_urls": {
+                    "code": "https://github.com/org/package_with_code_url"
+                },
+            }
+        },
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "top_pkg",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="top_pkg",
+            origin=None,
+            local_src_path="/path/to/top_pkg",
+            version="1.0.0",
+            license=["MIT"],
+            copyright=[],
+        )
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    dep = next(m for m in result if m.name == "package_with_code_url")
+    assert dep.origin == "https://github.com/org/package_with_code_url"
+    python_env_manager_mock.get_environment.assert_called_once_with("/path/to/top_pkg")
+    get_dependencies_mock.assert_called_once_with("/tmp/top_pkg_venv")
+    mock_request.assert_called_once_with(
+        "https://pypi.org/pypi/package_with_code_url/1.0.0/json"
+    )
+
+
+def test_environment_path_resolved_from_translated_top_package_name(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A GitHub top package matches SBOM entries under the translated name.
+
+    The SBOM stores GitHub top packages as 'com.github.<owner>/<repo>'; the
+    environment path must be resolved from that entry's local_src_path rather
+    than from an unrelated package that also carries a local path.
+    """
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        None,
+    )
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = "/tmp/repo_venv"
+    get_dependencies_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[],
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "https://github.com/org/repo",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="unrelated_pkg",
+            origin="https://github.com/org/unrelated",
+            local_src_path="/path/to/unrelated",
+            version="1.0.0",
+            license=[],
+            copyright=[],
+        ),
+        Metadata(
+            name="com.github.org/repo",
+            origin=None,
+            local_src_path="/path/to/repo",
+            version="1.0.0",
+            license=[],
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    python_env_manager_mock.get_environment.assert_called_once_with("/path/to/repo")
+    get_dependencies_mock.assert_called_once_with("/tmp/repo_venv")
+    assert [m.name for m in result] == ["unrelated_pkg", "com.github.org/repo"]
+
+
+def test_pypi_collection_strategy_applies_single_character_license(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A one-character license string is a non-empty license and must be applied.
+
+    Guards the non-empty check: a 1-character license such as '?' must be set
+    on both an existing metadata entry and a newly created one.
+    """
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = ("top_pkg", None)
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = "/tmp/top_pkg_venv"
+    get_dependencies_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[
+            ("pkg_in_initial_metadata", "1.0.0"),
+            ("pkg_new_entry", "2.0.0"),
+        ],
+    )
+    mock_request = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy.requests.get"
+    )
+    mock_request.side_effect = [
+        MockedRequestsResponse(
+            200,
+            {
+                "info": {
+                    "name": "pkg_in_initial_metadata",
+                    "version": "1.0.0",
+                    "license": "?",
+                    "author": "Author F",
+                }
+            },
+        ),
+        MockedRequestsResponse(
+            200,
+            {
+                "info": {
+                    "name": "pkg_new_entry",
+                    "version": "2.0.0",
+                    "license": "?",
+                    "author": "Author G",
+                }
+            },
+        ),
+    ]
+
+    strategy = PypiMetadataCollectionStrategy(
+        "top_pkg",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="top_pkg",
+            origin=None,
+            local_src_path="/path/to/top_pkg",
+            version="1.0.0",
+            license=["MIT"],
+            copyright=[],
+        ),
+        Metadata(
+            name="pkg_in_initial_metadata",
+            origin=None,
+            local_src_path=None,
+            version=None,
+            license=[],
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    updated = next(m for m in result if m.name == "pkg_in_initial_metadata")
+    assert updated.license == ["?"]
+    new_entry = next(m for m in result if m.name == "pkg_new_entry")
+    assert new_entry.license == ["?"]
+    get_dependencies_mock.assert_called_once_with("/tmp/top_pkg_venv")
+    mock_request.assert_has_calls(
+        [
+            mocker.call("https://pypi.org/pypi/pkg_in_initial_metadata/1.0.0/json"),
+            mocker.call("https://pypi.org/pypi/pkg_new_entry/2.0.0/json"),
+        ]
+    )
+
+
+def test_pypi_collection_strategy_logs_fetched_pypi_metadata_at_debug_level(
+    mocker: pytest_mock.MockFixture,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The fetched PyPI payload is logged at debug level with its content."""
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = ("top_pkg", None)
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = "/tmp/top_pkg_venv"
+    get_dependencies_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[("package_debug_logged", "1.0.0")],
+    )
+    mock_request = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy.requests.get"
+    )
+    mock_request.return_value = MockedRequestsResponse(
+        200,
+        {
+            "info": {
+                "name": "package_debug_logged",
+                "version": "1.0.0",
+            }
+        },
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "top_pkg",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="top_pkg",
+            origin=None,
+            local_src_path="/path/to/top_pkg",
+            version="1.0.0",
+            license=["MIT"],
+            copyright=[],
+        )
+    ]
+
+    with caplog.at_level(logging.DEBUG, logger="dd_license_attribution"):
+        strategy.augment_metadata(initial_metadata)
+
+    pypi_metadata_records = [
+        record
+        for record in caplog.records
+        if record.getMessage().startswith("pypi_metadata: ")
+    ]
+    captured_messages = [record.getMessage() for record in caplog.records]
+    assert pypi_metadata_records, (captured_messages,)
+    assert all(record.levelname == "DEBUG" for record in pypi_metadata_records), [
+        (record.levelname, record.getMessage()) for record in pypi_metadata_records
+    ]
+    assert any(
+        "package_debug_logged" in record.getMessage()
+        for record in pypi_metadata_records
+    ), (captured_messages,)
+    get_dependencies_mock.assert_called_once_with("/tmp/top_pkg_venv")
+    mock_request.assert_called_once_with(
+        "https://pypi.org/pypi/package_debug_logged/1.0.0/json"
+    )
