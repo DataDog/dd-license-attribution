@@ -2005,7 +2005,12 @@ def test_pypi_collection_strategy_applies_single_character_license(
     new_entry = next(m for m in result if m.name == "pkg_new_entry")
     assert new_entry.license == ["?"]
     get_dependencies_mock.assert_called_once_with("/tmp/top_pkg_venv")
-    assert mock_request.call_count == 2
+    mock_request.assert_has_calls(
+        [
+            mocker.call("https://pypi.org/pypi/pkg_in_initial_metadata/1.0.0/json"),
+            mocker.call("https://pypi.org/pypi/pkg_new_entry/2.0.0/json"),
+        ]
+    )
 
 
 def test_pypi_collection_strategy_logs_fetched_pypi_metadata_at_debug_level(
