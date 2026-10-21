@@ -1807,6 +1807,9 @@ def test_local_project_path_guard_raises_with_expected_message(
     ):
         strategy._augment_metadata_from_local_path([])
 
+    # The guard fires before any environment setup happens.
+    python_env_manager_mock.get_environment.assert_not_called()
+
 
 def test_pypi_collection_strategy_uses_code_project_url_key_as_origin(
     mocker: pytest_mock.MockFixture,
