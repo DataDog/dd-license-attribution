@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Mirror `ref_mapping` targets can now be tags, not only branches: a mapping such as `{"branch:main": "tag:v1.0"}` makes `--use-mirrors` clone the mirror repository at that tag (via `git clone --branch`, which resolves tag names and checks out a detached HEAD). This enables analyzing packages whose published source corresponds to a tag rather than to the default branch.
+
 ## [0.8.0] - 2026-10-19
 
 ### Fixed

@@ -679,9 +679,9 @@ class SourceCodeManager(ArtifactManager):
                         effective_ref_name,
                         mirror_url,
                     )
-                    if effective_ref_type != RefType.BRANCH:
+                    if effective_ref_type == RefType.COMMIT:
                         raise NotImplementedError(
-                            f"Mirror reference type {effective_ref_type} is not yet implemented. Only branch-to-branch mapping is supported."
+                            f"Mirror reference type {effective_ref_type} is not yet implemented. Only branch and tag mapping targets are supported."
                         )
                     return (
                         mirror_url,

@@ -847,11 +847,106 @@ def test_source_code_manager_with_mirror_ref_mapping(
 @patch(
     "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
 )
+@patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
+@patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
+@patch("dd_license_attribution.artifact_management.source_code_manager.path_exists")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+@patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
+@patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+def test_source_code_manager_with_mirror_ref_mapping_to_tag(
+    get_datetime_now_mock: Mock,
+    git_url_parse_mock: Mock,
+    path_exists_artifact_mock: Mock,
+    path_exists_source_code_mock: Mock,
+    run_command_mock: Mock,
+    mock_create_dirs: Mock,
+    output_from_command_mock: Mock,
+) -> None:
+    """A branch->tag ref_mapping clones the mirror repository at the tag.
+
+    git clone --branch accepts tag names (detached HEAD at the tag), so a
+    tag mapping target is supported the same way a branch target is; the
+    local cache stays keyed by the original branch name.
+    """
+    request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
+
+    # Configure mocks
+    get_datetime_now_mock.return_value = datetime.fromisoformat(
+        "2022-01-01T00:00:00+00:00"
+    )
+    github_client_mock = create_github_client_mock()
+    git_url_parse_mock.return_value = GitUrlParseMock(
+        valid=True,
+        owner="test_owner",
+        repo="test_repo",
+        branch="test_branch",
+        path="test_dir",
+        path_raw="/tree/test_branch/test_dir",
+    )
+    path_exists_artifact_mock.return_value = True
+    path_exists_source_code_mock.return_value = False
+    run_command_mock.return_value = 0
+    output_from_command_mock.return_value = (
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+    )
+
+    mirror_spec = MirrorSpec(
+        original_url="https://github.com/test_owner/test_repo",
+        mirror_url="https://github.com/mirror_owner/mirror_repo",
+        ref_mapping={(RefType.BRANCH, "test_branch"): (RefType.TAG, "v1.0")},
+    )
+    source_code_manager = SourceCodeManager(
+        "cache_dir", github_client_mock, 86400, mirrors=[mirror_spec]
+    )
+    code_ref = source_code_manager.get_code(request_url)
+
+    expected_source_code_reference = SourceCodeReference(
+        repo_url="https://github.com/test_owner/test_repo",
+        branch="test_branch",
+        local_root_path="cache_dir/20220101_000000Z/test_owner-test_repo/test_branch",
+        local_full_path="cache_dir/20220101_000000Z/test_owner-test_repo/test_branch/test_dir",
+    )
+    expected_cache_dir = "cache_dir/20220101_000000Z/test_owner-test_repo/test_branch"
+
+    assert code_ref == expected_source_code_reference
+    get_datetime_now_mock.assert_called_once()
+    assert (
+        git_url_parse_mock.call_count == 3
+    )  # Called: in get_code (disambiguation), in get_canonical_urls, in get_code (main logic)
+    path_exists_artifact_mock.assert_called_once_with("cache_dir")
+    path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
+    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    output_from_command_mock.assert_called_once_with(
+        [
+            "git",
+            "ls-remote",
+            expected_source_code_reference.repo_url,
+            expected_source_code_reference.branch,
+        ]
+    )
+    run_command_mock.assert_called_once_with(
+        [
+            "git",
+            "clone",
+            "-c",
+            "advice.detachedHead=False",
+            "--depth",
+            "1",
+            "--branch=v1.0",
+            "https://github.com/mirror_owner/mirror_repo",
+            expected_cache_dir,
+        ]
+    )
+
+
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
 @patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
 @patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
-def test_source_code_manager_with_unsupported_ref_type(
+def test_source_code_manager_with_unsupported_commit_ref_type(
     get_datetime_now_mock: Mock,
     git_url_parse_mock: Mock,
     path_exists_artifact_mock: Mock,
@@ -882,7 +977,12 @@ def test_source_code_manager_with_unsupported_ref_type(
     mirror_spec = MirrorSpec(
         original_url="https://github.com/test_owner/test_repo",
         mirror_url="https://github.com/mirror_owner/mirror_repo",
-        ref_mapping={(RefType.BRANCH, "test_branch"): (RefType.TAG, "v1.0")},
+        ref_mapping={
+            (RefType.BRANCH, "test_branch"): (
+                RefType.COMMIT,
+                "72a11341aa684010caf1ca5dee779f0e7e84dfe9",
+            )
+        },
     )
     source_code_manager = SourceCodeManager(
         "cache_dir", github_client_mock, 86400, mirrors=[mirror_spec]
@@ -893,7 +993,7 @@ def test_source_code_manager_with_unsupported_ref_type(
 
     assert (
         str(e.value)
-        == "Mirror reference type RefType.TAG is not yet implemented. Only branch-to-branch mapping is supported."
+        == "Mirror reference type RefType.COMMIT is not yet implemented. Only branch and tag mapping targets are supported."
     )
     get_datetime_now_mock.assert_called_once()
     assert (
