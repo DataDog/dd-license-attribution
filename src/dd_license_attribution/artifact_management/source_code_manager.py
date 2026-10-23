@@ -838,10 +838,12 @@ class SourceCodeManager(ArtifactManager):
             # `git clone --branch` prefers a same-named branch over the tag, so
             # fetch the fully qualified tag ref explicitly instead. Keep it as a
             # local tag so tag-derived versioning works, and set `origin` as
-            # clone would, since Git LFS resolves its endpoint from it.
+            # clone would, since Git LFS resolves its endpoint from it. Use
+            # `git config` rather than `remote add` so retries in the same
+            # directory do not fail on an already existing remote.
             clone_commands = [
                 ["git", "init", "--quiet"],
-                ["git", "remote", "add", "origin", effective_repository_url],
+                ["git", "config", "remote.origin.url", effective_repository_url],
                 [
                     "git",
                     "fetch",

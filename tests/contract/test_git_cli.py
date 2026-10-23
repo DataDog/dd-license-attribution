@@ -58,9 +58,9 @@ def repo_with_same_named_branch_and_tag(
 
 def _checkout_tag(repo_url: str, dest: Path, env: dict[str, str] | None = None) -> None:
     """The command sequence SourceCodeManager uses for mirror tag targets."""
-    dest.mkdir()
+    dest.mkdir(exist_ok=True)
     _git(["init", "--quiet"], dest, env)
-    _git(["remote", "add", "origin", repo_url], dest, env)
+    _git(["config", "remote.origin.url", repo_url], dest, env)
     _git(
         ["fetch", "--depth", "1", "origin", "refs/tags/v1.0:refs/tags/v1.0"],
         dest,
@@ -95,6 +95,21 @@ class TestGitCliContract:
         assert _git(["rev-parse", "HEAD"], dest) == tag_commit
         # Tag-derived versioning needs the local tag ref.
         assert _git(["describe", "--tags", "--exact-match", "HEAD"], dest) == "v1.0"
+
+    def test_tag_checkout_is_retryable_in_same_dir_after_failed_fetch(
+        self,
+        repo_with_same_named_branch_and_tag: tuple[str, str, str],
+        tmp_path: Path,
+    ) -> None:
+        repo_url, tag_commit, _ = repo_with_same_named_branch_and_tag
+        dest = tmp_path / "dest"
+        with pytest.raises(subprocess.CalledProcessError):
+            _checkout_tag((tmp_path / "missing.git").as_uri(), dest)
+
+        _checkout_tag(repo_url, dest)
+
+        assert _git(["rev-parse", "HEAD"], dest) == tag_commit
+        assert _git(["remote", "get-url", "origin"], dest) == repo_url
 
     @pytest.mark.skipif(shutil.which("git-lfs") is None, reason="git-lfs missing")
     def test_tag_checkout_smudges_lfs_files_from_origin(self, tmp_path: Path) -> None:

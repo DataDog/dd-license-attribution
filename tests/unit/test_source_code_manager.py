@@ -930,9 +930,8 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
             call(
                 [
                     "git",
-                    "remote",
-                    "add",
-                    "origin",
+                    "config",
+                    "remote.origin.url",
                     "https://github.com/mirror_owner/mirror_repo",
                 ],
                 cwd=expected_cache_dir,
@@ -1034,9 +1033,8 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
             call(
                 [
                     "git",
-                    "remote",
-                    "add",
-                    "origin",
+                    "config",
+                    "remote.origin.url",
                     "https://github.com/mirror_owner/mirror_repo",
                 ],
                 cwd=expected_cache_dir,
@@ -1055,6 +1053,122 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
         ]
     )
     assert run_command_mock.call_count == 3
+
+
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+@patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
+@patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
+@patch("dd_license_attribution.artifact_management.source_code_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+@patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
+@patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+def test_source_code_manager_mirror_tag_forced_retry_after_failed_fetch(
+    get_datetime_now_mock: Mock,
+    git_url_parse_mock: Mock,
+    path_exists_artifact_mock: Mock,
+    artifact_list_dir_mock: Mock,
+    source_code_list_dir_mock: Mock,
+    run_command_mock: Mock,
+    mock_create_dirs: Mock,
+    output_from_command_mock: Mock,
+) -> None:
+    """A forced retry reuses the same cache dir; the tag setup must be
+    idempotent so the fetch is attempted again."""
+    request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
+
+    get_datetime_now_mock.return_value = datetime.fromisoformat(
+        "2022-01-01T00:00:00+00:00"
+    )
+    github_client_mock = create_github_client_mock()
+    git_url_parse_mock.return_value = GitUrlParseMock(
+        valid=True,
+        owner="test_owner",
+        repo="test_repo",
+        branch="test_branch",
+        path="test_dir",
+        path_raw="/tree/test_branch/test_dir",
+    )
+    path_exists_artifact_mock.return_value = True
+    artifact_list_dir_mock.return_value = []
+    source_code_list_dir_mock.return_value = []
+    # First attempt: fetch fails. Retry: every step succeeds.
+    run_command_mock.side_effect = [0, 0, 128, 0, 0, 0, 0]
+    output_from_command_mock.return_value = (
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+    )
+
+    mirror_spec = MirrorSpec(
+        original_url="https://github.com/test_owner/test_repo",
+        mirror_url="https://github.com/mirror_owner/mirror_repo",
+        ref_mapping={(RefType.BRANCH, "test_branch"): (RefType.TAG, "v1.0")},
+    )
+    source_code_manager = SourceCodeManager(
+        "cache_dir", github_client_mock, 86400, mirrors=[mirror_spec]
+    )
+    first = source_code_manager.get_code(request_url, force_update=True)
+    retry = source_code_manager.get_code(request_url, force_update=True)
+
+    expected_cache_dir = "cache_dir/20220101_000000Z/test_owner-test_repo/test_branch"
+    assert first is None
+    assert retry == SourceCodeReference(
+        repo_url="https://github.com/test_owner/test_repo",
+        branch="test_branch",
+        local_root_path=expected_cache_dir,
+        local_full_path=f"{expected_cache_dir}/test_dir",
+    )
+    get_datetime_now_mock.assert_called_once()
+    # 3 calls on the first attempt; the retry hits the canonical URL cache.
+    assert git_url_parse_mock.call_count == 5
+    path_exists_artifact_mock.assert_called_once_with("cache_dir")
+    artifact_list_dir_mock.assert_called_once_with("cache_dir")
+    source_code_list_dir_mock.assert_has_calls([call("cache_dir"), call("cache_dir")])
+    assert source_code_list_dir_mock.call_count == 2
+    mock_create_dirs.assert_has_calls(
+        [call(expected_cache_dir), call(expected_cache_dir)]
+    )
+    assert mock_create_dirs.call_count == 2
+    ls_remote_call = call(
+        ["git", "ls-remote", "https://github.com/test_owner/test_repo", "test_branch"]
+    )
+    output_from_command_mock.assert_has_calls([ls_remote_call, ls_remote_call])
+    assert output_from_command_mock.call_count == 2
+    init = call(["git", "init", "--quiet"], cwd=expected_cache_dir)
+    set_origin = call(
+        [
+            "git",
+            "config",
+            "remote.origin.url",
+            "https://github.com/mirror_owner/mirror_repo",
+        ],
+        cwd=expected_cache_dir,
+    )
+    fetch = call(
+        [
+            "git",
+            "fetch",
+            "--depth",
+            "1",
+            "origin",
+            "refs/tags/v1.0:refs/tags/v1.0",
+        ],
+        cwd=expected_cache_dir,
+    )
+    checkout = call(
+        ["git", "-c", "advice.detachedHead=False", "checkout", "FETCH_HEAD"],
+        cwd=expected_cache_dir,
+    )
+    assert run_command_mock.call_args_list == [
+        init,
+        set_origin,
+        fetch,
+        init,
+        set_origin,
+        fetch,
+        checkout,
+    ]
 
 
 @patch(
