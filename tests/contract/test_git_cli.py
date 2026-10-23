@@ -78,7 +78,12 @@ class TestGitCliContract:
         dest = tmp_path / "dest"
         dest.mkdir()
         _git(["init", "--quiet"], dest)
-        _git(["fetch", "--depth", "1", repo_url, "refs/tags/v1.0"], dest)
+        _git(
+            ["fetch", "--depth", "1", repo_url, "refs/tags/v1.0:refs/tags/v1.0"],
+            dest,
+        )
         _git(["-c", "advice.detachedHead=False", "checkout", "FETCH_HEAD"], dest)
 
         assert _git(["rev-parse", "HEAD"], dest) == tag_commit
+        # Tag-derived versioning needs the local tag ref.
+        assert _git(["describe", "--tags", "--exact-match", "HEAD"], dest) == "v1.0"

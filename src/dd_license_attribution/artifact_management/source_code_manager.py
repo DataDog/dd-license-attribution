@@ -836,7 +836,8 @@ class SourceCodeManager(ArtifactManager):
         )
         if effective_ref_type == RefType.TAG:
             # `git clone --branch` prefers a same-named branch over the tag, so
-            # fetch the fully qualified tag ref explicitly instead.
+            # fetch the fully qualified tag ref explicitly instead. Keep it as a
+            # local tag so tag-derived versioning works.
             clone_commands = [
                 ["git", "init", "--quiet"],
                 [
@@ -845,7 +846,7 @@ class SourceCodeManager(ArtifactManager):
                     "--depth",
                     "1",
                     effective_repository_url,
-                    f"refs/tags/{effective_branch}",
+                    f"refs/tags/{effective_branch}:refs/tags/{effective_branch}",
                 ],
                 [
                     "git",
