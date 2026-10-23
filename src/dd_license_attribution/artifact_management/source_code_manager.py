@@ -773,7 +773,7 @@ class SourceCodeManager(ArtifactManager):
         )
         # Get mirror URL and branch if available
         try:
-            effective_repository_url, _, effective_branch, branch = (
+            effective_repository_url, effective_ref_type, effective_branch, branch = (
                 self._get_mirror_url_and_ref(
                     repository_url,
                     RefType.BRANCH,
@@ -834,23 +834,51 @@ class SourceCodeManager(ArtifactManager):
             effective_branch,
             local_branch_path,
         )
-        clone_command = [
-            "git",
-            "clone",
-            "-c",
-            "advice.detachedHead=False",
-            "--depth",
-            "1",
-            f"--branch={effective_branch}",
-            effective_repository_url,
-            local_branch_path,
-        ]
-        if git_env is None:
-            clone_result = run_command(clone_command)
+        if effective_ref_type == RefType.TAG:
+            # `git clone --branch` prefers a same-named branch over the tag, so
+            # fetch the fully qualified tag ref explicitly instead.
+            clone_commands = [
+                ["git", "init", "--quiet"],
+                [
+                    "git",
+                    "fetch",
+                    "--depth",
+                    "1",
+                    effective_repository_url,
+                    f"refs/tags/{effective_branch}",
+                ],
+                [
+                    "git",
+                    "-c",
+                    "advice.detachedHead=False",
+                    "checkout",
+                    "FETCH_HEAD",
+                ],
+            ]
+            clone_kwargs: dict[str, Any] = {"cwd": local_branch_path}
         else:
-            clone_result = run_command(
-                clone_command, env=git_env, timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS
-            )
+            clone_commands = [
+                [
+                    "git",
+                    "clone",
+                    "-c",
+                    "advice.detachedHead=False",
+                    "--depth",
+                    "1",
+                    f"--branch={effective_branch}",
+                    effective_repository_url,
+                    local_branch_path,
+                ]
+            ]
+            clone_kwargs = {}
+        if git_env is not None:
+            clone_kwargs["env"] = git_env
+            clone_kwargs["timeout"] = NONINTERACTIVE_GIT_TIMEOUT_SECONDS
+        clone_result = 0
+        for clone_command in clone_commands:
+            clone_result = run_command(clone_command, **clone_kwargs)
+            if clone_result != 0:
+                break
         if clone_result != 0:
             logger.error(
                 "Failed to clone repository %s at branch %s to %s",

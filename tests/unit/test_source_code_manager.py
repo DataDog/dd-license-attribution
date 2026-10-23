@@ -862,11 +862,11 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
     mock_create_dirs: Mock,
     output_from_command_mock: Mock,
 ) -> None:
-    """A branch->tag ref_mapping clones the mirror repository at the tag.
+    """A branch->tag ref_mapping checks out the mirror repository at the tag.
 
-    git clone --branch accepts tag names (detached HEAD at the tag), so a
-    tag mapping target is supported the same way a branch target is; the
-    local cache stays keyed by the original branch name.
+    The tag is fetched by its fully qualified ref so a same-named branch in
+    the mirror cannot shadow it; the local cache stays keyed by the original
+    branch name.
     """
     request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
 
@@ -924,19 +924,117 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
             expected_source_code_reference.branch,
         ]
     )
-    run_command_mock.assert_called_once_with(
+    run_command_mock.assert_has_calls(
         [
-            "git",
-            "clone",
-            "-c",
-            "advice.detachedHead=False",
-            "--depth",
-            "1",
-            "--branch=v1.0",
-            "https://github.com/mirror_owner/mirror_repo",
-            expected_cache_dir,
+            call(["git", "init", "--quiet"], cwd=expected_cache_dir),
+            call(
+                [
+                    "git",
+                    "fetch",
+                    "--depth",
+                    "1",
+                    "https://github.com/mirror_owner/mirror_repo",
+                    "refs/tags/v1.0",
+                ],
+                cwd=expected_cache_dir,
+            ),
+            call(
+                [
+                    "git",
+                    "-c",
+                    "advice.detachedHead=False",
+                    "checkout",
+                    "FETCH_HEAD",
+                ],
+                cwd=expected_cache_dir,
+            ),
         ]
     )
+    assert run_command_mock.call_count == 3
+
+
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+@patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
+@patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
+@patch("dd_license_attribution.artifact_management.source_code_manager.path_exists")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+@patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
+@patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
+    get_datetime_now_mock: Mock,
+    git_url_parse_mock: Mock,
+    path_exists_artifact_mock: Mock,
+    path_exists_source_code_mock: Mock,
+    run_command_mock: Mock,
+    mock_create_dirs: Mock,
+    output_from_command_mock: Mock,
+) -> None:
+    request_url = "https://github.com/test_owner/test_repo/tree/test_branch/test_dir"
+
+    get_datetime_now_mock.return_value = datetime.fromisoformat(
+        "2022-01-01T00:00:00+00:00"
+    )
+    github_client_mock = create_github_client_mock()
+    git_url_parse_mock.return_value = GitUrlParseMock(
+        valid=True,
+        owner="test_owner",
+        repo="test_repo",
+        branch="test_branch",
+        path="test_dir",
+        path_raw="/tree/test_branch/test_dir",
+    )
+    path_exists_artifact_mock.return_value = True
+    path_exists_source_code_mock.return_value = False
+    run_command_mock.side_effect = [0, 128]
+    output_from_command_mock.return_value = (
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+    )
+
+    mirror_spec = MirrorSpec(
+        original_url="https://github.com/test_owner/test_repo",
+        mirror_url="https://github.com/mirror_owner/mirror_repo",
+        ref_mapping={(RefType.BRANCH, "test_branch"): (RefType.TAG, "v1.0")},
+    )
+    source_code_manager = SourceCodeManager(
+        "cache_dir", github_client_mock, 86400, mirrors=[mirror_spec]
+    )
+    code_ref = source_code_manager.get_code(request_url)
+
+    expected_cache_dir = "cache_dir/20220101_000000Z/test_owner-test_repo/test_branch"
+    assert code_ref is None
+    get_datetime_now_mock.assert_called_once()
+    assert git_url_parse_mock.call_count == 3
+    path_exists_artifact_mock.assert_called_once_with("cache_dir")
+    path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
+    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    output_from_command_mock.assert_called_once_with(
+        [
+            "git",
+            "ls-remote",
+            "https://github.com/test_owner/test_repo",
+            "test_branch",
+        ]
+    )
+    # The checkout step must not run once the tag fetch has failed.
+    run_command_mock.assert_has_calls(
+        [
+            call(["git", "init", "--quiet"], cwd=expected_cache_dir),
+            call(
+                [
+                    "git",
+                    "fetch",
+                    "--depth",
+                    "1",
+                    "https://github.com/mirror_owner/mirror_repo",
+                    "refs/tags/v1.0",
+                ],
+                cwd=expected_cache_dir,
+            ),
+        ]
+    )
+    assert run_command_mock.call_count == 2
 
 
 @patch(
