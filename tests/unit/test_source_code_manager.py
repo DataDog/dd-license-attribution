@@ -930,10 +930,20 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
             call(
                 [
                     "git",
+                    "remote",
+                    "add",
+                    "origin",
+                    "https://github.com/mirror_owner/mirror_repo",
+                ],
+                cwd=expected_cache_dir,
+            ),
+            call(
+                [
+                    "git",
                     "fetch",
                     "--depth",
                     "1",
-                    "https://github.com/mirror_owner/mirror_repo",
+                    "origin",
                     "refs/tags/v1.0:refs/tags/v1.0",
                 ],
                 cwd=expected_cache_dir,
@@ -950,7 +960,7 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
             ),
         ]
     )
-    assert run_command_mock.call_count == 3
+    assert run_command_mock.call_count == 4
 
 
 @patch(
@@ -987,7 +997,7 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
     )
     path_exists_artifact_mock.return_value = True
     path_exists_source_code_mock.return_value = False
-    run_command_mock.side_effect = [0, 128]
+    run_command_mock.side_effect = [0, 0, 128]
     output_from_command_mock.return_value = (
         "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
     )
@@ -1024,17 +1034,27 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
             call(
                 [
                     "git",
+                    "remote",
+                    "add",
+                    "origin",
+                    "https://github.com/mirror_owner/mirror_repo",
+                ],
+                cwd=expected_cache_dir,
+            ),
+            call(
+                [
+                    "git",
                     "fetch",
                     "--depth",
                     "1",
-                    "https://github.com/mirror_owner/mirror_repo",
+                    "origin",
                     "refs/tags/v1.0:refs/tags/v1.0",
                 ],
                 cwd=expected_cache_dir,
             ),
         ]
     )
-    assert run_command_mock.call_count == 2
+    assert run_command_mock.call_count == 3
 
 
 @patch(
