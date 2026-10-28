@@ -99,7 +99,7 @@ jobs:
           ):
               print(f"mutmut.{key}={config.get(key, '<default>')}")
           PY
-          echo "mutmut.max_children=4" | tee -a mutmut-runner-conditions.txt
+          echo "mutmut.max_children=3" | tee -a mutmut-runner-conditions.txt
 
       - name: Run full-tree mutation testing on main
         id: mutmut-run
@@ -134,8 +134,15 @@ jobs:
           # paths_to_mutate = ["src/"] from pyproject.toml covers the full
           # mutable tree and honors the do_not_mutate excludes for
           # cli/adaptors/config; no pyproject rewrite is needed here.
+          # Three children, not four: with four pytest workers plus the
+          # mutmut parent, the 4-vCPU runner runs at sustained 1.5-1.9x
+          # oversubscription (measured loadavg1 avg 6.1, max 7.5) and
+          # mutant runs drift past their wall-clock budgets into timeouts;
+          # at three children the load sits near the core count, so runs
+          # spend their time executing rather than waiting to be
+          # rescheduled.
           set +e
-          mutmut run --max-children 4 2>&1 | tee mutmut-base-output.txt
+          mutmut run --max-children 3 2>&1 | tee mutmut-base-output.txt
           echo "${PIPESTATUS[0]}" > mutmut-base-exit.txt
           set -e
           kill "$(cat .load-sampler.pid)" 2>/dev/null || true
