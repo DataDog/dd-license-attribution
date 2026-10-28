@@ -849,6 +849,8 @@ def test_source_code_manager_with_mirror_ref_mapping(
 )
 @patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
 @patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
+@patch("dd_license_attribution.artifact_management.source_code_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
 @patch("dd_license_attribution.artifact_management.source_code_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
@@ -858,6 +860,8 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
     git_url_parse_mock: Mock,
     path_exists_artifact_mock: Mock,
     path_exists_source_code_mock: Mock,
+    artifact_list_dir_mock: Mock,
+    source_code_list_dir_mock: Mock,
     run_command_mock: Mock,
     mock_create_dirs: Mock,
     output_from_command_mock: Mock,
@@ -885,6 +889,9 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
     )
     path_exists_artifact_mock.return_value = True
     path_exists_source_code_mock.return_value = False
+    # Same timestamp as the setup time: the cache lookup runs and misses.
+    artifact_list_dir_mock.return_value = ["20220101_000000Z"]
+    source_code_list_dir_mock.return_value = ["20220101_000000Z"]
     run_command_mock.return_value = 0
     output_from_command_mock.return_value = (
         "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
@@ -914,6 +921,8 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
         git_url_parse_mock.call_count == 3
     )  # Called: in get_code (disambiguation), in get_canonical_urls, in get_code (main logic)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
+    artifact_list_dir_mock.assert_called_once_with("cache_dir")
+    source_code_list_dir_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
     mock_create_dirs.assert_called_once_with(expected_cache_dir)
     output_from_command_mock.assert_called_once_with(
@@ -967,6 +976,8 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
 )
 @patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
 @patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
+@patch("dd_license_attribution.artifact_management.source_code_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
 @patch("dd_license_attribution.artifact_management.source_code_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
@@ -976,6 +987,8 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
     git_url_parse_mock: Mock,
     path_exists_artifact_mock: Mock,
     path_exists_source_code_mock: Mock,
+    artifact_list_dir_mock: Mock,
+    source_code_list_dir_mock: Mock,
     run_command_mock: Mock,
     mock_create_dirs: Mock,
     output_from_command_mock: Mock,
@@ -996,6 +1009,9 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
     )
     path_exists_artifact_mock.return_value = True
     path_exists_source_code_mock.return_value = False
+    # Same timestamp as the setup time: the cache lookup runs and misses.
+    artifact_list_dir_mock.return_value = ["20220101_000000Z"]
+    source_code_list_dir_mock.return_value = ["20220101_000000Z"]
     run_command_mock.side_effect = [0, 0, 128]
     output_from_command_mock.return_value = (
         "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
@@ -1016,6 +1032,8 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
     get_datetime_now_mock.assert_called_once()
     assert git_url_parse_mock.call_count == 3
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
+    artifact_list_dir_mock.assert_called_once_with("cache_dir")
+    source_code_list_dir_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
     mock_create_dirs.assert_called_once_with(expected_cache_dir)
     output_from_command_mock.assert_called_once_with(
@@ -1175,6 +1193,8 @@ def test_source_code_manager_mirror_tag_forced_retry_after_failed_fetch(
     "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
 )
 @patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
+@patch("dd_license_attribution.artifact_management.source_code_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
 @patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
@@ -1182,6 +1202,8 @@ def test_source_code_manager_with_unsupported_commit_ref_type(
     get_datetime_now_mock: Mock,
     git_url_parse_mock: Mock,
     path_exists_artifact_mock: Mock,
+    artifact_list_dir_mock: Mock,
+    source_code_list_dir_mock: Mock,
     run_command_mock: Mock,
     output_from_command_mock: Mock,
 ) -> None:
@@ -1201,6 +1223,8 @@ def test_source_code_manager_with_unsupported_commit_ref_type(
         path_raw="/tree/test_branch/test_dir",
     )
     path_exists_artifact_mock.return_value = True
+    artifact_list_dir_mock.return_value = []
+    source_code_list_dir_mock.return_value = []
     run_command_mock.return_value = 0
     output_from_command_mock.return_value = (
         "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
@@ -1232,6 +1256,8 @@ def test_source_code_manager_with_unsupported_commit_ref_type(
         git_url_parse_mock.call_count == 3
     )  # Called: in get_code (disambiguation), in get_canonical_urls, in get_code (before failure)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
+    artifact_list_dir_mock.assert_called_once_with("cache_dir")
+    source_code_list_dir_mock.assert_not_called()
     output_from_command_mock.assert_called_once_with(
         ["git", "ls-remote", "https://github.com/test_owner/test_repo", "test_branch"]
     )
