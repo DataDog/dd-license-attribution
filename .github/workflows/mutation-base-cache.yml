@@ -354,7 +354,7 @@ jobs:
         # while validation is ongoing.
         if: env.MUTMUT_CACHE_DRY_MODE == 'true'
         continue-on-error: true
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd # v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: mutmut-baseline-dryrun
           retention-days: 30
