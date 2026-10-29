@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-29
+
 ### Added
 - Mirror `ref_mapping` targets can now be tags, not only branches: a mapping such as `{"branch:main": "tag:v1.0"}` makes `--use-mirrors` check out the mirror repository at that tag. The tag is fetched by its fully qualified `refs/tags/` ref, so a same-named branch in the mirror cannot shadow it. This enables analyzing packages whose published source corresponds to a tag rather than to the default branch.
 
