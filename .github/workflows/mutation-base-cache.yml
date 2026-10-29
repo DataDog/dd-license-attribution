@@ -6,12 +6,15 @@ name: Mutation Base Cache
 # mutation run on a hit; on a miss it runs the target-branch run as
 # before, so correctness never depends on this cache existing.
 #
-# Dry mode (default): the baseline is generated, analyzed and uploaded as
-# a workflow artifact, but NOT written to the actions cache while the
-# health checks that gate future saves are validated against real runs.
-# PRs then always take the cache-miss path (their own target-branch run),
-# which is the pre-cache behavior and always correct. Re-enable saving by
-# setting the repository variable MUTMUT_CACHE_DRY_MODE=false.
+# Cache saving is enabled: the dry-mode validation phase is complete
+# (instrumented full-tree runs measure 0 timeouts and per-file scores
+# that match scoped PR runs). Saving only stores a healthy baseline —
+# mutmut exit 0, non-empty results, and zero health-check tripwires —
+# and the saved stamp is config-aware (see the compatibility check in
+# mutation-regression.yml). The repository variable
+# MUTMUT_CACHE_DRY_MODE=true is an emergency off-switch that stops
+# saving without a code change; PRs then take the always-correct
+# cache-miss path (their own target-branch run).
 
 on:
   push:
@@ -44,10 +47,11 @@ jobs:
 
     env:
       TERM: dumb
-      # Dry mode defaults to ON: unset, empty, or any value other than
-      # 'false' keeps cache saving disabled. The repository variable is
-      # the flip switch, so re-enabling later needs no workflow change.
-      MUTMUT_CACHE_DRY_MODE: ${{ vars.MUTMUT_CACHE_DRY_MODE != 'false' }}
+      # Saving is ON by default. The repository variable is an emergency
+      # off-switch: setting MUTMUT_CACHE_DRY_MODE=true stops cache writes
+      # without a code change; PRs then take the always-correct
+      # cache-miss path.
+      MUTMUT_CACHE_DRY_MODE: ${{ vars.MUTMUT_CACHE_DRY_MODE == 'true' }}
 
     steps:
       - name: Check out the repository
@@ -105,18 +109,33 @@ jobs:
         id: mutmut-run
         run: |
           # Record the exact mutation harness (generator + test runner +
-          # plugins) so PRs can detect a version skew against this baseline
-          # (see the compatibility check in mutation-regression.yml). Mutant
-          # IDs are positional per function, so a different mutmut version
-          # can renumber mutants and change the per-module mutant
-          # population; a different pytest/pytest-* version can change
-          # kill/timeout outcomes. A skewed harness must not be compared
-          # against a PR's run.
+          # plugins) and the effective mutmut configuration so PRs can
+          # detect skew against this baseline (see the compatibility check
+          # in mutation-regression.yml). Mutant IDs are positional per
+          # function, so a different mutmut version can renumber mutants
+          # and change the per-module mutant population, and a different
+          # pytest or pytest-* version can change kill/timeout outcomes.
+          # A config change is just as incomparable — timeout budgets,
+          # pytest args, or covered-lines gating all shift baseline
+          # scores — but the version lines above cannot see it, so the
+          # verbatim [tool.mutmut] section is hashed into the stamp and
+          # any change invalidates the baseline like a version bump.
+          # The hash must match the one written by the compatibility
+          # check in mutation-regression.yml.
           {
             mutmut --version
             pip show mutmut pytest pytest-timeout pytest-cov pytest-mock \
               | grep -E '^(Name|Version):' || true
           } > mutmut-base-tool.txt
+          python3 - <<'PY' >> mutmut-base-tool.txt
+          import hashlib
+          import re
+
+          content = open("pyproject.toml").read()
+          match = re.search(r"^\[tool\.mutmut\]\n.*?(?=^\[|\Z)", content, re.S | re.M)
+          section = match.group(0) if match else "[tool.mutmut] missing"
+          print(f"mutmut-config-sha256={hashlib.sha256(section.encode()).hexdigest()}")
+          PY
           # Sample the load average while mutmut runs so timeout outcomes
           # can be correlated with runner contention (see the
           # runner-conditions step). Sampled lines are prefixed MUTLOAD
@@ -300,7 +319,7 @@ jobs:
               count_file.write(str(len(tripwire)))
 
           # Warnings only, never errors: a degraded baseline is data for
-          # the dry-mode validation, not a broken main branch.
+          # baseline-health diagnosis, not a broken main branch.
           if total == 0:
               print("::warning::mutmut produced no result entries; nothing to analyze")
           else:
@@ -332,33 +351,38 @@ jobs:
         # Cache only a healthy baseline: a non-zero exit, empty results, or
         # a health-check tripwire (modules whose gate floor is strict
         # while an implausible share of their mutants timed out) must not
-        # poison PRs keyed to this SHA. Saving is disabled in dry mode
-        # (repository variable MUTMUT_CACHE_DRY_MODE, default true) while
-        # the health checks are validated against real runs; PRs then take
-        # the always-correct cache-miss path. A cache save failure must
-        # never turn main red either — the cache is an optimization whose
-        # miss path is the pre-existing target-branch run, so failures
-        # here degrade to cache misses on the next PR, not broken
-        # pipelines.
+        # poison PRs keyed to this SHA. A cache save failure must never
+        # turn main red either — the cache is an optimization whose miss
+        # path is the pre-existing target-branch run, so failures here
+        # degrade to cache misses on the next PR, not broken pipelines.
         if: steps.baseline-health.outputs.saveable == 'true' && env.MUTMUT_CACHE_DRY_MODE != 'true'
         continue-on-error: true
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           key: mutmut-base-${{ github.sha }}
+          # The telemetry files ride along in the cache entry so a saved
+          # baseline can be diagnosed post-hoc; the PR-side restore lists
+          # only the files it consumes, so the extras are inert there.
           path: |
             mutmut-base-results.txt
             mutmut-base-exit.txt
             mutmut-base-output.txt
             mutmut-base-mutated.txt
             mutmut-base-tool.txt
+            mutmut-baseline-telemetry.json
+            mutmut-runner-conditions.txt
+            mutmut-load-samples.txt
+            mutmut-phase-timings.txt
 
       - name: Upload dry-run baseline and telemetry
-        # In dry mode the analyzed baseline is preserved as a workflow
-        # artifact instead of an actions cache entry. Artifacts cannot be
-        # restored by mutation-regression.yml (it reads the actions cache
-        # only), so a poisoned baseline structurally cannot reach a PR
-        # while validation is ongoing.
-        if: env.MUTMUT_CACHE_DRY_MODE == 'true'
+        # Uploaded whenever saving is disabled via the emergency off-switch
+        # OR the baseline was refused as unhealthy (non-zero exit, empty
+        # results, or a health-check tripwire): in both cases the baseline
+        # is not in the actions cache, and this artifact preserves the raw
+        # results, output, and telemetry for post-hoc diagnosis. Artifacts
+        # cannot be restored by mutation-regression.yml (it reads the
+        # actions cache only), so nothing here can reach a PR.
+        if: env.MUTMUT_CACHE_DRY_MODE == 'true' || steps.baseline-health.outputs.saveable != 'true'
         continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

@@ -95,8 +95,10 @@ do_not_mutate = [
 # measuring anything about test quality; coverage gaps themselves are
 # gated separately by the coverage workflows. Lines covered only by the
 # ignored CLI command tests are excluded for the same reason: those tests
-# never run during mutation. Changing this renumbers every mutant ID, so
-# it is done while no mutation baselines are cached.
+# never run during mutation. Changing this renumbers every mutant ID and
+# shifts every baseline score; cached baselines are invalidated by the
+# config-hash in the harness stamp (see the compatibility check in
+# mutation-regression.yml), so a change needs no special timing.
 mutate_only_covered_lines = true
 # These args apply only to mutmut's pytest invocations. The project-level
 # addopts under [tool.pytest.ini_options] enable pytest-cov by default for
