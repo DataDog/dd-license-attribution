@@ -23,6 +23,8 @@ from dd_license_attribution.artifact_management.source_code_manager import (
     RefType,
     SourceCodeManager,
     _is_rate_limit_response,
+    has_repository_path,
+    keep_tree_path,
 )
 
 
@@ -2907,3 +2909,174 @@ def test_source_code_manager_remaps_default_branch_non_github_path_case(
     list_dir_mock.assert_called_once_with("cache_dir")
     # The default branch can only be looked up on GitHub.
     assert github_client_mock.mock_calls == []
+
+
+@pytest.mark.parametrize(
+    "canonical_url, original_url, expected",
+    [
+        (
+            "https://github.com/DataDog/new-name",
+            "https://github.com/DataDog/old-name/tree/main/apis",
+            "https://github.com/DataDog/new-name/tree/main/apis",
+        ),
+        (
+            "https://github.com/DataDog/repo",
+            "https://github.com/DataDog/repo",
+            "https://github.com/DataDog/repo",
+        ),
+        (
+            "https://github.com/DataDog/repo",
+            "https://github.com/DataDog/repo/blob/main/apis/go.mod",
+            "https://github.com/DataDog/repo",
+        ),
+        (
+            # get_canonical_urls returns non-GitHub URLs unchanged
+            "https://gitlab.com/org/repo/tree/main/apis",
+            "https://gitlab.com/org/repo/tree/main/apis",
+            "https://gitlab.com/org/repo/tree/main/apis",
+        ),
+        (
+            "",
+            "https://github.com/DataDog/repo/tree/main/apis",
+            "https://github.com/DataDog/repo/tree/main/apis",
+        ),
+    ],
+)
+def test_keep_tree_path(canonical_url: str, original_url: str, expected: str) -> None:
+    assert keep_tree_path(canonical_url, original_url) == expected
+
+
+@pytest.mark.parametrize(
+    "url, expected",
+    [
+        ("https://github.com/DataDog/repo/tree/main/apis", True),
+        ("https://github.com/DataDog/repo/tree/main", True),
+        ("https://github.com/DataDog/repo/blob/main/apis/go.mod", True),
+        ("https://github.com/DataDog/repo", False),
+        ("https://gitlab.com/org/repo/tree/main/apis", False),
+        ("not a url", False),
+    ],
+)
+def test_has_repository_path(url: str, expected: bool) -> None:
+    assert has_repository_path(url) is expected
+
+
+@pytest.mark.parametrize(
+    "url, expected_path",
+    [
+        ("https://github.com/DataDog/repo/tree/main/apis", "/apis"),
+        ("https://github.com/DataDog/repo/tree/main/apis/", "/apis"),
+        ("https://github.com/DataDog/repo/tree/main/a/b", "/a/b"),
+        ("https://github.com/DataDog/repo/tree/main", ""),
+        ("https://github.com/DataDog/repo/blob/main/apis/go.mod", "/apis"),
+    ],
+)
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_get_subdirectory_path_strips_the_ref(
+    mock_path_exists: Mock,
+    mock_list_dir: Mock,
+    mock_extract_ref: Mock,
+    url: str,
+    expected_path: str,
+) -> None:
+    mock_path_exists.return_value = True
+    mock_list_dir.return_value = []
+    mock_extract_ref.return_value = "main"
+    source_code_manager = SourceCodeManager("cache_dir", Mock())
+    with patch.object(
+        source_code_manager,
+        "get_canonical_urls",
+        return_value=(
+            "https://github.com/DataDog/repo",
+            "https://api.github.com/repos/DataDog/repo",
+        ),
+    ) as mock_get_canonical_urls:
+        assert source_code_manager.get_subdirectory_path(url) == expected_path
+        # Second call hits the cache and avoids repeating canonical / git lookups.
+        assert source_code_manager.get_subdirectory_path(url) == expected_path
+    mock_get_canonical_urls.assert_called_once_with(url)
+    mock_extract_ref.assert_called_once()
+    assert mock_extract_ref.call_args.args[1] == "https://github.com/DataDog/repo"
+    assert mock_extract_ref.call_args.kwargs == {"git_env": NONINTERACTIVE_GIT_ENV}
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://github.com/DataDog/repo/tree/nonexistent",
+        "https://github.com/DataDog/repo/tree/nonexistent/apis",
+        "https://github.com/DataDog/repo/blob/nonexistent/file.py",
+    ],
+)
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_get_subdirectory_path_returns_empty_when_ref_unvalidated(
+    mock_path_exists: Mock,
+    mock_list_dir: Mock,
+    mock_extract_ref: Mock,
+    url: str,
+) -> None:
+    mock_path_exists.return_value = True
+    mock_list_dir.return_value = []
+    mock_extract_ref.return_value = ""
+    source_code_manager = SourceCodeManager("cache_dir", Mock())
+    with patch.object(
+        source_code_manager,
+        "get_canonical_urls",
+        return_value=(
+            "https://github.com/DataDog/repo",
+            "https://api.github.com/repos/DataDog/repo",
+        ),
+    ) as mock_get_canonical_urls:
+        assert source_code_manager.get_subdirectory_path(url) == ""
+    mock_get_canonical_urls.assert_called_once_with(url)
+    mock_extract_ref.assert_called_once()
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_get_subdirectory_path_returns_empty_when_canonical_lookup_fails(
+    mock_path_exists: Mock,
+    mock_list_dir: Mock,
+    mock_extract_ref: Mock,
+) -> None:
+    mock_path_exists.return_value = True
+    mock_list_dir.return_value = []
+    source_code_manager = SourceCodeManager("cache_dir", Mock())
+    url = "https://github.com/DataDog/repo/tree/main/apis"
+    with patch.object(
+        source_code_manager,
+        "get_canonical_urls",
+        return_value=("", None),
+    ) as mock_get_canonical_urls:
+        assert source_code_manager.get_subdirectory_path(url) == ""
+    mock_get_canonical_urls.assert_called_once_with(url)
+    mock_extract_ref.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["https://github.com/DataDog/repo", "https://gitlab.com/org/repo/tree/main/x"],
+)
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_get_subdirectory_path_is_empty_without_a_repository_path(
+    mock_path_exists: Mock,
+    mock_list_dir: Mock,
+    mock_extract_ref: Mock,
+    url: str,
+) -> None:
+    mock_path_exists.return_value = True
+    mock_list_dir.return_value = []
+    source_code_manager = SourceCodeManager("cache_dir", Mock())
+    with patch.object(
+        source_code_manager, "get_canonical_urls"
+    ) as mock_get_canonical_urls:
+        assert source_code_manager.get_subdirectory_path(url) == ""
+    mock_get_canonical_urls.assert_not_called()
+    mock_extract_ref.assert_not_called()

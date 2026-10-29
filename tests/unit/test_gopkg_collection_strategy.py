@@ -1566,3 +1566,156 @@ def test_gopkg_single_module_without_root_go_mod_skips_collection(
         "Single Go module mode: no go.mod in %s, skipping Go module collection.",
         "cache_dir/org_package1",
     )
+
+
+def test_gopkg_collection_strategy_scopes_subdirectory_urls_and_ignores_go_work(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/repo/tree/main/apis",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+    )
+    assert strategy.top_package == "https://github.com/org/repo/tree/main/apis"
+
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/repo",
+        branch="main",
+        local_root_path="cache_dir/org_repo",
+        local_full_path="cache_dir/org_repo/apis",
+    )
+    mock_walk_directory = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+        return_value=[("cache_dir/org_repo/apis", [], ["go.mod"])],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        return_value="module github.com/org/repo/apis\n",
+    )
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value="""{
+    "ImportPath": "github.com/org/dep",
+    "Module": {"Path": "github.com/org/dep", "Version": "v1.0.0"}
+}""",
+    )
+
+    result = strategy.augment_metadata([])
+
+    mock_source_code_manager.get_code.assert_called_once_with(
+        "https://github.com/org/repo/tree/main/apis"
+    )
+    mock_walk_directory.assert_called_once_with("cache_dir/org_repo/apis")
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="cache_dir/org_repo/apis",
+        env={"GOTOOLCHAIN": "auto", "GOWORK": "off"},
+    )
+    assert [(m.name, m.version) for m in result] == [("github.com/org/dep", "v1.0.0")]
+    mock_open_file.assert_called_once_with("cache_dir/org_repo/apis/go.mod")
+
+
+def test_gopkg_collection_strategy_keeps_go_work_at_repository_root(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/repo", mock_source_code_manager, ProjectScope.ALL
+    )
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/repo",
+        branch="main",
+        local_root_path="cache_dir/org_repo",
+        local_full_path="cache_dir/org_repo",
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+        return_value=[("cache_dir/org_repo", [], ["go.mod"])],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        return_value="module github.com/org/repo/apis\n",
+    )
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value="",
+    )
+
+    strategy.augment_metadata([])
+
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="cache_dir/org_repo",
+        env={"GOTOOLCHAIN": "auto"},
+    )
+    mock_open_file.assert_called_once_with("cache_dir/org_repo/go.mod")
+
+
+def test_gopkg_collection_strategy_single_module_in_subdirectory(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/monorepo",
+        "https://api.github.com/repos/org/monorepo",
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/monorepo/tree/main/contrib/net/http",
+        mock_source_code_manager,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+        single_module=True,
+    )
+    assert (
+        strategy.top_package
+        == "https://github.com/org/monorepo/tree/main/contrib/net/http"
+    )
+
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/monorepo",
+        branch="main",
+        local_root_path="cache_dir/org_monorepo",
+        local_full_path="cache_dir/org_monorepo/contrib/net/http",
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.path_exists",
+        return_value=True,
+    )
+    mock_walk_directory = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+    )
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value="""{
+    "ImportPath": "github.com/org/monorepo/contrib/net/http/v2",
+    "Module": {"Path": "github.com/org/monorepo/contrib/net/http/v2", "Main": true}
+}
+{
+    "ImportPath": "github.com/org/dep",
+    "Module": {"Path": "github.com/org/dep", "Version": "v1.0.0"}
+}""",
+    )
+
+    result = strategy.augment_metadata([])
+
+    mock_source_code_manager.get_code.assert_called_once_with(
+        "https://github.com/org/monorepo/tree/main/contrib/net/http"
+    )
+    mock_path_exists.assert_called_once_with(
+        "cache_dir/org_monorepo/contrib/net/http/go.mod"
+    )
+    mock_walk_directory.assert_not_called()
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="cache_dir/org_monorepo/contrib/net/http",
+        env={"GOTOOLCHAIN": "auto", "GOWORK": "off"},
+    )
+    assert [(m.name, m.version) for m in result] == [("github.com/org/dep", "v1.0.0")]

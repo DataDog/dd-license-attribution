@@ -22,6 +22,7 @@ from dd_license_attribution.artifact_management.go_package_resolver import (
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
+    keep_tree_path,
 )
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
@@ -54,9 +55,10 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             # In go-package mode, top_package is a Go import path, not a URL
             self.top_package = top_package
         else:
-            # Resolve canonical URL if this is a GitHub repository
+            # Resolve the canonical GitHub URL, keeping any /tree/<ref>/<path>
+            # suffix so subdirectory URLs stay scoped to that subdirectory.
             canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
-            self.top_package = canonical_url if canonical_url else top_package
+            self.top_package = keep_tree_path(canonical_url, top_package)
 
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         if self.local_project_path is not None:
@@ -72,11 +74,19 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             return self._augment_metadata_from_single_module(
                 metadata, source_code_ref.local_full_path
             )
+        # A repository-level go.work would pull sibling modules outside the
+        # requested subdirectory into the build list; consumers of a published
+        # module never see it, so ignore it when scoped to a subdirectory.
+        disable_workspace = source_code_ref.local_full_path.rstrip(
+            "/"
+        ) != source_code_ref.local_root_path.rstrip("/")
         for root, _, files in walk_directory(source_code_ref.local_full_path):
             if "go.mod" in files:
                 if self._is_example_package(root):
                     continue
-                module_data_list = self._run_go_list_modules(root)
+                module_data_list = self._run_go_list_modules(
+                    root, disable_workspace=disable_workspace
+                )
                 for module_data in module_data_list:
                     module_path = module_data["Path"]
 

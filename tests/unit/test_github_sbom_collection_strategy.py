@@ -2138,3 +2138,74 @@ def test_github_sbom_collection_strategy_skips_sbom_when_default_branch_is_remap
         "Skipping GitHub SBOM for 'test_owner/test_repo': a mirror ref_mapping "
         "replaces its default branch, which the GitHub dependency graph describes."
     ]
+
+
+def test_github_sbom_collection_strategy_skips_subdirectory_origins(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    github_client_mock = mocker.MagicMock()
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_subdirectory_path.return_value = "/apis"
+
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
+        project_scope=ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/repo/tree/main/apis",
+            version=None,
+            origin="https://github.com/org/repo/tree/main/apis",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    updated_metadata = strategy.augment_metadata(initial_metadata)
+
+    assert updated_metadata == initial_metadata
+    source_code_manager_mock.get_subdirectory_path.assert_called_once_with(
+        "https://github.com/org/repo/tree/main/apis"
+    )
+    source_code_manager_mock.get_canonical_urls.assert_not_called()
+    assert github_client_mock.mock_calls == []
+
+
+def test_github_sbom_collection_strategy_uses_sbom_for_tree_urls_without_subdirectory(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    github_client_mock = mocker.MagicMock()
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_subdirectory_path.return_value = ""
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "not_a_github_purl",
+        None,
+    )
+
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
+        project_scope=ProjectScope.ALL,
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/repo/tree/main",
+            version=None,
+            origin="https://github.com/org/repo/tree/main",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    strategy.augment_metadata(initial_metadata)
+
+    source_code_manager_mock.get_subdirectory_path.assert_called_once_with(
+        "https://github.com/org/repo/tree/main"
+    )
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with(
+        "https://github.com/org/repo/tree/main"
+    )
+    assert github_client_mock.mock_calls == []

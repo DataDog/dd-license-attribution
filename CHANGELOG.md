@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 - `--go-single-module` scopes a repository scan to the Go module whose `go.mod` is at the repository root, ignoring nested modules and `go.work` (`GOWORK=off`), so a monorepo's root module report no longer lists the dependencies of every nested module. It also skips the GitHub SBOM strategy for the whole scan, and under `--only-transitive-dependencies` drops the root module's own entry. Default behavior is unchanged.
+- Repository subdirectory URLs (`https://github.com/<owner>/<repo>/tree/<ref>/<path>`) are now scoped to that subdirectory, so packages published from a monorepo subfolder (e.g. a nested Go module or Python package) can be analyzed on their own. The Go, PyPI, npm, and Rust strategies keep the `/tree/<ref>/<path>` suffix instead of canonicalizing back to the repository root, the GitHub SBOM strategy is skipped for subdirectory URLs, Go modules in a subdirectory are listed with `GOWORK=off`, and `--only-transitive-dependencies` drops only the subdirectory seed without dropping dependencies on the parent repository's root package. Combine with `--go-single-module` to analyze a single nested Go module without walking deeper modules. Repository-root URLs behave as before.
 
 ## [0.10.1] - 2026-11-19
 

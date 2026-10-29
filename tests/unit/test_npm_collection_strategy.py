@@ -4585,3 +4585,27 @@ def test_npm_collection_strategy_transitive_mode_without_root_seed_keeps_row(
     _assert_npm_project_scanned(
         npm_mocks, source_code_manager_mock, passes=3, registry_urls=[]
     )
+
+
+def test_npm_collection_strategy_keeps_subdirectory_of_canonical_top_package(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/org/monorepo",
+        "https://api.github.com/repos/org/monorepo",
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "https://github.com/old-org/monorepo/tree/main/packages/core",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+    )
+
+    assert (
+        strategy.top_package
+        == "https://github.com/org/monorepo/tree/main/packages/core"
+    )
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with(
+        "https://github.com/old-org/monorepo/tree/main/packages/core"
+    )

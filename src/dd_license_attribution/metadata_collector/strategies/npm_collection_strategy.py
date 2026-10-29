@@ -28,6 +28,7 @@ from dd_license_attribution.adaptors.os import (
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
+    keep_tree_path,
 )
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.project_scope import (
@@ -70,10 +71,11 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             # In npm-package mode, top_package is a package name, not a URL
             self.top_package = top_package
         else:
-            # Resolve canonical URL if this is a GitHub repository
             # This ensures we can match packages that were canonicalized by earlier strategies
+            # Resolve the canonical GitHub URL, keeping any /tree/<ref>/<path>
+            # suffix so subdirectory URLs stay scoped to that subdirectory.
             canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
-            self.top_package = canonical_url if canonical_url else top_package
+            self.top_package = keep_tree_path(canonical_url, top_package)
 
         self.source_code_manager = source_code_manager
         self.only_root_project = project_scope == ProjectScope.ONLY_ROOT_PROJECT

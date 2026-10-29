@@ -2182,3 +2182,100 @@ def test_pypi_strategy_excludes_the_scanned_project_in_transitive_mode(
     )
     get_dependencies_mock.assert_called_once_with("venv")
     assert requests_get_mock.call_args_list == [call(url) for url in expected_pypi_urls]
+
+
+def test_pypi_collection_strategy_keeps_subdirectory_of_canonical_top_package(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/org/monorepo",
+        "https://api.github.com/repos/org/monorepo",
+    )
+    source_code_manager_mock.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/monorepo",
+        branch="main",
+        local_root_path="cache_dir/org_monorepo",
+        local_full_path="cache_dir/org_monorepo/pkg",
+    )
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = None
+
+    strategy = PypiMetadataCollectionStrategy(
+        "https://github.com/old-org/monorepo/tree/main/pkg",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+    )
+    assert strategy.top_package == "https://github.com/org/monorepo/tree/main/pkg"
+
+    strategy.augment_metadata(
+        [
+            Metadata(
+                name="https://github.com/org/monorepo/tree/main/pkg",
+                version=None,
+                origin="https://github.com/org/monorepo/tree/main/pkg",
+                local_src_path=None,
+                license=[],
+                copyright=[],
+            )
+        ]
+    )
+
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with(
+        "https://github.com/old-org/monorepo/tree/main/pkg"
+    )
+    source_code_manager_mock.get_code.assert_called_once_with(
+        "https://github.com/org/monorepo/tree/main/pkg"
+    )
+    python_env_manager_mock.get_environment.assert_called_once_with(
+        "cache_dir/org_monorepo/pkg"
+    )
+
+
+def test_pypi_collection_strategy_matches_unrewritten_renamed_subdirectory_seed(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/org/monorepo",
+        "https://api.github.com/repos/org/monorepo",
+    )
+    source_code_manager_mock.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/monorepo",
+        branch="main",
+        local_root_path="cache_dir/org_monorepo",
+        local_full_path="cache_dir/org_monorepo/pkg",
+    )
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = None
+
+    strategy = PypiMetadataCollectionStrategy(
+        "https://github.com/old-org/monorepo/tree/main/pkg",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+    )
+
+    strategy.augment_metadata(
+        [
+            Metadata(
+                name="github.com/old-org/monorepo/tree/main/pkg",
+                version=None,
+                origin="https://github.com/old-org/monorepo/tree/main/pkg",
+                local_src_path=None,
+                license=[],
+                copyright=[],
+            )
+        ]
+    )
+
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with(
+        "https://github.com/old-org/monorepo/tree/main/pkg"
+    )
+    source_code_manager_mock.get_code.assert_called_once_with(
+        "https://github.com/old-org/monorepo/tree/main/pkg"
+    )
+    python_env_manager_mock.get_environment.assert_called_once_with(
+        "cache_dir/org_monorepo/pkg"
+    )

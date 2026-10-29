@@ -1383,3 +1383,24 @@ def test_ingest_preserves_existing_fields_when_already_present() -> None:
         )
     ]
     source_code_manager.get_canonical_urls.assert_not_called()
+
+
+def test_github_mode_keeps_subdirectory_of_canonical_top_package() -> None:
+    source_code_manager = Mock()
+    source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/monorepo",
+        "https://api.github.com/repos/org/monorepo",
+    )
+
+    strategy = RustMetadataCollectionStrategy(
+        "https://github.com/old-org/monorepo/tree/main/crates/core",
+        source_code_manager,
+        ProjectScope.ALL,
+    )
+
+    assert (
+        strategy.top_package == "https://github.com/org/monorepo/tree/main/crates/core"
+    )
+    source_code_manager.get_canonical_urls.assert_called_once_with(
+        "https://github.com/old-org/monorepo/tree/main/crates/core"
+    )

@@ -20,6 +20,7 @@ from dd_license_attribution.artifact_management.python_env_manager import (
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
+    keep_tree_path,
 )
 from dd_license_attribution.config import string_formatting_config
 from dd_license_attribution.metadata_collector.metadata import Metadata
@@ -44,15 +45,17 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         local_project_path: str | None = None,
     ) -> None:
         self.local_project_path = local_project_path
+        self.original_top_package = top_package
 
         if local_project_path is not None:
             # In pypi-package mode, top_package is a package name, not a URL
             self.top_package = top_package
         else:
-            # Resolve canonical URL if this is a GitHub repository
             # This ensures we can match packages that were canonicalized by earlier strategies
+            # Resolve the canonical GitHub URL, keeping any /tree/<ref>/<path>
+            # suffix so subdirectory URLs stay scoped to that subdirectory.
             canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
-            self.top_package = canonical_url if canonical_url else top_package
+            self.top_package = keep_tree_path(canonical_url, top_package)
 
         self.source_code_manager = source_code_manager
         self.python_env_manager = python_env_manager
@@ -334,12 +337,12 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         return ret
 
     def _find_top_metadata_path(self, metadata: list[Metadata]) -> str | None:
-        translated_top_pkg_name = self._translate_name_gh_to_pypi_sbom(self.top_package)
+        candidate_packages = (self.top_package, self.original_top_package)
+        translated_names = {
+            self._translate_name_gh_to_pypi_sbom(pkg) for pkg in candidate_packages
+        }
         for package in metadata:
-            if (
-                package.name == self.top_package
-                or package.name == translated_top_pkg_name
-            ):
+            if package.name in candidate_packages or package.name in translated_names:
                 if package.local_src_path is not None:
                     return package.local_src_path
                 if package.origin is not None:
@@ -347,7 +350,9 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
                     if pkg_source is not None:
                         package.local_src_path = pkg_source.local_full_path
                         return pkg_source.local_full_path
-            if package.origin is not None and package.origin.endswith(self.top_package):
+            if package.origin is not None and any(
+                package.origin.endswith(pkg) for pkg in candidate_packages
+            ):
                 pkg_source = self.source_code_manager.get_code(package.origin)
                 if pkg_source is not None:
                     package.local_src_path = pkg_source.local_full_path
