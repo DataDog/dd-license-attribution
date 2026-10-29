@@ -90,7 +90,17 @@ do_not_mutate = [
     "src/dd_license_attribution/config/*",
 ]
 mutate_only_covered_lines = false
-pytest_add_cli_args = ["--timeout=30", "--ignore=tests/unit/test_clean_spdx_id_command.py", "--ignore=tests/unit/test_generate_sbom_csv_command.py", "--ignore=tests/unit/test_generate_overrides_command.py"]
+# These args apply only to mutmut's pytest invocations. The project-level
+# addopts under [tool.pytest.ini_options] enable pytest-cov by default for
+# plain `pytest` runs, which is wanted for the coverage workflows and local
+# reports. Mutation runs would pay that tracing overhead once per mutant
+# (thousands of invocations per full-tree run) and never read the data:
+# mutmut records the coverage it needs via the coverage library itself.
+# "-o addopts=" neutralizes the project addopts for mutation runs and
+# "-p no:pytest_cov" skips loading the plugin; the two must go together,
+# because a disabled plugin would reject the --cov argument that the
+# addopts would otherwise pass.
+pytest_add_cli_args = ["--timeout=30", "-o", "addopts=", "-p", "no:pytest_cov", "--ignore=tests/unit/test_clean_spdx_id_command.py", "--ignore=tests/unit/test_generate_sbom_csv_command.py", "--ignore=tests/unit/test_generate_overrides_command.py"]
 
 [tool.mypy]
 strict = "True"
