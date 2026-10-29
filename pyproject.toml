@@ -89,7 +89,15 @@ do_not_mutate = [
     "src/dd_license_attribution/adaptors/*",
     "src/dd_license_attribution/config/*",
 ]
-mutate_only_covered_lines = false
+# Only mutate lines the unit suite actually executes. Mutants on lines no
+# test runs are structurally unkillable — the selected tests never reach
+# them — so they permanently deflate per-file mutation scores without
+# measuring anything about test quality; coverage gaps themselves are
+# gated separately by the coverage workflows. Lines covered only by the
+# ignored CLI command tests are excluded for the same reason: those tests
+# never run during mutation. Changing this renumbers every mutant ID, so
+# it is done while no mutation baselines are cached.
+mutate_only_covered_lines = true
 # These args apply only to mutmut's pytest invocations. The project-level
 # addopts under [tool.pytest.ini_options] enable pytest-cov by default for
 # plain `pytest` runs, which is wanted for the coverage workflows and local
