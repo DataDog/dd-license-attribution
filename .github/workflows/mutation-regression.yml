@@ -91,12 +91,24 @@ jobs:
           # run below re-derives the baseline exactly as before this cache
           # existed (correctness never depends on the cache).
           key: mutmut-base-${{ github.event.pull_request.base.sha }}
+          # This path list must match the save list in
+          # mutation-base-cache.yml exactly: actions/cache derives its
+          # internal cache version from the path input, so any divergence
+          # between save and restore lists makes every restore miss. The
+          # telemetry files ride along in the cache entry for post-hoc
+          # diagnosis; this workflow reads only the five it consumes,
+          # and the compatibility check below compares the stamp file
+          # among them.
           path: |
             mutmut-base-results.txt
             mutmut-base-exit.txt
             mutmut-base-output.txt
             mutmut-base-mutated.txt
             mutmut-base-tool.txt
+            mutmut-baseline-telemetry.json
+            mutmut-runner-conditions.txt
+            mutmut-load-samples.txt
+            mutmut-phase-timings.txt
 
       - name: Check cached baseline compatibility
         id: base-cache-check
@@ -108,17 +120,29 @@ jobs:
           # the per-module mutant population, and a different pytest or
           # pytest-* version can change kill/timeout outcomes — either way
           # the per-file baseline scores (the grandfathering floor) shift by
-          # tool drift instead of code drift. Treat a harness mismatch as a
-          # cache miss and remove the restored files so the target-branch
-          # run below re-derives the baseline under this PR's pinned
-          # harness (the base checkout does not reinstall dev extras, so
-          # that run uses the PR's toolchain).
+          # tool drift instead of code drift. A mutmut config change is
+          # just as incomparable for the same reason, but the version lines
+          # cannot see it, so the verbatim [tool.mutmut] section is hashed
+          # into the stamp and any change is treated as a harness mismatch.
+          # Treat a mismatch as a cache miss and remove the restored files
+          # so the target-branch run below re-derives the baseline under
+          # this PR's pinned harness (the base checkout does not reinstall
+          # dev extras, so that run uses the PR's toolchain).
           # The stamp must match the one written by mutation-base-cache.yml.
           {
             mutmut --version
             pip show mutmut pytest pytest-timeout pytest-cov pytest-mock \
               | grep -E '^(Name|Version):' || true
           } > mutmut-current-tool.txt
+          python3 - <<'PY' >> mutmut-current-tool.txt
+          import hashlib
+          import re
+
+          content = open("pyproject.toml").read()
+          match = re.search(r"^\[tool\.mutmut\]\n.*?(?=^\[|\Z)", content, re.S | re.M)
+          section = match.group(0) if match else "[tool.mutmut] missing"
+          print(f"mutmut-config-sha256={hashlib.sha256(section.encode()).hexdigest()}")
+          PY
           if cmp -s mutmut-base-tool.txt mutmut-current-tool.txt; then
             echo "usable=true" >> "$GITHUB_OUTPUT"
             echo "Cached main baseline found (harness matches; generated with):"
