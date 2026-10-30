@@ -1858,9 +1858,9 @@ def test_get_canonical_urls_with_api_error(
         "Failed to resolve canonical URLs (status 404) for: "
         "https://github.com/DataDog/nonexistent-repo"
     )
-    assert any(expected_warning in record.message for record in caplog.records), (
-        caplog.records
-    )
+    assert any(
+        expected_warning in record.message for record in caplog.records
+    ), caplog.records
 
 
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
