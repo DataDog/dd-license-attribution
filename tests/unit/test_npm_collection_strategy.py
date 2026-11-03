@@ -10,6 +10,7 @@ import logging
 from typing import Any
 from unittest import mock
 
+import pytest
 import pytest_mock
 from pytest import LogCaptureFixture
 
@@ -4292,3 +4293,60 @@ def test_augment_metadata_from_local_path_vendored_deps_dont_overwrite_npm_deps(
     assert retry_entries[0].version == "0.13.1"
     # npm registry called for: dd-trace, retry (from npm list) + jest-docblock (vendored)
     assert mock_requests.call_count == 3
+
+
+@pytest.mark.parametrize(
+    "project_scope, with_dependencies, expected_names",
+    [
+        # The root is renamed to its package.json name, so the transitive-only
+        # filter must match that name, also when npm finds no dependencies.
+        (ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES, True, ["dep1"]),
+        (ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES, False, []),
+        (ProjectScope.ALL, True, ["@org/package1", "dep1"]),
+        (ProjectScope.ALL, False, ["@org/package1"]),
+    ],
+)
+def test_npm_collection_strategy_drops_renamed_root_in_transitive_mode(
+    mocker: pytest_mock.MockFixture,
+    project_scope: ProjectScope,
+    with_dependencies: bool,
+    expected_names: list[str],
+) -> None:
+    source_code_manager_mock = create_source_code_manager_mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/org/package1",
+        "https://api.github.com/repos/org/package1",
+    )
+    package_json: dict[str, Any] = {"name": "@org/package1", "version": "2.0.0"}
+    package_lock: dict[str, Any] = {"packages": {"": {}}}
+    if with_dependencies:
+        package_lock = {
+            "packages": {
+                "": {"dependencies": {"dep1": "^1.0.0"}},
+                "node_modules/dep1": {"version": "1.0.2", "dependencies": {}},
+            }
+        }
+    setup_npm_strategy_mocks(
+        mocker,
+        package_lock,
+        package_json,
+        [mock.Mock(status_code=200, json=lambda: {"license": "MIT"})],
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "https://github.com/org/package1", source_code_manager_mock, project_scope
+    )
+    result = strategy.augment_metadata(
+        [
+            Metadata(
+                name="github.com/org/package1",
+                origin="https://github.com/org/package1",
+                local_src_path=None,
+                license=[],
+                version=None,
+                copyright=[],
+            )
+        ]
+    )
+
+    assert [m.name for m in result] == expected_names
