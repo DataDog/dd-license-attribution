@@ -523,11 +523,12 @@ repositories** can be cloned.
 > **Branch-under-test caveat.** The mirror only redirects the strategies that
 > clone source code. The GitHub SBOM strategy (`github-sbom-strategy`, enabled
 > by default) instead reads GitHub's dependency graph for the repository, which
-> reflects its default/base branch — not the branch under test. If a pull
-> request changes dependencies and you want that change validated, disable it
-> with `github-sbom-strategy: false` so discovery is driven by the source-based
-> strategies. The action also registers `github-token` as a masked secret so it
-> is redacted from the job logs.
+> describes its default branch only. When the action maps the mirror onto a
+> branch under test (pull request, merge queue, or non-default branch push),
+> the tool skips that strategy for the repository automatically, so a pull
+> request's dependency changes are discovered by the source-based strategies
+> from the branch under test. The action also registers `github-token` as a
+> masked secret so it is redacted from the job logs.
 
 ### Basic usage
 
