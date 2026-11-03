@@ -2597,3 +2597,31 @@ def test_declared_pip_is_kept_in_the_sidecar(mocker: MockFixture) -> None:
             ),
         ]
     )
+
+
+@pytest.mark.parametrize(
+    "pyproject, expected",
+    [
+        ('[project]\nname = "Supply_Chain.Firewall"\n', "supply-chain-firewall"),
+        ('[tool.poetry]\nname = "poetry-project"\n', "poetry-project"),
+        ('[build-system]\nrequires = ["setuptools"]\n', None),
+        ("not = [valid toml", None),
+        (None, None),
+    ],
+    ids=["pep621", "poetry", "no-name", "invalid-toml", "no-pyproject"],
+)
+def test_get_project_name(
+    mocker: MockFixture, pyproject: str | None, expected: str | None
+) -> None:
+    mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.path_exists",
+        return_value=pyproject is not None,
+    )
+    open_file_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.open_file",
+        return_value=pyproject,
+    )
+
+    assert PythonEnvManager.get_project_name("project_dir") == expected
+    if pyproject is not None:
+        open_file_mock.assert_called_once_with("project_dir/pyproject.toml")

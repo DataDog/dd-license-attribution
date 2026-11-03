@@ -521,6 +521,34 @@ class PythonEnvManager(ArtifactManager):
         return None
 
     @staticmethod
+    def get_project_name(project_path: str) -> str | None:
+        """Read the scanned project's own distribution name from pyproject.toml.
+
+        `pip install .` installs the project itself into the scan venv, so
+        `pip list` reports it next to its dependencies.
+
+        Args:
+            project_path: The path of the scanned project.
+
+        Returns:
+            The PEP 503 normalized name from [project] or [tool.poetry], or
+            None when pyproject.toml is missing, unreadable or has no name
+            (e.g. a setup.py-only project).
+        """
+        pyproject_path = path_join(project_path, "pyproject.toml")
+        try:
+            if not path_exists(pyproject_path):
+                return None
+            pyproject = tomllib.loads(open_file(pyproject_path))
+        except (OSError, tomllib.TOMLDecodeError):
+            logger.debug("Could not read %s", pyproject_path)
+            return None
+        name = pyproject.get("project", {}).get("name") or pyproject.get(
+            "tool", {}
+        ).get("poetry", {}).get("name")
+        return _normalize_package_name(name) if isinstance(name, str) else None
+
+    @staticmethod
     def get_dependencies(venv_path: str) -> list[tuple[str, str]] | None:
         """Enumerate the dependency (name, version) pairs of a scan venv.
 
