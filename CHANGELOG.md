@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Fixed
 - The GitHub SBOM strategy no longer merges the default branch dependency graph into the report of a repository whose default branch is remapped by a mirror `ref_mapping` (e.g. `{"branch:main": "tag:v1.0"}`). GitHub's dependency graph only describes the default branch, so for such repositories it listed dependencies the analyzed ref does not have; the strategy now skips the SBOM for them and logs a warning. Dependencies found by the other strategies from the checked-out ref are unaffected.
+- `--only-transitive-dependencies` reports of a GitHub repository no longer list the analyzed repository itself (`github.com/<owner>/<repo>`). Only the GitHub SBOM strategy used to remove it, so it leaked whenever that strategy did not run for the repository (disabled, failed, or skipped for a remapped default branch).
 
 ## [0.9.0] - 2026-10-29
 

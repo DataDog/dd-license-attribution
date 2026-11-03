@@ -21,6 +21,7 @@ from typing import Annotated, Any, get_args, get_origin
 import click
 import typer
 from agithub.GitHub import GitHub
+from giturlparse import parse as parse_git_url
 
 import dd_license_attribution.config.cli_configs as cli_config
 from dd_license_attribution.adaptors.os import (
@@ -57,6 +58,7 @@ from dd_license_attribution.artifact_management.source_code_manager import (
 from dd_license_attribution.config import JsonConfigParser
 from dd_license_attribution.metadata_collector import ThreePhaseMetadataCollector
 from dd_license_attribution.metadata_collector.license_checker import LicenseChecker
+from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
@@ -184,6 +186,25 @@ def _repository_has_cargo_project(
         ):
             return True
     return False
+
+
+def _without_analyzed_repository(
+    metadata: list[Metadata],
+    repository_url: str,
+    source_code_manager: SourceCodeManager,
+) -> list[Metadata]:
+    """Drop the rows naming the analyzed repository itself.
+
+    Used for --only-transitive-dependencies: when the GitHub SBOM strategy
+    does not run for a repository (disabled, failed, or skipped for a remapped
+    default branch), nothing else removes its root row.
+    """
+    canonical_url, _ = source_code_manager.get_canonical_urls(repository_url)
+    parsed_url = parse_git_url(canonical_url)
+    if not parsed_url.valid or not parsed_url.github:
+        return metadata
+    root_name = f"github.com/{parsed_url.owner}/{parsed_url.repo}".lower()
+    return [m for m in metadata if (m.name or "").lower() != root_name]
 
 
 def _build_writer(
@@ -982,6 +1003,14 @@ def generate_sbom(
         except RustLicenseToolNotInstalledError as e:
             logger.error(str(e))
             sys.exit(1)
+
+        if (
+            ecosystem is None
+            and project_scope == ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
+        ):
+            metadata = _without_analyzed_repository(
+                metadata, package, source_code_manager
+            )
 
         checker = LicenseChecker(
             cli_config.default_config.preset_cautionary_licenses,
