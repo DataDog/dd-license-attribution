@@ -228,7 +228,7 @@ Example mirror configuration file:
 ]
 ```
 
-Note: Branch and tag mapping targets are supported (e.g. `"branch:main": "branch:development"` or `"branch:main": "tag:v1.0"`); commit targets are not. The mirror URLs must also be GitHub repositories.
+Note: Branch and tag mapping targets are supported (e.g. `"branch:main": "branch:development"` or `"branch:main": "tag:v1.0"`); commit targets are not. The mirror URLs must also be GitHub repositories. When a mirror remaps a repository's default branch, the GitHub SBOM strategy is skipped for that repository, since GitHub's dependency graph only describes the default branch: its dependencies come from the other strategies run on the checked-out ref.
 
 Note: `original_url` is matched **case-sensitively against the repository's canonical URL**. Before applying mirrors, the tool resolves each scan target to its canonical GitHub `owner/name` (following renames/redirects and using the casing GitHub records for the owner and repository). An `original_url` whose casing differs from that canonical form will never match, so the mirror is silently ignored. Copy the `owner/name` exactly as GitHub displays it.
 

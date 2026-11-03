@@ -7,6 +7,7 @@
 
 from unittest.mock import call
 
+import pytest
 import pytest_mock
 from agithub.GitHub import GitHub
 
@@ -36,6 +37,7 @@ def test_github_sbom_collection_strategy_returns_same_metadata_if_not_a_github_r
 ) -> None:
     github_client_mock = mocker.Mock(spec_set=GitHub)
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     source_code_manager_mock.get_canonical_urls.return_value = (
         "not_a_github_purl",
         None,
@@ -97,6 +99,7 @@ def test_github_sbom_collection_strategy_raise_exception_if_error_calling_github
     sbom_mock.get.return_value = (500, "Not Found")
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
@@ -154,6 +157,7 @@ def test_github_sbom_collection_strategy_raise_special_exception_if_error_callin
     sbom_mock.get.return_value = (404, "Not Found")
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
@@ -204,6 +208,7 @@ def test_github_sbom_collection_strategy_raise_special_exception_if_error_callin
     sbom_mock.get.return_value = (401, "Unauthorized")
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
@@ -266,6 +271,7 @@ def test_github_sbom_collection_strategy_with_no_new_info_skips_actions_and_retu
     )
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
@@ -350,6 +356,7 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
     )
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     # First call is for package1 with origin="test_purl"
     # Second call would be for package2 with origin=None but it returns None API URL so parse_git_url won't be called
     source_code_manager_mock.get_canonical_urls.side_effect = [
@@ -453,6 +460,7 @@ def test_strategy_does_not_add_dependencies_with_transitive_dependencies_is_fals
     )
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
@@ -532,6 +540,7 @@ def test_strategy_does_not_keep_root_when_with_root_project_is_false(
     )
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
@@ -601,6 +610,7 @@ def test_github_sbom_collection_strategy_handles_company_names_in_copyright(
         "test-owner": {"test-repo": {"dependency-graph": SbomMockWrapper(sbom_mock)}}
     }
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test-owner/test-repo",
         "https://api.github.com/repos/test-owner/test-repo",
@@ -679,6 +689,7 @@ def test_github_sbom_collection_strategy_uses_name_as_origin_if_download_locatio
 
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
@@ -763,6 +774,7 @@ def test_github_sbom_collection_strategy_retries_429_rate_limit(
     ]
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
@@ -820,6 +832,7 @@ def test_github_sbom_collection_strategy_does_not_retry_permanent_403(
     )
     github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
@@ -893,6 +906,7 @@ def test_github_sbom_collection_strategy_honors_retry_after_header(
         getheaders=mocker.Mock(return_value=[("Retry-After", "3")]),
     )
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
@@ -937,3 +951,73 @@ def test_github_sbom_collection_strategy_honors_retry_after_header(
     sbom_mock.get.assert_has_calls([call(), call()])
     source_code_manager_mock.get_canonical_urls.assert_called_once_with("test_purl")
     github_parse_mock.assert_called_once_with("https://github.com/test_owner/test_repo")
+
+
+@pytest.mark.parametrize(
+    "project_scope, expected_names",
+    [
+        (ProjectScope.ALL, ["github.com/test_owner/test_repo", "dependency"]),
+        # The root stays so later strategies can find its checkout.
+        (
+            ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+            ["github.com/test_owner/test_repo", "dependency"],
+        ),
+    ],
+)
+def test_github_sbom_collection_strategy_skips_sbom_when_default_branch_is_remapped(
+    mocker: pytest_mock.MockFixture,
+    project_scope: ProjectScope,
+    expected_names: list[str],
+) -> None:
+    # The SBOM lists a default-branch-only dependency that must not leak in.
+    sbom_mock = mocker.Mock()
+    sbom_mock.get.return_value = (
+        200,
+        {"sbom": {"packages": [{"name": "default-branch-only", "versionInfo": "9"}]}},
+    )
+    github_client_mock = GitHubClientMock(sbom_input=SbomMockWrapper(sbom_mock))
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = True
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/test_owner/test_repo",
+        "https://api.github.com/repos/test_owner/test_repo",
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.github_sbom_collection_strategy.parse_git_url",
+        return_value=GitUrlParseMock(
+            valid=True, platform="github", owner="test_owner", repo="test_repo"
+        ),
+    )
+
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=github_client_mock,
+        source_code_manager=source_code_manager_mock,
+        project_scope=project_scope,
+    )
+
+    updated_metadata = strategy.augment_metadata(
+        [
+            Metadata(
+                name="github.com/test_owner/test_repo",
+                version=None,
+                origin="https://github.com/test_owner/test_repo",
+                local_src_path=None,
+                license=[],
+                copyright=[],
+            ),
+            Metadata(
+                name="dependency",
+                version="1.0",
+                origin=None,
+                local_src_path=None,
+                license=["MIT"],
+                copyright=[],
+            ),
+        ]
+    )
+
+    assert [m.name for m in updated_metadata] == expected_names
+    sbom_mock.get.assert_not_called()
+    source_code_manager_mock.remaps_default_branch.assert_called_once_with(
+        "https://github.com/test_owner/test_repo"
+    )
