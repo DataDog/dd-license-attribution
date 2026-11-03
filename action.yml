@@ -60,10 +60,12 @@ inputs:
   github-sbom-strategy:
     description: >-
       Set to 'false' to pass --no-github-sbom-strategy. Note: this strategy
-      reads GitHub's dependency graph for the repository (its default/base
-      branch), which is not affected by the branch-under-test mirror. When
-      validating dependency changes on a PR, consider setting this to 'false'
-      so discovery is driven by the source-based strategies instead.
+      reads GitHub's dependency graph for the repository, which describes its
+      default branch only. When the action maps the mirror onto a branch under
+      test (pull request, merge queue, or non-default branch push), the tool
+      skips this strategy for the repository automatically, so discovery is
+      driven by the source-based strategies; it still runs for other
+      repositories (dependencies) and on default branch scans.
     required: false
     default: "true"
   gopkg-strategy:
