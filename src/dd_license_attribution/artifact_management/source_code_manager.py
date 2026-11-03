@@ -632,11 +632,11 @@ class SourceCodeManager(ArtifactManager):
             ref. When the default branch cannot be resolved, True if the
             mirror maps any branch, since it may be the default one.
         """
-        mappings = [
-            mirror.ref_mapping
-            for mirror in self.mirrors
-            if mirror.original_url == repository_url and mirror.ref_mapping
-        ]
+        mirror = next(
+            (m for m in self.mirrors if m.original_url == repository_url),
+            None,
+        )
+        mappings = [mirror.ref_mapping] if mirror and mirror.ref_mapping else []
         if not mappings:
             return False
 

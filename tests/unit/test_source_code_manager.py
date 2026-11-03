@@ -2727,6 +2727,39 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
             404,
             True,
         ),
+        # Checkout uses the first mirror matching the repository, so only that
+        # one decides (e.g. a caller's URL-only mirror ahead of the GitHub
+        # Action's branch-mapping fallback).
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/test_owner/test_repo_mirror",
+                ),
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/test_owner/test_repo",
+                    ref_mapping={(RefType.BRANCH, "main"): (RefType.BRANCH, "pr")},
+                ),
+            ],
+            200,
+            False,
+        ),
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/test_owner/test_repo",
+                    ref_mapping={(RefType.BRANCH, "main"): (RefType.BRANCH, "pr")},
+                ),
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/test_owner/test_repo_mirror",
+                ),
+            ],
+            200,
+            True,
+        ),
     ],
     ids=[
         "no-mirrors",
@@ -2735,6 +2768,8 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
         "mirror-for-another-repo",
         "only-non-default-refs-remapped",
         "default-branch-unknown-branch-remapped",
+        "first-matching-mirror-has-no-ref-mapping",
+        "first-matching-mirror-remaps-default-branch",
     ],
 )
 def test_source_code_manager_remaps_default_branch(
