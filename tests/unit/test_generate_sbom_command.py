@@ -7,6 +7,7 @@
 
 from unittest.mock import ANY, Mock, call, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from dd_license_attribution.cli.main_cli import app
@@ -780,3 +781,71 @@ def test_generate_sbom_csv_deprecated_alias_uses_csv(
     mock_csv_reporting_writter.assert_called_once_with()
     mock_csv_reporting_writter.return_value.write.assert_called_once_with([])
     mock_spdx_reporting_writter.assert_not_called()
+
+
+def _metadata(name: str) -> Metadata:
+    return Metadata(
+        name=name,
+        version=None,
+        origin=f"https://{name}",
+        local_src_path=None,
+        license=[],
+        copyright=[],
+    )
+
+
+@pytest.mark.parametrize(
+    "extra_args, expected_names",
+    [
+        # The repository itself is dropped, whatever the case of its name;
+        # its nested modules are separate packages and stay.
+        (
+            ["--only-transitive-dependencies"],
+            ["github.com/Org/Repo/submodule", "github.com/other/dependency"],
+        ),
+        (
+            [],
+            [
+                "github.com/Org/Repo",
+                "github.com/org/repo",
+                "github.com/Org/Repo/submodule",
+                "github.com/other/dependency",
+            ],
+        ),
+    ],
+)
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+def test_only_transitive_dependencies_drops_the_analyzed_repository(
+    mock_csv: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_three_phase_collector: Mock,
+    extra_args: list[str],
+    expected_names: list[str],
+) -> None:
+    mock_three_phase_collector.return_value.collect_metadata.return_value = [
+        _metadata("github.com/Org/Repo"),
+        _metadata("github.com/org/repo"),
+        _metadata("github.com/Org/Repo/submodule"),
+        _metadata("github.com/other/dependency"),
+    ]
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/Org/Repo",
+        "https://api.github.com/repos/Org/Repo",
+    )
+    mock_csv.return_value.write.return_value = ""
+
+    result = runner.invoke(
+        app,
+        ["generate-sbom", "https://github.com/org/repo", "--no-gh-auth", *extra_args],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 0, result.output
+    (written,), _ = mock_csv.return_value.write.call_args
+    assert [m.name for m in written] == expected_names

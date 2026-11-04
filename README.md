@@ -228,7 +228,7 @@ Example mirror configuration file:
 ]
 ```
 
-Note: Branch and tag mapping targets are supported (e.g. `"branch:main": "branch:development"` or `"branch:main": "tag:v1.0"`); commit targets are not. The mirror URLs must also be GitHub repositories.
+Note: Branch and tag mapping targets are supported (e.g. `"branch:main": "branch:development"` or `"branch:main": "tag:v1.0"`); commit targets are not. The mirror URLs must also be GitHub repositories. When a mirror remaps a repository's default branch, the GitHub SBOM strategy is skipped for that repository, since GitHub's dependency graph only describes the default branch: its dependencies come from the other strategies run on the checked-out ref.
 
 Note: `original_url` is matched **case-sensitively against the repository's canonical URL**. Before applying mirrors, the tool resolves each scan target to its canonical GitHub `owner/name` (following renames/redirects and using the casing GitHub records for the owner and repository). An `original_url` whose casing differs from that canonical form will never match, so the mirror is silently ignored. Copy the `owner/name` exactly as GitHub displays it.
 
@@ -523,11 +523,12 @@ repositories** can be cloned.
 > **Branch-under-test caveat.** The mirror only redirects the strategies that
 > clone source code. The GitHub SBOM strategy (`github-sbom-strategy`, enabled
 > by default) instead reads GitHub's dependency graph for the repository, which
-> reflects its default/base branch — not the branch under test. If a pull
-> request changes dependencies and you want that change validated, disable it
-> with `github-sbom-strategy: false` so discovery is driven by the source-based
-> strategies. The action also registers `github-token` as a masked secret so it
-> is redacted from the job logs.
+> describes its default branch only. When the action maps the mirror onto a
+> branch under test (pull request, merge queue, or non-default branch push),
+> the tool skips that strategy for the repository automatically, so a pull
+> request's dependency changes are discovered by the source-based strategies
+> from the branch under test. The action also registers `github-token` as a
+> masked secret so it is redacted from the job logs.
 
 ### Basic usage
 

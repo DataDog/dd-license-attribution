@@ -2646,3 +2646,184 @@ class TestIsRateLimitResponseClassification:
         expected: bool,
     ) -> None:
         assert _is_rate_limit_response(status, result, headers) is expected
+
+
+def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
+    github_client_mock = create_github_client_mock()
+    repo_mock = github_client_mock.repos["test_owner"]["test_repo"]
+    repo_mock.get.return_value = (
+        status,
+        (
+            {
+                "html_url": "https://github.com/test_owner/test_repo",
+                "url": "https://api.github.com/repos/test_owner/test_repo",
+                "default_branch": default_branch,
+            }
+            if status == 200
+            else None
+        ),
+    )
+    return github_client_mock
+
+
+@pytest.mark.parametrize(
+    "mirrors, repo_info_status, expected",
+    [
+        ([], 200, False),
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/test_owner/test_repo_mirror",
+                )
+            ],
+            200,
+            False,
+        ),
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/test_owner/test_repo",
+                    ref_mapping={(RefType.BRANCH, "main"): (RefType.TAG, "v1.0")},
+                )
+            ],
+            200,
+            True,
+        ),
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/other_owner/other_repo",
+                    mirror_url="https://github.com/other_owner/other_repo",
+                    ref_mapping={(RefType.BRANCH, "main"): (RefType.TAG, "v1.0")},
+                )
+            ],
+            200,
+            False,
+        ),
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/test_owner/test_repo",
+                    ref_mapping={
+                        (RefType.BRANCH, "release"): (RefType.BRANCH, "v3"),
+                        (RefType.TAG, "main"): (RefType.TAG, "v1.0"),
+                    },
+                )
+            ],
+            200,
+            False,
+        ),
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/test_owner/test_repo",
+                    ref_mapping={(RefType.BRANCH, "release"): (RefType.BRANCH, "v3")},
+                )
+            ],
+            404,
+            True,
+        ),
+        # An identity mapping on the same repository still checks out the
+        # default branch, also with a token in the mirror URL.
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://git:token@github.com/test_owner/test_repo",
+                    ref_mapping={(RefType.BRANCH, "main"): (RefType.BRANCH, "main")},
+                )
+            ],
+            200,
+            False,
+        ),
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/test_owner/test_repo",
+                    ref_mapping={(RefType.BRANCH, "main"): (RefType.BRANCH, "main")},
+                )
+            ],
+            404,
+            False,
+        ),
+        # The same branch name on another repository (e.g. a fork) is not the
+        # original default branch.
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/fork_owner/test_repo",
+                    ref_mapping={(RefType.BRANCH, "main"): (RefType.BRANCH, "main")},
+                )
+            ],
+            200,
+            True,
+        ),
+        # Checkout uses the first mirror matching the repository, so only that
+        # one decides (e.g. a caller's URL-only mirror ahead of the GitHub
+        # Action's branch-mapping fallback).
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/test_owner/test_repo_mirror",
+                ),
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/test_owner/test_repo",
+                    ref_mapping={(RefType.BRANCH, "main"): (RefType.BRANCH, "pr")},
+                ),
+            ],
+            200,
+            False,
+        ),
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/test_owner/test_repo",
+                    ref_mapping={(RefType.BRANCH, "main"): (RefType.BRANCH, "pr")},
+                ),
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/test_owner/test_repo_mirror",
+                ),
+            ],
+            200,
+            True,
+        ),
+    ],
+    ids=[
+        "no-mirrors",
+        "mirror-without-ref-mapping",
+        "default-branch-remapped",
+        "mirror-for-another-repo",
+        "only-non-default-refs-remapped",
+        "default-branch-unknown-branch-remapped",
+        "same-repo-identity-mapping-with-token",
+        "same-repo-identity-mapping-default-branch-unknown",
+        "identity-mapping-on-another-repo",
+        "first-matching-mirror-has-no-ref-mapping",
+        "first-matching-mirror-remaps-default-branch",
+    ],
+)
+def test_source_code_manager_remaps_default_branch(
+    mirrors: list[MirrorSpec], repo_info_status: int, expected: bool
+) -> None:
+    source_code_manager = SourceCodeManager(
+        "cache_dir",
+        _github_client_with_default_branch(repo_info_status, "main"),
+        mirrors=mirrors,
+    )
+
+    assert (
+        source_code_manager.remaps_default_branch(
+            "https://github.com/test_owner/test_repo"
+        )
+        is expected
+    )
