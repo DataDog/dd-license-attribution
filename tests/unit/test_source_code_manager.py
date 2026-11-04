@@ -2727,6 +2727,43 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
             404,
             True,
         ),
+        # An identity mapping on the same repository still checks out the
+        # default branch, also with a token in the mirror URL.
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://git:token@github.com/test_owner/test_repo",
+                    ref_mapping={(RefType.BRANCH, "main"): (RefType.BRANCH, "main")},
+                )
+            ],
+            200,
+            False,
+        ),
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/test_owner/test_repo",
+                    ref_mapping={(RefType.BRANCH, "main"): (RefType.BRANCH, "main")},
+                )
+            ],
+            404,
+            False,
+        ),
+        # The same branch name on another repository (e.g. a fork) is not the
+        # original default branch.
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/fork_owner/test_repo",
+                    ref_mapping={(RefType.BRANCH, "main"): (RefType.BRANCH, "main")},
+                )
+            ],
+            200,
+            True,
+        ),
         # Checkout uses the first mirror matching the repository, so only that
         # one decides (e.g. a caller's URL-only mirror ahead of the GitHub
         # Action's branch-mapping fallback).
@@ -2768,6 +2805,9 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
         "mirror-for-another-repo",
         "only-non-default-refs-remapped",
         "default-branch-unknown-branch-remapped",
+        "same-repo-identity-mapping-with-token",
+        "same-repo-identity-mapping-default-branch-unknown",
+        "identity-mapping-on-another-repo",
         "first-matching-mirror-has-no-ref-mapping",
         "first-matching-mirror-remaps-default-branch",
     ],
