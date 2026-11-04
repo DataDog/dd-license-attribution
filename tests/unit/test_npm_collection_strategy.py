@@ -4402,3 +4402,57 @@ def test_npm_collection_strategy_transitive_mode_keeps_dependency_sharing_root_n
         ("@org/package1", "1.0.0"),
         ("wrapper", "1.0.0"),
     ]
+
+
+@pytest.mark.parametrize(
+    "project_scope, expected_names",
+    [
+        (ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES, ["github.com/org/package1/v3"]),
+        (
+            ProjectScope.ALL,
+            ["@org/package1", "github.com/org/package1/v3"],
+        ),
+    ],
+)
+def test_npm_collection_strategy_root_is_located_once_across_finder_passes(
+    mocker: pytest_mock.MockFixture,
+    project_scope: ProjectScope,
+    expected_names: list[str],
+) -> None:
+    # The finder loop calls the strategy again; a row sharing the root's
+    # origin (a Go submodule of a mixed npm/Go repository) is not the root.
+    source_code_manager_mock = create_source_code_manager_mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/org/package1",
+        "https://api.github.com/repos/org/package1",
+    )
+    package_json: dict[str, Any] = {"name": "@org/package1", "version": "2.0.0"}
+    setup_npm_strategy_mocks(mocker, {"packages": {"": {}}}, package_json, [])
+
+    strategy = NpmMetadataCollectionStrategy(
+        "https://github.com/org/package1", source_code_manager_mock, project_scope
+    )
+    metadata = [
+        Metadata(
+            name="github.com/org/package1",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+        Metadata(
+            name="github.com/org/package1/v3",
+            origin="https://github.com/org/package1",
+            local_src_path=None,
+            license=["Apache-2.0"],
+            version="v3.0.0",
+            copyright=[],
+        ),
+    ]
+    for _ in range(3):
+        metadata = strategy.augment_metadata(metadata)
+
+    assert [m.name for m in metadata] == expected_names
+    submodule = metadata[-1]
+    assert (submodule.version, submodule.license) == ("v3.0.0", ["Apache-2.0"])
