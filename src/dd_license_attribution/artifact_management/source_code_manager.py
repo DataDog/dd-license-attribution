@@ -636,12 +636,18 @@ class SourceCodeManager(ArtifactManager):
             (m for m in self.mirrors if m.original_url == repository_url),
             None,
         )
-        mappings = [mirror.ref_mapping] if mirror and mirror.ref_mapping else []
-        if not mappings:
+        if mirror is None or not mirror.ref_mapping:
             return False
 
         default_branch: str | None = None
         parsed_url = parse_git_url(repository_url)
+        parsed_mirror_url = parse_git_url(mirror.mirror_url)
+        # Compared by host/owner/repo so a token in the mirror URL doesn't count
+        # as a different repository.
+        same_repository = parsed_url.valid and (
+            (parsed_mirror_url.host, parsed_mirror_url.owner, parsed_mirror_url.repo)
+            == (parsed_url.host, parsed_url.owner, parsed_url.repo)
+        )
         if parsed_url.valid and parsed_url.github:
             status, repository = self.get_repository_info(
                 parsed_url.owner, parsed_url.repo
@@ -649,12 +655,15 @@ class SourceCodeManager(ArtifactManager):
             if status == 200 and repository:
                 default_branch = repository.get("default_branch")
 
-        for mapping in mappings:
-            for ref_type, ref_name in mapping:
-                if ref_type == RefType.BRANCH and (
-                    default_branch is None or ref_name == default_branch
-                ):
-                    return True
+        for (ref_type, ref_name), target_ref in mirror.ref_mapping.items():
+            # A same-repository identity mapping still checks out the original
+            # branch, so it doesn't replace it.
+            if same_repository and target_ref == (ref_type, ref_name):
+                continue
+            if ref_type == RefType.BRANCH and (
+                default_branch is None or ref_name == default_branch
+            ):
+                return True
         return False
 
     def _get_mirror_url_and_ref(
