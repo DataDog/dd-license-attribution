@@ -59,14 +59,14 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           git checkout "${PR_BASE_SHA}"
-          pip install -e "." --quiet
+          python -m pip install -e "." --quiet
           pytest tests/unit/ --cov=src/dd_license_attribution --cov-report=xml:coverage-base.xml -q || true
           if [ ! -f coverage-base.xml ]; then
             echo "::warning::Failed to collect coverage on target branch. Skipping regression check."
             echo "SKIP_REGRESSION=true" >> "$GITHUB_ENV"
           fi
           git checkout "${PR_HEAD_SHA}"
-          pip install -e "." --quiet
+          python -m pip install -e "." --quiet
 
       - name: Run coverage on PR branch
         env:
