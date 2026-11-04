@@ -74,7 +74,7 @@
 "publicsuffix2","https://github.com/aboutcode-org/python-publicsuffix2","['MIT and MPL-2.0']","['David Wilson and others.', 'Tomaz Solc', 'nexB Inc.']"
 "pyahocorasick","https://github.com/WojciechMula/pyahocorasick","['BSD-3-Clause and Public-Domain']","['Wojciech Muła']"
 "pycparser","https://github.com/eliben/pycparser","['BSD-3-Clause']","['Eli Bendersky']"
-"pydantic","https://github.com/pydantic/pydantic","['MIT']","['Samuel Colvin']"
+"pydantic","https://github.com/pydantic/pydantic","['MIT']","['Anthropic, PBC', 'Anthropic, PBC.', 'OpenAI', 'Samuel Colvin']"
 "pydantic_core","https://github.com/pydantic/pydantic","['MIT']","['Samuel Colvin']"
 "pygmars","https://github.com/aboutcode-org/pygmars","['Apache-2.0']","['nexB. Inc. and others']"
 "pymaven-patch","https://github.com/aboutcode-org/pymaven","['Apache-2']","['Walter Scheper']"
