@@ -81,9 +81,13 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             project_scope == ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
         )
         self.yarn_subdirs = yarn_subdirs or []
-        # Root entry renamed to its package.json name, so transitive-only mode
-        # can still drop it (by identity: a dependency may share that name).
-        self.renamed_root_metadata: Metadata | None = None
+        # The root entry, located once: finders run in a fixpoint loop, and on
+        # later passes another row may share the root's origin (e.g. a Go
+        # submodule), which must not be mistaken for it.
+        self.root_metadata: Metadata | None = None
+        # Renamed to its package.json name, so transitive-only mode drops it by
+        # identity (a dependency may share that name).
+        self.root_renamed = False
 
     def _detect_package_manager(self, project_path: str) -> str:
         """Detect whether the project uses npm or yarn.
@@ -492,9 +496,13 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         # Extract name
         name = package_json_data.get("name", None)
 
+        candidates = metadata
+        if self.root_metadata is not None:
+            candidates = [m for m in metadata if m is self.root_metadata]
+
         # Find the root package in metadata
         # The root package is typically the first entry, or one whose origin matches our top_package URLs
-        for idx, meta in enumerate(metadata):
+        for idx, meta in enumerate(candidates):
             # Match if it's the first entry, or if origin contains either canonical or original top_package
             is_root = meta.origin and (
                 self.top_package in meta.origin
@@ -502,6 +510,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             )
 
             if is_root:
+                self.root_metadata = meta
                 # Update metadata with package.json data
                 if license:
                     meta.license = license
@@ -511,7 +520,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     meta.version = version
                 if name:
                     meta.name = name
-                    self.renamed_root_metadata = meta
+                    self.root_renamed = True
 
                 logger.debug(
                     "Enriched root package from package.json: name=%s, version=%s, license=%s, copyright=%s",
@@ -1026,9 +1035,9 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         # transitive-only filters (keyed on top_package) do not match; drop it
         # here so every return path, including "no dependencies", is covered.
         # Match by identity, not name, to keep other installed versions of it.
-        if self.only_transitive and self.renamed_root_metadata is not None:
+        if self.only_transitive and self.root_renamed:
             updated_metadata = [
-                m for m in updated_metadata if m is not self.renamed_root_metadata
+                m for m in updated_metadata if m is not self.root_metadata
             ]
         return updated_metadata
 
