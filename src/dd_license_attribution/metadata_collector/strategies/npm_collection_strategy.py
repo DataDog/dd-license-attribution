@@ -81,9 +81,9 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             project_scope == ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
         )
         self.yarn_subdirs = yarn_subdirs or []
-        # package.json name given to the root entry, so transitive-only mode
-        # can still drop the root after the rename.
-        self.root_package_name: str | None = None
+        # Root entry renamed to its package.json name, so transitive-only mode
+        # can still drop it (by identity: a dependency may share that name).
+        self.renamed_root_metadata: Metadata | None = None
 
     def _detect_package_manager(self, project_path: str) -> str:
         """Detect whether the project uses npm or yarn.
@@ -511,7 +511,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     meta.version = version
                 if name:
                     meta.name = name
-                    self.root_package_name = name
+                    self.renamed_root_metadata = meta
 
                 logger.debug(
                     "Enriched root package from package.json: name=%s, version=%s, license=%s, copyright=%s",
@@ -1025,9 +1025,10 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         # The root entry was renamed to its package.json name, which the
         # transitive-only filters (keyed on top_package) do not match; drop it
         # here so every return path, including "no dependencies", is covered.
-        if self.only_transitive and self.root_package_name is not None:
+        # Match by identity, not name, to keep other installed versions of it.
+        if self.only_transitive and self.renamed_root_metadata is not None:
             updated_metadata = [
-                m for m in updated_metadata if m.name != self.root_package_name
+                m for m in updated_metadata if m is not self.renamed_root_metadata
             ]
         return updated_metadata
 
