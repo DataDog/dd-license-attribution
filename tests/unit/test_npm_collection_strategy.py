@@ -4350,3 +4350,55 @@ def test_npm_collection_strategy_drops_renamed_root_in_transitive_mode(
     )
 
     assert [m.name for m in result] == expected_names
+
+
+def test_npm_collection_strategy_transitive_mode_keeps_dependency_sharing_root_name(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    # A dependency may pull in another version of the analyzed package; only
+    # the root entry itself must be dropped.
+    source_code_manager_mock = create_source_code_manager_mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/org/package1",
+        "https://api.github.com/repos/org/package1",
+    )
+    package_json: dict[str, Any] = {"name": "@org/package1", "version": "2.0.0"}
+    package_lock: dict[str, Any] = {
+        "packages": {
+            "": {"dependencies": {"wrapper": "^1.0.0"}},
+            "node_modules/wrapper": {"version": "1.0.0"},
+            "node_modules/wrapper/node_modules/@org/package1": {"version": "1.0.0"},
+        }
+    }
+    setup_npm_strategy_mocks(
+        mocker,
+        package_lock,
+        package_json,
+        [
+            mock.Mock(status_code=200, json=lambda: {"license": "MIT"}),
+            mock.Mock(status_code=200, json=lambda: {"license": "MIT"}),
+        ],
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "https://github.com/org/package1",
+        source_code_manager_mock,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+    )
+    result = strategy.augment_metadata(
+        [
+            Metadata(
+                name="github.com/org/package1",
+                origin="https://github.com/org/package1",
+                local_src_path=None,
+                license=[],
+                version=None,
+                copyright=[],
+            )
+        ]
+    )
+
+    assert sorted((m.name, m.version) for m in result) == [
+        ("@org/package1", "1.0.0"),
+        ("wrapper", "1.0.0"),
+    ]
