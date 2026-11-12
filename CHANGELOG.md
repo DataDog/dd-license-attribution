@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ### Changed
 - **Breaking upstream GitHub API change:** Migrated GitHub SBOM retrieval to GitHub's replacement asynchronous API. GitHub retires the synchronous API on November 13, 2026. Versions of datadog-license-attribution before 0.10.0 will no longer retrieve GitHub-generated SBOMs after retirement. Reports may still complete, but dependency, license, and copyright enrichment may be reduced. Upgrade to 0.10.0 or later to retain GitHub SBOM enrichment. The new flow (request report generation, retry a pending report with a bounded 1/2/4/8/16-second backoff, then download the ready report's signed URL through the existing bounded downloader, forwarding no GitHub credentials to it) preserves the previous enrichment semantics and per-package failure recovery; a malformed, unreachable, or never-ready report degrades that package's enrichment instead of aborting the run.
 
+### Fixed
+- Pinned `typer==0.27.2`: newer typer releases changed `BadParameter`'s `param` type in a way our CLI callback helpers no longer satisfy, failing the strict mypy gate. The pin will be removed once a typer release accepts the callback parameter type again.
+
 ## [0.9.0] - 2026-10-29
 
 ### Added
