@@ -5,11 +5,16 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
+import json
 import logging
+import re
+from typing import Any
+from urllib.parse import urlparse
 
 # Get application-specific logger
 logger = logging.getLogger("dd_license_attribution")
 
+from dd_license_attribution.adaptors.os import sleep
 from dd_license_attribution.config import string_formatting_config
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
@@ -20,8 +25,6 @@ from dd_license_attribution.utils.custom_splitting import CustomSplit
 
 __all__ = ["GitHubSbomMetadataCollectionStrategy", "ProjectScope"]
 
-from typing import Any
-
 from agithub.GitHub import GitHub
 from giturlparse import parse as parse_git_url
 
@@ -30,7 +33,138 @@ from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
     UnauthorizedRepository,
     github_api_get_with_retry,
+    github_response_headers,
 )
+from dd_license_attribution.utils.bounded_download import download_bounded
+
+# Delays applied between successive fetch attempts of a pending GitHub SBOM
+# report. The first fetch is immediate; each pending (202) response is
+# followed by one sleep from this schedule. The fixed schedule deliberately
+# overrides any Retry-After header on 202 responses.
+SBOM_FETCH_RETRY_DELAYS_SECONDS: tuple[int, ...] = (1, 2, 4, 8, 16)
+# SPDXID prefix identifying CI dependencies declared as GitHub Actions; a
+# package entry is only allowed to lack a "name" when it is skipped by this
+# predicate (the same predicate drives the skip in augment_metadata).
+SBOM_ACTIONS_PACKAGE_PREFIX = "SPDXRef-githubactions-"
+_SBOM_REPORT_URL_PATTERN = re.compile(
+    r"^/repos/(?P<owner>[^/]+)/(?P<repo>[^/]+)"
+    r"/dependency-graph/sbom/fetch-report/(?P<report_id>[A-Za-z0-9._-]+)$"
+)
+
+
+def _is_action_package(package: dict[str, Any]) -> bool:
+    """Return True when a SBOM package entry is a CI (GitHub Actions) dependency."""
+    spdx_id = package.get("SPDXID")
+    return isinstance(spdx_id, str) and spdx_id.startswith(SBOM_ACTIONS_PACKAGE_PREFIX)
+
+
+def _validate_sbom_report_url(sbom_url: object, owner: str, repo: str) -> str:
+    """Validate the sbom_url from the generation response and return its report id.
+
+    The URL must be an https URL on api.github.com, without userinfo, an
+    explicit port, a query or a fragment, pointing exactly at the
+    dependency-graph fetch-report endpoint of the requested repository.
+    Raises redacted ValueError messages (the URL itself is never included,
+    and exception chains are suppressed so the URL cannot leak in logs).
+    """
+    if not isinstance(sbom_url, str):
+        raise ValueError(
+            f"SBOM generation response for '{owner}/{repo}' did not contain a sbom_url string"
+        ) from None
+    parsed = urlparse(sbom_url)
+    if parsed.scheme != "https":
+        raise ValueError(f"sbom_url for '{owner}/{repo}' must use https") from None
+    if parsed.hostname != "api.github.com":
+        raise ValueError(
+            f"sbom_url for '{owner}/{repo}' must be on api.github.com"
+        ) from None
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError(
+            f"sbom_url for '{owner}/{repo}' must not carry credentials"
+        ) from None
+    try:
+        explicit_port = parsed.port
+    except ValueError:
+        explicit_port = 1
+    if explicit_port is not None:
+        raise ValueError(
+            f"sbom_url for '{owner}/{repo}' must not carry an explicit port"
+        ) from None
+    if parsed.query or parsed.fragment:
+        raise ValueError(
+            f"sbom_url for '{owner}/{repo}' must not carry a query or fragment"
+        ) from None
+    match = _SBOM_REPORT_URL_PATTERN.match(parsed.path)
+    if match is None:
+        raise ValueError(
+            f"sbom_url for '{owner}/{repo}' does not point at the dependency-graph SBOM fetch-report endpoint"
+        ) from None
+    if (
+        match.group("owner").lower() != owner.lower()
+        or match.group("repo").lower() != repo.lower()
+    ):
+        raise ValueError(
+            f"sbom_url for '{owner}/{repo}' points at a different repository"
+        ) from None
+    report_id = match.group("report_id")
+    if not any(character.isalnum() for character in report_id):
+        raise ValueError(
+            f"sbom_url for '{owner}/{repo}' carries an invalid report id"
+        ) from None
+    return report_id
+
+
+def _validate_report_download_url(location: object, owner: str, repo: str) -> str:
+    """Validate the Location header of a ready report; return the download URL.
+
+    The signed download URL served by GitHub need not be on the API host (it
+    is currently an Azure storage host, an implementation detail), so any
+    absolute https URL is accepted.
+    """
+    if not isinstance(location, str) or not location:
+        raise ValueError(
+            f"GitHub SBOM report for '{owner}/{repo}' was ready but carried no usable Location header"
+        ) from None
+    parsed = urlparse(location)
+    if parsed.scheme != "https" or not parsed.hostname:
+        raise ValueError(
+            f"GitHub SBOM report download URL for '{owner}/{repo}' is not a valid https URL"
+        ) from None
+    return location
+
+
+def _validate_sbom_document(document: object, owner: str, repo: str) -> dict[str, Any]:
+    """Validate the downloaded SBOM document shape at the retrieval boundary.
+
+    Guarantees that augment_metadata's SBOM processing, which runs outside its
+    per-package recovery handler, only ever sees well-shaped data: a JSON
+    object whose "packages" is a list of objects whose "name" and "SPDXID",
+    when present, are strings. Entries without a "name" are allowed only when
+    they are CI (GitHub Actions) dependencies skipped by _is_action_package.
+    Returns the validated document.
+    """
+    context = f"Malformed GitHub SBOM report for '{owner}/{repo}'"
+    if not isinstance(document, dict):
+        raise ValueError(f"{context}: the report is not a JSON object") from None
+    packages = document.get("packages")
+    if not isinstance(packages, list):
+        raise ValueError(f"{context}: 'packages' is missing or not a list") from None
+    for package in packages:
+        if not isinstance(package, dict):
+            raise ValueError(
+                f"{context}: package entries must be JSON objects"
+            ) from None
+        name = package.get("name")
+        if name is not None and not isinstance(name, str):
+            raise ValueError(f"{context}: package 'name' must be a string") from None
+        spdx_id = package.get("SPDXID")
+        if spdx_id is not None and not isinstance(spdx_id, str):
+            raise ValueError(f"{context}: package 'SPDXID' must be a string") from None
+        if name is None and not _is_action_package(package):
+            raise ValueError(
+                f"{context}: package entries must carry a 'name'"
+            ) from None
+    return document
 
 
 class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
@@ -120,11 +254,6 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
             )
 
             try:
-                logger.debug(
-                    "Attempting to retrieve GitHub-generated SBOM for '%s/%s'.",
-                    owner,
-                    repo,
-                )
                 sbom = self.__get_github_generated_sbom(owner, repo)
                 packages_in_sbom = sbom["packages"]
                 logger.debug(
@@ -154,10 +283,11 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
             if not self.with_root_project:
                 before_count = len(packages_in_sbom)
                 # Exclude the root project from the metadata using the canonical name
+                # (nameless action entries are guarded so they cannot raise here)
                 packages_in_sbom = [
                     pkg
                     for pkg in packages_in_sbom
-                    if canonical_package_name != pkg["name"]
+                    if canonical_package_name != pkg.get("name")
                 ]
                 after_count = len(packages_in_sbom)
                 logger.debug(
@@ -173,7 +303,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     for pkg in packages_in_sbom
                     if any(
                         m_pkg.name is not None
-                        and pkg["name"].lower().startswith(m_pkg.name.lower())
+                        and pkg.get("name", "").lower().startswith(m_pkg.name.lower())
                         for m_pkg in metadata
                     )
                 ]
@@ -196,9 +326,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                 pkg_name = sbom_package.get("name", "<no-name>")
                 logger.debug("Processing SBOM package: '%s'", pkg_name)
                 # skipping CI dependencies declared as actions
-                if "SPDXID" in sbom_package and sbom_package["SPDXID"].startswith(
-                    "SPDXRef-githubactions-"
-                ):
+                if _is_action_package(sbom_package):
                     logger.debug(
                         "Skipping CI dependency (GitHub Action) package: '%s'", pkg_name
                     )
@@ -351,30 +479,38 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         return updated_metadata
 
-    def __get_github_generated_sbom(self, owner: str, repo: str) -> Any:
+    def __get_github_generated_sbom(self, owner: str, repo: str) -> dict[str, Any]:
+        """Retrieve the GitHub-generated SBOM document through the async API.
+
+        Requests report generation, polls the same report until it is ready,
+        and downloads the bare SPDX document through the bounded downloader.
+        Generation is requested exactly once; pending (202) fetch responses
+        retry the same report following SBOM_FETCH_RETRY_DELAYS_SECONDS (the
+        fixed schedule deliberately overrides any Retry-After on 202
+        responses, per the accepted design). All failures raise the existing
+        recoverable exception types with redacted messages: temporary signed
+        report and download URLs are never logged.
+        """
         logger.debug(
-            "Attempting to retrieve GitHub-generated SBOM for '%s/%s'.", owner, repo
+            "Requesting GitHub SBOM report generation for '%s/%s'.", owner, repo
         )
-        # Retry confirmed rate limit responses (a 429, or a 403 confirmed by
-        # the rate limit headers or, failing that, the message), mirroring
-        # SourceCodeManager.get_repository_info. Permanent 403 responses
-        # (e.g. missing dependency-graph permissions) are not retried.
         status, result, _ = github_api_get_with_retry(
-            lambda: self.client.repos[owner][repo]["dependency-graph"].sbom.get(),
+            lambda: self.client.repos[owner][repo]["dependency-graph"]["sbom"][
+                "generate-report"
+            ].get(),
             self.client,
         )
-        logger.debug(
-            "GitHub SBOM API response for '%s/%s': status=%s", owner, repo, status
-        )
-        if status == 200 and isinstance(result, dict):
-            return result["sbom"]
+        if status == 201:
+            sbom_url = result.get("sbom_url") if isinstance(result, dict) else None
+            report_id = _validate_sbom_report_url(sbom_url, owner, repo)
+            logger.debug(
+                "GitHub SBOM report generation accepted for '%s/%s'.", owner, repo
+            )
+            return self.__fetch_github_generated_sbom(owner, repo, report_id)
         if status == 404:
             error_message = (
                 f"Inexistent repository or private repository and not enough permissions in the GitHub token.\n"
                 f"If {owner}/{repo} is a valid repository, check if the token has the content-read and metadata-read required permissions."
-            )
-            logger.error(
-                "SBOM retrieval failed for '%s/%s': %s", owner, repo, error_message
             )
             raise NonAccessibleRepository(error_message)
         if status == 401:
@@ -382,17 +518,80 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                 f"The GitHub token doesn't have enough permissions to access the {owner}/{repo} repository.\n"
                 f"Check if the token has the content-read and metadata-read required permissions."
             )
-            logger.error(
-                "SBOM retrieval unauthorized for '%s/%s': %s",
+            raise UnauthorizedRepository(error_message)
+        raise ValueError(
+            f"Failed to request GitHub SBOM generation for {owner}/{repo} (status {status})"
+        )
+
+    def __fetch_github_generated_sbom(
+        self, owner: str, repo: str, report_id: str
+    ) -> dict[str, Any]:
+        """Poll one SBOM report until ready, then download and parse it."""
+        pending_retries = 0
+        while True:
+            status, _, _ = github_api_get_with_retry(
+                lambda: self.client.repos[owner][repo]["dependency-graph"]["sbom"][
+                    "fetch-report"
+                ][report_id].get(),
+                self.client,
+            )
+            logger.debug(
+                "GitHub SBOM report fetch for '%s/%s': status=%s", owner, repo, status
+            )
+            if status == 302:
+                logger.debug("GitHub SBOM report ready for '%s/%s'.", owner, repo)
+                return self.__download_github_generated_sbom(owner, repo)
+            if status != 202:
+                break
+            if pending_retries >= len(SBOM_FETCH_RETRY_DELAYS_SECONDS):
+                raise ValueError(
+                    f"GitHub SBOM report for '{owner}/{repo}' was not ready after "
+                    f"{sum(SBOM_FETCH_RETRY_DELAYS_SECONDS)} seconds"
+                )
+            delay = SBOM_FETCH_RETRY_DELAYS_SECONDS[pending_retries]
+            pending_retries += 1
+            logger.debug(
+                "GitHub SBOM report for '%s/%s' pending; retrying in %d second(s).",
                 owner,
                 repo,
-                error_message,
+                delay,
+            )
+            sleep(delay)
+        if status == 404:
+            raise ValueError(
+                f"GitHub SBOM report for '{owner}/{repo}' expired or is unavailable"
+            )
+        if status == 401:
+            error_message = (
+                f"The GitHub token doesn't have enough permissions to access the {owner}/{repo} repository.\n"
+                f"Check if the token has the content-read and metadata-read required permissions."
             )
             raise UnauthorizedRepository(error_message)
-        logger.error(
-            "Failed to get SBOM for '%s/%s', unexpected status code: %s",
-            owner,
-            repo,
-            status,
+        raise ValueError(
+            f"Failed to fetch GitHub SBOM report for {owner}/{repo} (status {status})"
         )
-        raise ValueError(f"Failed to get SBOM for {owner}/{repo}")
+
+    def __download_github_generated_sbom(self, owner: str, repo: str) -> dict[str, Any]:
+        """Download a ready SBOM report and parse it as a bare SPDX document."""
+        headers = github_response_headers(self.client)
+        location = _validate_report_download_url(
+            headers.get("location") if headers is not None else None, owner, repo
+        )
+        logger.debug("Downloading GitHub SBOM report for '%s/%s'.", owner, repo)
+        try:
+            content = download_bounded(location)
+        except OSError:
+            # Redact the signed download URL that download_bounded embeds in
+            # its error messages, and suppress the exception chain so it
+            # cannot leak through exc_info logging either.
+            raise OSError(
+                f"Failed to download GitHub SBOM report for {owner}/{repo}"
+            ) from None
+        try:
+            document = json.loads(content)
+        except ValueError:
+            # Covers JSONDecodeError and UnicodeDecodeError (invalid UTF-8).
+            raise ValueError(
+                f"GitHub SBOM report for '{owner}/{repo}' is not valid JSON"
+            ) from None
+        return _validate_sbom_document(document, owner, repo)
