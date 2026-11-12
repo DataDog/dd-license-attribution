@@ -2825,9 +2825,17 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
         "first-matching-mirror-remaps-default-branch",
     ],
 )
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 def test_source_code_manager_remaps_default_branch(
-    mirrors: list[MirrorSpec], repo_info_status: int, expected: bool
+    path_exists_mock: Mock,
+    list_dir_mock: Mock,
+    mirrors: list[MirrorSpec],
+    repo_info_status: int,
+    expected: bool,
 ) -> None:
+    path_exists_mock.return_value = True
+    list_dir_mock.return_value = []
     source_code_manager = SourceCodeManager(
         "cache_dir",
         _github_client_with_default_branch(repo_info_status, "main"),
@@ -2850,9 +2858,16 @@ def test_source_code_manager_remaps_default_branch(
     ],
     ids=["host-differs-in-case", "path-differs-in-case"],
 )
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 def test_source_code_manager_remaps_default_branch_non_github_path_case(
-    mirror_url: str, expected: bool
+    path_exists_mock: Mock,
+    list_dir_mock: Mock,
+    mirror_url: str,
+    expected: bool,
 ) -> None:
+    path_exists_mock.return_value = True
+    list_dir_mock.return_value = []
     # Outside GitHub, repository paths may be case-sensitive.
     original_url = "https://git.example.com/Owner/Repo"
     source_code_manager = SourceCodeManager(
