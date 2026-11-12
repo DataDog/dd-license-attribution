@@ -67,6 +67,17 @@ class UnauthorizedRepository(Exception):
     pass
 
 
+def _repository_identity(parsed_url: Any) -> tuple[str, str, str]:
+    # Hostnames are case-insensitive everywhere, GitHub owner/repo names too.
+    if parsed_url.github:
+        return (
+            parsed_url.host.lower(),
+            parsed_url.owner.lower(),
+            parsed_url.repo.lower(),
+        )
+    return (parsed_url.host.lower(), parsed_url.owner, parsed_url.repo)
+
+
 def _output_from_git_command(args: list[str], git_env: dict[str, str] | None) -> str:
     if git_env is None:
         return output_from_command(args)
@@ -644,9 +655,11 @@ class SourceCodeManager(ArtifactManager):
         parsed_mirror_url = parse_git_url(mirror.mirror_url)
         # Compared by host/owner/repo so a token in the mirror URL doesn't count
         # as a different repository.
-        same_repository = parsed_url.valid and (
-            (parsed_mirror_url.host, parsed_mirror_url.owner, parsed_mirror_url.repo)
-            == (parsed_url.host, parsed_url.owner, parsed_url.repo)
+        same_repository = (
+            parsed_url.valid
+            and parsed_mirror_url.valid
+            and _repository_identity(parsed_mirror_url)
+            == _repository_identity(parsed_url)
         )
         if parsed_url.valid and parsed_url.github:
             status, repository = self.get_repository_info(

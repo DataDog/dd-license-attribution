@@ -2751,6 +2751,18 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
             404,
             False,
         ),
+        # GitHub owner/repo names are case-insensitive.
+        (
+            [
+                MirrorSpec(
+                    original_url="https://github.com/test_owner/test_repo",
+                    mirror_url="https://github.com/Test_Owner/Test_Repo",
+                    ref_mapping={(RefType.BRANCH, "main"): (RefType.BRANCH, "main")},
+                )
+            ],
+            200,
+            False,
+        ),
         # The same branch name on another repository (e.g. a fork) is not the
         # original default branch.
         (
@@ -2807,6 +2819,7 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
         "default-branch-unknown-branch-remapped",
         "same-repo-identity-mapping-with-token",
         "same-repo-identity-mapping-default-branch-unknown",
+        "same-repo-identity-mapping-different-case",
         "identity-mapping-on-another-repo",
         "first-matching-mirror-has-no-ref-mapping",
         "first-matching-mirror-remaps-default-branch",
@@ -2827,3 +2840,31 @@ def test_source_code_manager_remaps_default_branch(
         )
         is expected
     )
+
+
+@pytest.mark.parametrize(
+    "mirror_url, expected",
+    [
+        ("https://GIT.example.com/Owner/Repo", False),
+        ("https://git.example.com/owner/repo", True),
+    ],
+    ids=["host-differs-in-case", "path-differs-in-case"],
+)
+def test_source_code_manager_remaps_default_branch_non_github_path_case(
+    mirror_url: str, expected: bool
+) -> None:
+    # Outside GitHub, repository paths may be case-sensitive.
+    original_url = "https://git.example.com/Owner/Repo"
+    source_code_manager = SourceCodeManager(
+        "cache_dir",
+        create_github_client_mock(),
+        mirrors=[
+            MirrorSpec(
+                original_url=original_url,
+                mirror_url=mirror_url,
+                ref_mapping={(RefType.BRANCH, "main"): (RefType.BRANCH, "main")},
+            )
+        ],
+    )
+
+    assert source_code_manager.remaps_default_branch(original_url) is expected
