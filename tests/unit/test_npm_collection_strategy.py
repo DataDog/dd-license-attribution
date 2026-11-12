@@ -4456,3 +4456,47 @@ def test_npm_collection_strategy_root_is_located_once_across_finder_passes(
     assert [m.name for m in metadata] == expected_names
     submodule = metadata[-1]
     assert (submodule.version, submodule.license) == ("v3.0.0", ["Apache-2.0"])
+
+
+@pytest.mark.parametrize(
+    "name, origin",
+    [
+        ("github.com/org/package1/v3", "https://github.com/org/package1"),
+        ("github.com/org/package1-utils", "https://github.com/org/package1-utils"),
+    ],
+    ids=["go-submodule-sharing-origin", "dependency-extending-origin"],
+)
+def test_npm_collection_strategy_transitive_mode_without_root_seed_keeps_row(
+    mocker: pytest_mock.MockFixture, name: str, origin: str
+) -> None:
+    # In transitive-only mode the GitHub SBOM removes the root seed, so rows
+    # sharing or extending its origin must not be taken for the root.
+    source_code_manager_mock = create_source_code_manager_mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/org/package1",
+        "https://api.github.com/repos/org/package1",
+    )
+    package_json: dict[str, Any] = {"name": "@org/package1", "version": "2.0.0"}
+    setup_npm_strategy_mocks(mocker, {"packages": {"": {}}}, package_json, [])
+
+    strategy = NpmMetadataCollectionStrategy(
+        "https://github.com/org/package1",
+        source_code_manager_mock,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+    )
+    metadata = [
+        Metadata(
+            name=name,
+            origin=origin,
+            local_src_path=None,
+            license=["Apache-2.0"],
+            version="v3.0.0",
+            copyright=[],
+        )
+    ]
+    for _ in range(3):
+        metadata = strategy.augment_metadata(metadata)
+
+    assert [(m.name, m.version, m.license) for m in metadata] == [
+        (name, "v3.0.0", ["Apache-2.0"])
+    ]

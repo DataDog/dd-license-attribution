@@ -496,7 +496,13 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         # Extract name
         name = package_json_data.get("name", None)
 
-        candidates = metadata
+        # Only the root seed, by name: in transitive-only mode the GitHub SBOM
+        # may have removed it, and other rows can share or extend its origin.
+        root_names = {
+            url.removeprefix("https://").removeprefix("http://")
+            for url in (self.top_package, self.original_top_package)
+        }
+        candidates = [m for m in metadata if m.name in root_names]
         if self.root_metadata is not None:
             candidates = [m for m in metadata if m is self.root_metadata]
 
