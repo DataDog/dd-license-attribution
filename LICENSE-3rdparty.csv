@@ -102,7 +102,7 @@
 "truststore","https://github.com/sethmlarson/truststore","['MIT']","['Seth Michael Larson']"
 "typecode","https://github.com/aboutcode-org/typecode","['Apache-2.0']","['nexB. Inc. and others']"
 "typecode-libmagic","https://github.com/aboutcode-org/scancode-plugins","['apache-2.0 AND bsd-simplified-darwin AND (bsd-simplified AND public-domain AND bsd-new AND isc AND (bsd-new OR gpl-1.0-plus) AND bsd-original)']","['nexB']"
-"typer","https://github.com/fastapi/typer","['MIT']","['Pallets', 'Sebastian Ramirez']"
+"typer","https://github.com/fastapi/typer","['MIT']","['Gregory P. Ward', 'Pallets', 'Python Software Foundation', 'Sebastian Ramirez']"
 "types-pytz","types-pytz","['Apache-2.0']","['The typeshed authors']"
 "types-requests","types-requests","['Apache-2.0']","['The typeshed authors']"
 "typing-inspection","https://github.com/pydantic/typing-inspection","['MIT']","['Pydantic Services Inc.']"
