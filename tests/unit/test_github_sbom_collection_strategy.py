@@ -1664,6 +1664,10 @@ def test_async_flow_rejects_invalid_location_url(
             b'{"packages": [{"SPDXID": "SPDXRef-Other"}]}',
             "Malformed GitHub SBOM report for 'test_owner/test_repo': package entries must carry a 'name'",
         ),
+        (
+            b'{"packages": [{"name": null, "SPDXID": "SPDXRef-Other"}]}',
+            "Malformed GitHub SBOM report for 'test_owner/test_repo': package entries must carry a 'name'",
+        ),
     ],
 )
 def test_async_flow_rejects_malformed_downloaded_documents(
@@ -1916,6 +1920,63 @@ def test_async_flow_failure_on_one_package_does_not_block_the_next(
     strategy_sleep.assert_not_called()
     scm_sleep.assert_has_calls([mocker.call(2.0), mocker.call(4.0)])
     download_mock.assert_called_once_with(DOWNLOAD_URL)
+
+
+def test_async_flow_null_named_action_package_survives_scope_filters(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """An action entry with an explicit "name": null must not crash any scope.
+
+    json.dumps serializes None to null, so an entry carrying an explicit null
+    name (as opposed to no name key at all) reaches the scope filters; the
+    transitive filter must tolerate it instead of raising AttributeError
+    outside the per-package recovery handler.
+    """
+    document = {
+        "packages": [
+            {"name": None, "SPDXID": "SPDXRef-githubactions-somthing-that-acts"},
+            {
+                "name": "package1",
+                "versionInfo": "1.0",
+                "licenseDeclared": "APACHE-2.0",
+                "downloadLocation": "test_purl",
+            },
+        ]
+    }
+    for scope in (
+        ProjectScope.ALL,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+        ProjectScope.ONLY_ROOT_PROJECT,
+    ):
+        client, generate, fetch, download_mock = make_success_client(mocker, document)
+        source_code_manager_mock = make_source_code_manager_mock(mocker)
+        parse_git_url_mock(mocker)
+
+        strategy = GitHubSbomMetadataCollectionStrategy(
+            github_client=client,
+            source_code_manager=source_code_manager_mock,
+            project_scope=scope,
+        )
+        initial_metadata = [
+            Metadata(
+                name="package1",
+                version=None,
+                origin="test_purl",
+                local_src_path=None,
+                license=[],
+                copyright=[],
+            )
+        ]
+
+        updated_metadata = strategy.augment_metadata(initial_metadata)
+
+        # No crash in any scope; the null-named action entry is skipped and
+        # package1 keeps its enrichment
+        assert [metadata.name for metadata in updated_metadata] == ["package1"]
+        assert updated_metadata[0].version == "1.0"
+        assert generate.calls == 1
+        assert fetch.calls == 1
+        download_mock.assert_called_once_with(DOWNLOAD_URL)
 
 
 def test_async_flow_nameless_action_package_survives_scope_filters(

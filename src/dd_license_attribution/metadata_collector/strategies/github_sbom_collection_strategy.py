@@ -303,7 +303,11 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                     for pkg in packages_in_sbom
                     if any(
                         m_pkg.name is not None
-                        and pkg.get("name", "").lower().startswith(m_pkg.name.lower())
+                        # "or ''" also covers an explicit json null name,
+                        # which .get(name, "") would pass through unchanged
+                        and (pkg.get("name") or "")
+                        .lower()
+                        .startswith(m_pkg.name.lower())
                         for m_pkg in metadata
                     )
                 ]
