@@ -75,7 +75,7 @@ def _output_from_git_command(args: list[str], git_env: dict[str, str] | None) ->
     )
 
 
-def _response_headers(github_client: GitHub) -> dict[str, str] | None:
+def github_response_headers(github_client: GitHub) -> dict[str, str] | None:
     """Return the API client's most recent response headers, if usable.
 
     The agithub API class exposes getheaders() returning the headers of
@@ -272,7 +272,7 @@ def github_api_get_with_retry(
         number of fetch attempts performed (1 when no retry happened).
     """
     status, result = fetch()
-    headers = _response_headers(github_client)
+    headers = github_response_headers(github_client)
     attempt = 1
     while (
         _is_transient_response(status, result, headers)
@@ -310,7 +310,7 @@ def github_api_get_with_retry(
         sleep(delay)
         attempt += 1
         status, result = fetch()
-        headers = _response_headers(github_client)
+        headers = github_response_headers(github_client)
     return (status, result, attempt)
 
 
@@ -455,7 +455,7 @@ class SourceCodeManager(ArtifactManager):
         # they recover. Other failures (e.g. 404 not found, or a permanent
         # 403) are safe to cache.
         if not _is_transient_response(
-            status, repository, _response_headers(self.github_client)
+            status, repository, github_response_headers(self.github_client)
         ):
             self._canonical_urls_cache[url] = fallback_result
         return fallback_result
@@ -510,7 +510,7 @@ class SourceCodeManager(ArtifactManager):
         )
 
         if _is_transient_response(
-            status, result, _response_headers(self.github_client)
+            status, result, github_response_headers(self.github_client)
         ):
             # Transient failures (rate limits, 5xx server errors): don't
             # cache them so a later caller can retry once they recover.
