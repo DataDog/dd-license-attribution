@@ -166,6 +166,7 @@ def patch_sleeps(mocker: pytest_mock.MockFixture) -> tuple[Any, Any]:
 
 def make_source_code_manager_mock(mocker: pytest_mock.MockFixture) -> Any:
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     source_code_manager_mock.get_canonical_urls.return_value = (
         "https://github.com/test_owner/test_repo",
         "https://api.github.com/repos/test_owner/test_repo",
@@ -198,6 +199,7 @@ def test_github_sbom_collection_strategy_returns_same_metadata_if_not_a_github_r
 ) -> None:
     github_client_mock = mocker.Mock(spec_set=object)
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     source_code_manager_mock.get_canonical_urls.return_value = (
         "not_a_github_purl",
         None,
@@ -458,6 +460,7 @@ def test_github_sbom_collection_strategy_with_new_info_is_not_lost_in_repeated_p
     }
     client, generate, fetch, download_mock = make_success_client(mocker, document)
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     # First call is for package1 with origin="test_purl"
     # Second call would be for package2 with origin=None but it returns None API URL so parse_git_url won't be called
     source_code_manager_mock.get_canonical_urls.side_effect = [
@@ -1870,6 +1873,7 @@ def test_async_flow_failure_on_one_package_does_not_block_the_next(
         return_value=json.dumps(document).encode(),
     )
     source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.remaps_default_branch.return_value = False
     source_code_manager_mock.get_canonical_urls.side_effect = [
         (
             "https://github.com/test_owner/test_repo",
@@ -2068,3 +2072,63 @@ def test_async_flow_nameless_action_package_survives_scope_filters(
     assert updated_metadata[0].name == "package1"
     assert updated_metadata[0].origin == "https://github.com/test_owner/test_repo"
     download_mock.assert_called_once_with(DOWNLOAD_URL)
+
+
+@pytest.mark.parametrize(
+    "project_scope, expected_names",
+    [
+        (ProjectScope.ALL, ["github.com/test_owner/test_repo", "dependency"]),
+        # The root stays so later strategies can find its checkout.
+        (
+            ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+            ["github.com/test_owner/test_repo", "dependency"],
+        ),
+    ],
+)
+def test_github_sbom_collection_strategy_skips_sbom_when_default_branch_is_remapped(
+    mocker: pytest_mock.MockFixture,
+    project_scope: ProjectScope,
+    expected_names: list[str],
+) -> None:
+    # The SBOM lists a default-branch-only dependency that must not leak in.
+    client, generate, fetch, download_mock = make_success_client(
+        mocker, {"packages": [{"name": "default-branch-only", "versionInfo": "9"}]}
+    )
+    source_code_manager_mock = make_source_code_manager_mock(mocker)
+    source_code_manager_mock.remaps_default_branch.return_value = True
+    parse_git_url_mock(mocker)
+
+    strategy = GitHubSbomMetadataCollectionStrategy(
+        github_client=client,
+        source_code_manager=source_code_manager_mock,
+        project_scope=project_scope,
+    )
+
+    updated_metadata = strategy.augment_metadata(
+        [
+            Metadata(
+                name="github.com/test_owner/test_repo",
+                version=None,
+                origin="https://github.com/test_owner/test_repo",
+                local_src_path=None,
+                license=[],
+                copyright=[],
+            ),
+            Metadata(
+                name="dependency",
+                version="1.0",
+                origin=None,
+                local_src_path=None,
+                license=["MIT"],
+                copyright=[],
+            ),
+        ]
+    )
+
+    assert [m.name for m in updated_metadata] == expected_names
+    assert generate.calls == 0
+    assert fetch.calls == 0
+    download_mock.assert_not_called()
+    source_code_manager_mock.remaps_default_branch.assert_called_once_with(
+        "https://github.com/test_owner/test_repo"
+    )
