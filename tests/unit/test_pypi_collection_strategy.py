@@ -7,6 +7,7 @@
 
 import logging
 import typing
+from unittest.mock import call
 
 import pytest
 import pytest_mock
@@ -2084,17 +2085,30 @@ def test_pypi_collection_strategy_logs_fetched_pypi_metadata_at_debug_level(
 
 
 @pytest.mark.parametrize(
-    "project_scope, expected_names",
+    "project_scope, expected_names, expected_pypi_urls",
     [
-        # The project installed from the checkout is not its own dependency.
-        (ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES, ["requests"]),
-        (ProjectScope.ALL, ["github.com/org/my_project", "My_Project", "requests"]),
+        # The project installed from the checkout is not its own dependency,
+        # so it is not looked up on PyPI either.
+        (
+            ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+            ["requests"],
+            ["https://pypi.org/pypi/requests/2.0/json"],
+        ),
+        (
+            ProjectScope.ALL,
+            ["github.com/org/my_project", "My_Project", "requests"],
+            [
+                "https://pypi.org/pypi/My_Project/1.0/json",
+                "https://pypi.org/pypi/requests/2.0/json",
+            ],
+        ),
     ],
 )
 def test_pypi_strategy_excludes_the_scanned_project_in_transitive_mode(
     mocker: pytest_mock.MockFixture,
     project_scope: ProjectScope,
     expected_names: list[str],
+    expected_pypi_urls: list[str],
 ) -> None:
     source_code_manager_mock = mocker.Mock()
     source_code_manager_mock.get_canonical_urls.return_value = (
@@ -2109,7 +2123,7 @@ def test_pypi_strategy_excludes_the_scanned_project_in_transitive_mode(
     )
     python_env_manager_mock = mocker.Mock()
     python_env_manager_mock.get_environment.return_value = "venv"
-    mocker.patch(
+    get_dependencies_mock = mocker.patch(
         "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
         return_value=[("My_Project", "1.0"), ("requests", "2.0")],
     )
@@ -2117,7 +2131,7 @@ def test_pypi_strategy_excludes_the_scanned_project_in_transitive_mode(
         "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_project_name",
         return_value="my-project",
     )
-    mocker.patch(
+    requests_get_mock = mocker.patch(
         "requests.get",
         side_effect=lambda url: MockedRequestsResponse(
             200,
@@ -2157,3 +2171,14 @@ def test_pypi_strategy_excludes_the_scanned_project_in_transitive_mode(
         get_project_name_mock.assert_not_called()
     else:
         get_project_name_mock.assert_called_once_with("cache_dir/org-my_project/main")
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with(
+        "github.com/org/my_project"
+    )
+    source_code_manager_mock.get_code.assert_called_once_with(
+        "https://github.com/org/my_project"
+    )
+    python_env_manager_mock.get_environment.assert_called_once_with(
+        "cache_dir/org-my_project/main"
+    )
+    get_dependencies_mock.assert_called_once_with("venv")
+    assert requests_get_mock.call_args_list == [call(url) for url in expected_pypi_urls]

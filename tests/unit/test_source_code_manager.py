@@ -2667,9 +2667,9 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
 
 
 @pytest.mark.parametrize(
-    "mirrors, repo_info_status, expected",
+    "mirrors, repo_info_status, expected, expect_repo_info_lookup",
     [
-        ([], 200, False),
+        ([], 200, False, False),
         (
             [
                 MirrorSpec(
@@ -2678,6 +2678,7 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
                 )
             ],
             200,
+            False,
             False,
         ),
         (
@@ -2690,6 +2691,7 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
             ],
             200,
             True,
+            True,
         ),
         (
             [
@@ -2700,6 +2702,7 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
                 )
             ],
             200,
+            False,
             False,
         ),
         (
@@ -2715,6 +2718,7 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
             ],
             200,
             False,
+            True,
         ),
         (
             [
@@ -2725,6 +2729,7 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
                 )
             ],
             404,
+            True,
             True,
         ),
         # An identity mapping on the same repository still checks out the
@@ -2739,6 +2744,7 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
             ],
             200,
             False,
+            True,
         ),
         (
             [
@@ -2750,6 +2756,7 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
             ],
             404,
             False,
+            True,
         ),
         # GitHub owner/repo names are case-insensitive.
         (
@@ -2762,6 +2769,7 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
             ],
             200,
             False,
+            True,
         ),
         # The same branch name on another repository (e.g. a fork) is not the
         # original default branch.
@@ -2774,6 +2782,7 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
                 )
             ],
             200,
+            True,
             True,
         ),
         # Checkout uses the first mirror matching the repository, so only that
@@ -2793,6 +2802,7 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
             ],
             200,
             False,
+            False,
         ),
         (
             [
@@ -2807,6 +2817,7 @@ def _github_client_with_default_branch(status: int, default_branch: str) -> Any:
                 ),
             ],
             200,
+            True,
             True,
         ),
     ],
@@ -2833,13 +2844,13 @@ def test_source_code_manager_remaps_default_branch(
     mirrors: list[MirrorSpec],
     repo_info_status: int,
     expected: bool,
+    expect_repo_info_lookup: bool,
 ) -> None:
     path_exists_mock.return_value = True
     list_dir_mock.return_value = []
+    github_client_mock = _github_client_with_default_branch(repo_info_status, "main")
     source_code_manager = SourceCodeManager(
-        "cache_dir",
-        _github_client_with_default_branch(repo_info_status, "main"),
-        mirrors=mirrors,
+        "cache_dir", github_client_mock, mirrors=mirrors
     )
 
     assert (
@@ -2848,6 +2859,14 @@ def test_source_code_manager_remaps_default_branch(
         )
         is expected
     )
+    path_exists_mock.assert_called_once_with("cache_dir")
+    list_dir_mock.assert_called_once_with("cache_dir")
+    # The default branch is only looked up when the matching mirror remaps refs.
+    repo_info_get_mock = github_client_mock.repos["test_owner"]["test_repo"].get
+    if expect_repo_info_lookup:
+        repo_info_get_mock.assert_called_once_with()
+    else:
+        repo_info_get_mock.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -2870,9 +2889,10 @@ def test_source_code_manager_remaps_default_branch_non_github_path_case(
     list_dir_mock.return_value = []
     # Outside GitHub, repository paths may be case-sensitive.
     original_url = "https://git.example.com/Owner/Repo"
+    github_client_mock = create_github_client_mock()
     source_code_manager = SourceCodeManager(
         "cache_dir",
-        create_github_client_mock(),
+        github_client_mock,
         mirrors=[
             MirrorSpec(
                 original_url=original_url,
@@ -2883,3 +2903,7 @@ def test_source_code_manager_remaps_default_branch_non_github_path_case(
     )
 
     assert source_code_manager.remaps_default_branch(original_url) is expected
+    path_exists_mock.assert_called_once_with("cache_dir")
+    list_dir_mock.assert_called_once_with("cache_dir")
+    # The default branch can only be looked up on GitHub.
+    assert github_client_mock.mock_calls == []

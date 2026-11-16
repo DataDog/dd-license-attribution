@@ -795,13 +795,15 @@ def _metadata(name: str) -> Metadata:
 
 
 @pytest.mark.parametrize(
-    "extra_args, expected_names",
+    "extra_args, expected_names, expected_canonical_url_calls",
     [
         # The repository itself is dropped, whatever the case of its name;
-        # its nested modules are separate packages and stay.
+        # its nested modules are separate packages and stay. The filter
+        # canonicalizes the analyzed package once more.
         (
             ["--only-transitive-dependencies"],
             ["github.com/Org/Repo/submodule", "github.com/other/dependency"],
+            4,
         ),
         (
             [],
@@ -811,6 +813,7 @@ def _metadata(name: str) -> Metadata:
                 "github.com/Org/Repo/submodule",
                 "github.com/other/dependency",
             ],
+            3,
         ),
     ],
 )
@@ -827,6 +830,7 @@ def test_only_transitive_dependencies_drops_the_analyzed_repository(
     mock_three_phase_collector: Mock,
     extra_args: list[str],
     expected_names: list[str],
+    expected_canonical_url_calls: int,
 ) -> None:
     mock_three_phase_collector.return_value.collect_metadata.return_value = [
         _metadata("github.com/Org/Repo"),
@@ -847,5 +851,22 @@ def test_only_transitive_dependencies_drops_the_analyzed_repository(
     )
 
     assert result.exit_code == 0, result.output
+    mock_github.assert_called_once_with()
+    mock_source_code_manager.assert_called_once_with(
+        ANY, mock_github.return_value, 86400, None
+    )
+    assert mock_source_code_manager.return_value.get_canonical_urls.call_args_list == (
+        [call("https://github.com/org/repo")] * expected_canonical_url_calls
+    )
+    mock_source_code_manager.return_value.get_code.assert_called_once_with(
+        "https://github.com/org/repo"
+    )
+    mock_python_env_manager.assert_called_once_with(ANY, 86400)
+    mock_three_phase_collector.assert_called_once()
+    mock_three_phase_collector.return_value.collect_metadata.assert_called_once_with(
+        "https://github.com/org/repo"
+    )
+    mock_csv.assert_called_once_with()
+    mock_csv.return_value.write.assert_called_once()
     (written,), _ = mock_csv.return_value.write.call_args
     assert [m.name for m in written] == expected_names
