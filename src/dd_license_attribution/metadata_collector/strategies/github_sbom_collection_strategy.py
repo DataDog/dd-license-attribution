@@ -253,6 +253,21 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                 "Canonical package name determined: '%s'", canonical_package_name
             )
 
+            # The dependency graph SBOM always describes the default branch:
+            # when a mirror remaps it, the analyzed code is another ref and
+            # the SBOM would add dependencies that ref does not have.
+            if self.source_code_manager.remaps_default_branch(canonical_url):
+                logger.warning(
+                    "Skipping GitHub SBOM for '%s/%s': a mirror ref_mapping replaces its default branch, which the GitHub dependency graph describes.",
+                    owner,
+                    repo,
+                )
+                # Keep the root even in transitive-only mode, as on SBOM
+                # errors: later strategies locate the checkout through it and
+                # drop it themselves.
+                updated_metadata.append(package)
+                continue
+
             try:
                 sbom = self.__get_github_generated_sbom(owner, repo)
                 packages_in_sbom = sbom["packages"]

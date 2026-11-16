@@ -73,6 +73,10 @@ jobs:
         with:
           override-spec: .ddla-overrides
           compare: ${{ matrix.python-version == '3.14' }}
+          # The GitHub SBOM also lists dev/lint extras and only runs on default
+          # branch scans, so disable it to compare the runtime closure on PRs
+          # and main alike.
+          github-sbom-strategy: false
           # This job already sets up Python and Go (and installs the tool), so
           # the action's own toolchain setup is redundant here and would fight
           # the matrix Python version; opt out of both by passing false.

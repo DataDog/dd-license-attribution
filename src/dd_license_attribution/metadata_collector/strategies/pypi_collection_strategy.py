@@ -90,6 +90,14 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         dependencies = PythonEnvManager.get_dependencies(top_package_env)
         if dependencies is None:
             return updated_metadata
+        if self.only_transitive:
+            project_name = PythonEnvManager.get_project_name(top_package_path)
+            dependencies = [
+                (dependency, version)
+                for dependency, version in dependencies
+                if project_name is None
+                or re.sub(r"[-_.]+", "-", dependency).lower() != project_name
+            ]
         for dependency, version in dependencies:
             self._process_dependency(dependency, version, updated_metadata)
 
