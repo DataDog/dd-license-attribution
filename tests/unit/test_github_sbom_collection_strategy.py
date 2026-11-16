@@ -2087,6 +2087,7 @@ def test_async_flow_nameless_action_package_survives_scope_filters(
 )
 def test_github_sbom_collection_strategy_skips_sbom_when_default_branch_is_remapped(
     mocker: pytest_mock.MockFixture,
+    caplog: pytest.LogCaptureFixture,
     project_scope: ProjectScope,
     expected_names: list[str],
 ) -> None:
@@ -2104,26 +2105,27 @@ def test_github_sbom_collection_strategy_skips_sbom_when_default_branch_is_remap
         project_scope=project_scope,
     )
 
-    updated_metadata = strategy.augment_metadata(
-        [
-            Metadata(
-                name="github.com/test_owner/test_repo",
-                version=None,
-                origin="https://github.com/test_owner/test_repo",
-                local_src_path=None,
-                license=[],
-                copyright=[],
-            ),
-            Metadata(
-                name="dependency",
-                version="1.0",
-                origin=None,
-                local_src_path=None,
-                license=["MIT"],
-                copyright=[],
-            ),
-        ]
-    )
+    with caplog.at_level(logging.WARNING, logger="dd_license_attribution"):
+        updated_metadata = strategy.augment_metadata(
+            [
+                Metadata(
+                    name="github.com/test_owner/test_repo",
+                    version=None,
+                    origin="https://github.com/test_owner/test_repo",
+                    local_src_path=None,
+                    license=[],
+                    copyright=[],
+                ),
+                Metadata(
+                    name="dependency",
+                    version="1.0",
+                    origin=None,
+                    local_src_path=None,
+                    license=["MIT"],
+                    copyright=[],
+                ),
+            ]
+        )
 
     assert [m.name for m in updated_metadata] == expected_names
     assert generate.calls == 0
@@ -2132,3 +2134,7 @@ def test_github_sbom_collection_strategy_skips_sbom_when_default_branch_is_remap
     source_code_manager_mock.remaps_default_branch.assert_called_once_with(
         "https://github.com/test_owner/test_repo"
     )
+    assert [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING] == [
+        "Skipping GitHub SBOM for 'test_owner/test_repo': a mirror ref_mapping "
+        "replaces its default branch, which the GitHub dependency graph describes."
+    ]
