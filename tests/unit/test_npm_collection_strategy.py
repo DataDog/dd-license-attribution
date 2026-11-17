@@ -4295,6 +4295,60 @@ def test_augment_metadata_from_local_path_vendored_deps_dont_overwrite_npm_deps(
     assert mock_requests.call_count == 3
 
 
+def _assert_npm_project_scanned(
+    npm_mocks: tuple[mock.Mock, mock.Mock, mock.Mock, mock.Mock, mock.Mock, mock.Mock],
+    source_code_manager_mock: mock.Mock,
+    passes: int,
+    registry_urls: list[str],
+) -> None:
+    """Assert each pass scanned the root checkout and only the given rows hit the registry."""
+    (
+        mock_exists,
+        mock_path_join,
+        mock_open,
+        mock_output_from_command,
+        mock_run_command,
+        mock_requests,
+    ) = npm_mocks
+    root = "cache_dir/org_package1"
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with(
+        "https://github.com/org/package1"
+    )
+    assert (
+        source_code_manager_mock.get_code.call_args_list
+        == [mock.call("https://github.com/org/package1")] * passes
+    )
+    assert (
+        mock_path_join.call_args_list
+        == [
+            mock.call(root, "package.json"),
+            mock.call(root, "yarn.lock"),
+        ]
+        * passes
+    )
+    assert (
+        mock_exists.call_args_list
+        == [
+            mock.call(f"{root}/package.json"),
+            mock.call(f"{root}/yarn.lock"),
+        ]
+        * passes
+    )
+    assert mock_open.call_args_list == [mock.call(f"{root}/package.json")] * passes
+    assert (
+        mock_run_command.call_args_list
+        == [
+            mock.call(["npm", "install", "--omit=dev", "--ignore-scripts"], cwd=root),
+            mock.call(["npm", "list", "--json", "--omit=dev", "--all"], cwd=root),
+        ]
+        * passes
+    )
+    mock_output_from_command.assert_not_called()
+    assert mock_requests.call_args_list == [
+        mock.call(url, timeout=5) for url in registry_urls
+    ]
+
+
 @pytest.mark.parametrize(
     "project_scope, with_dependencies, expected_names",
     [
@@ -4326,7 +4380,7 @@ def test_npm_collection_strategy_drops_renamed_root_in_transitive_mode(
                 "node_modules/dep1": {"version": "1.0.2", "dependencies": {}},
             }
         }
-    setup_npm_strategy_mocks(
+    npm_mocks = setup_npm_strategy_mocks(
         mocker,
         package_lock,
         package_json,
@@ -4350,6 +4404,15 @@ def test_npm_collection_strategy_drops_renamed_root_in_transitive_mode(
     )
 
     assert [m.name for m in result] == expected_names
+    # The root is never looked up in the registry, only its dependencies.
+    _assert_npm_project_scanned(
+        npm_mocks,
+        source_code_manager_mock,
+        passes=1,
+        registry_urls=(
+            ["https://registry.npmjs.org/dep1/1.0.2"] if with_dependencies else []
+        ),
+    )
 
 
 def test_npm_collection_strategy_transitive_mode_keeps_dependency_sharing_root_name(
@@ -4370,7 +4433,7 @@ def test_npm_collection_strategy_transitive_mode_keeps_dependency_sharing_root_n
             "node_modules/wrapper/node_modules/@org/package1": {"version": "1.0.0"},
         }
     }
-    setup_npm_strategy_mocks(
+    npm_mocks = setup_npm_strategy_mocks(
         mocker,
         package_lock,
         package_json,
@@ -4402,6 +4465,16 @@ def test_npm_collection_strategy_transitive_mode_keeps_dependency_sharing_root_n
         ("@org/package1", "1.0.0"),
         ("wrapper", "1.0.0"),
     ]
+    # The older @org/package1 is enriched as a dependency, the 2.0.0 root is not.
+    _assert_npm_project_scanned(
+        npm_mocks,
+        source_code_manager_mock,
+        passes=1,
+        registry_urls=[
+            "https://registry.npmjs.org/wrapper/1.0.0",
+            "https://registry.npmjs.org/@org/package1/1.0.0",
+        ],
+    )
 
 
 @pytest.mark.parametrize(
@@ -4427,7 +4500,9 @@ def test_npm_collection_strategy_root_is_located_once_across_finder_passes(
         "https://api.github.com/repos/org/package1",
     )
     package_json: dict[str, Any] = {"name": "@org/package1", "version": "2.0.0"}
-    setup_npm_strategy_mocks(mocker, {"packages": {"": {}}}, package_json, [])
+    npm_mocks = setup_npm_strategy_mocks(
+        mocker, {"packages": {"": {}}}, package_json, []
+    )
 
     strategy = NpmMetadataCollectionStrategy(
         "https://github.com/org/package1", source_code_manager_mock, project_scope
@@ -4456,6 +4531,10 @@ def test_npm_collection_strategy_root_is_located_once_across_finder_passes(
     assert [m.name for m in metadata] == expected_names
     submodule = metadata[-1]
     assert (submodule.version, submodule.license) == ("v3.0.0", ["Apache-2.0"])
+    # The root is resolved once; later passes reuse it instead of the submodule.
+    _assert_npm_project_scanned(
+        npm_mocks, source_code_manager_mock, passes=3, registry_urls=[]
+    )
 
 
 @pytest.mark.parametrize(
@@ -4477,7 +4556,9 @@ def test_npm_collection_strategy_transitive_mode_without_root_seed_keeps_row(
         "https://api.github.com/repos/org/package1",
     )
     package_json: dict[str, Any] = {"name": "@org/package1", "version": "2.0.0"}
-    setup_npm_strategy_mocks(mocker, {"packages": {"": {}}}, package_json, [])
+    npm_mocks = setup_npm_strategy_mocks(
+        mocker, {"packages": {"": {}}}, package_json, []
+    )
 
     strategy = NpmMetadataCollectionStrategy(
         "https://github.com/org/package1",
@@ -4500,3 +4581,7 @@ def test_npm_collection_strategy_transitive_mode_without_root_seed_keeps_row(
     assert [(m.name, m.version, m.license) for m in metadata] == [
         (name, "v3.0.0", ["Apache-2.0"])
     ]
+    # The row is never taken for the root, so it is not enriched from the registry.
+    _assert_npm_project_scanned(
+        npm_mocks, source_code_manager_mock, passes=3, registry_urls=[]
+    )
