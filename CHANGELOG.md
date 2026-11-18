@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `--only-transitive-dependencies` reports of a GitHub repository no longer list the analyzed repository itself (`github.com/<owner>/<repo>`). Only the GitHub SBOM strategy used to remove it, so it leaked whenever that strategy did not run for the repository (disabled, failed, or skipped for a remapped default branch).
 - `--only-transitive-dependencies` reports of a Python repository no longer list the scanned project itself as a dependency: the unpinned `pip install .` installs it into the scan virtualenv, so `pip list` reported it (e.g. `scfw` when analyzing `DataDog/supply-chain-firewall`). The PyPI strategy now drops the distribution named in the project's `pyproject.toml` (`[project]` or `[tool.poetry]`); `setup.py`-only projects are unchanged.
 - `--only-transitive-dependencies` reports of an npm repository no longer list the scanned project itself when the GitHub SBOM strategy does not run for it (e.g. behind a mirror that maps the default branch to another ref): the npm strategy renames the root entry to its `package.json` name, which its transitive-only filter did not match (e.g. a lone `dc-polyfill` row when analyzing `DataDog/dc-polyfill`).
+- Rust crates.io archives with up to crates.io's 30,000-entry publication limit can now be analyzed, while the generic archive limit remains 10,000 entries and all existing size, path, link, and member-type protections remain enforced.
 
 ## [0.10.0] - 2026-11-12
 

@@ -15,6 +15,9 @@ from unittest.mock import Mock
 import pytest
 import pytest_mock
 
+from dd_license_attribution.artifact_management.rust_archive import (
+    MAX_CRATES_IO_ARCHIVE_MEMBERS,
+)
 from dd_license_attribution.utils.tar_archive import (
     MAX_ARCHIVE_MEMBERS,
     MAX_EXTRACTED_ARCHIVE_BYTES,
@@ -40,6 +43,14 @@ def _tar_gz_with_files(files: dict[str, bytes]) -> bytes:
             member = tarfile.TarInfo(name)
             member.size = len(content)
             archive.addfile(member, io.BytesIO(content))
+    return archive_bytes.getvalue()
+
+
+def _tar_gz_with_empty_files(member_count: int) -> bytes:
+    archive_bytes = io.BytesIO()
+    with tarfile.open(fileobj=archive_bytes, mode="w:gz") as archive:
+        for index in range(member_count):
+            archive.addfile(tarfile.TarInfo(f"crate/member-{index}"))
     return archive_bytes.getvalue()
 
 
@@ -162,6 +173,63 @@ def test_extract_tar_gz_rejects_too_many_members(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Archive contains more than 1 members"):
         extract_tar_gz(archive_content, str(tmp_path), max_members=1)
+
+
+def test_crates_io_member_limit_accepts_representative_large_archive(
+    tmp_path: Path,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    member_count = 12_132
+    archive_content = _tar_gz_with_empty_files(member_count)
+    (
+        mock_extract_tar_members,
+        _captured_archives,
+        captured_member_names,
+        captured_destinations,
+    ) = _mock_extract_tar_members(mocker)
+
+    with pytest.raises(
+        ValueError,
+        match=f"Archive contains more than {MAX_ARCHIVE_MEMBERS} members",
+    ):
+        extract_tar_gz(archive_content, str(tmp_path))
+
+    result = extract_tar_gz(
+        archive_content,
+        str(tmp_path),
+        max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
+    )
+
+    assert len(result) == member_count
+    assert result[0] == "crate/member-0"
+    assert result[-1] == f"crate/member-{member_count - 1}"
+    mock_extract_tar_members.assert_called_once()
+    assert len(captured_member_names) == member_count
+    assert captured_member_names[0] == "crate/member-0"
+    assert captured_member_names[-1] == f"crate/member-{member_count - 1}"
+    assert captured_destinations == [str(tmp_path)]
+
+
+def test_crates_io_member_limit_rejects_member_above_boundary_before_extraction(
+    tmp_path: Path,
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    archive_content = _tar_gz_with_empty_files(MAX_CRATES_IO_ARCHIVE_MEMBERS + 1)
+    mock_extract_tar_members = mocker.patch(
+        "dd_license_attribution.utils.tar_archive.extract_tar_members"
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=f"Archive contains more than {MAX_CRATES_IO_ARCHIVE_MEMBERS} members",
+    ):
+        extract_tar_gz(
+            archive_content,
+            str(tmp_path),
+            max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
+        )
+
+    mock_extract_tar_members.assert_not_called()
 
 
 def test_extract_tar_gz_rejects_invalid_member_limit(tmp_path: Path) -> None:
@@ -658,3 +726,7 @@ def test_decompression_budget_includes_tar_overhead() -> None:
 def test_archive_constants_are_pinned() -> None:
     assert MAX_EXTRACTED_ARCHIVE_BYTES == 100 * 1024 * 1024
     assert MAX_ARCHIVE_MEMBERS == 10_000
+
+
+def test_crates_io_archive_member_limit_is_pinned() -> None:
+    assert MAX_CRATES_IO_ARCHIVE_MEMBERS == 30_000
