@@ -19,6 +19,9 @@ from dd_license_attribution.adaptors.os import (
     path_join,
     walk_directory,
 )
+from dd_license_attribution.artifact_management.rust_archive import (
+    MAX_CRATES_IO_ARCHIVE_MEMBERS,
+)
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
 )
@@ -437,6 +440,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
             cargo_toml_content = read_tar_gz_text_file(
                 archive_content,
                 f"{crate_name}-{version}/Cargo.toml",
+                max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
             )
             if cargo_toml_content is None:
                 return []

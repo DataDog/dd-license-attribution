@@ -21,6 +21,9 @@ from dd_license_attribution.adaptors.os import (
     run_command_with_check,
     write_file,
 )
+from dd_license_attribution.artifact_management.rust_archive import (
+    MAX_CRATES_IO_ARCHIVE_MEMBERS,
+)
 from dd_license_attribution.artifact_management.source_code_manager import (
     NonAccessibleRepository,
     SourceCodeManager,
@@ -406,7 +409,11 @@ class RustPackageResolver:
                 download_endpoint,
                 user_agent=DDLA_USER_AGENT,
             )
-            extracted_members = extract_tar_gz(archive_content, source_parent_dir)
+            extracted_members = extract_tar_gz(
+                archive_content,
+                source_parent_dir,
+                max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
+            )
         except (OSError, ValueError) as e:
             logger.error(  # pragma: no mutate
                 "Failed to download or extract Rust crate source for %s: %s",

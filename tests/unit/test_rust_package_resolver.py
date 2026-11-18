@@ -20,6 +20,9 @@ from pytest import LogCaptureFixture, mark
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
+from dd_license_attribution.artifact_management.rust_archive import (
+    MAX_CRATES_IO_ARCHIVE_MEMBERS,
+)
 from dd_license_attribution.artifact_management.rust_package_resolver import (
     RUST_CARGO_COMMAND_TIMEOUT_SECONDS,
     SYNTHETIC_PACKAGE_NAME,
@@ -284,6 +287,7 @@ class TestResolvePackage:
         mock_extract_tar_gz.assert_called_once_with(
             b"crate archive",
             "/cache/serde/crate-source",
+            max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
         )
 
     def test_repository_license_tool_config_is_copied_to_published_crate(
@@ -411,6 +415,7 @@ class TestResolvePackage:
         mock_extract_tar_gz.assert_called_once_with(
             b"crate archive",
             "/cache/datadog-api-client/crate-source",
+            max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
         )
 
     def test_missing_crate_repository_skips_license_tool_config_lookup(
@@ -926,6 +931,7 @@ class TestResolvePackage:
         mock_extract_tar_gz.assert_called_once_with(
             b"crate archive",
             "/cache/dd-rust-license-tool/crate-source",
+            max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
         )
 
     def test_crate_source_resolution_extracts_downloaded_archive(
@@ -1088,6 +1094,7 @@ class TestResolvePackage:
         mock_extract_tar_gz.assert_called_once_with(
             b"crate archive",
             "/cache/dd-rust-license-tool/crate-source",
+            max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
         )
 
     def test_crates_io_repository_metadata_failure_returns_none(
@@ -1723,6 +1730,7 @@ class TestResolvePackage:
         mock_extract_tar_gz.assert_called_once_with(
             b"crate archive",
             "/cache/dd-rust-license-tool/crate-source",
+            max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
         )
 
     def test_unexpected_extracted_members_return_none(
@@ -1780,6 +1788,7 @@ class TestResolvePackage:
         mock_extract_tar_gz.assert_called_once_with(
             b"crate archive",
             "/cache/dd-rust-license-tool/crate-source",
+            max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
         )
 
     def test_extracted_root_falls_back_to_single_top_level_member(self) -> None:
@@ -1884,4 +1893,5 @@ class TestResolvePackage:
         mock_extract_tar_gz.assert_called_once_with(
             b"crate archive",
             "/cache/dd-rust-license-tool/crate-source",
+            max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
         )

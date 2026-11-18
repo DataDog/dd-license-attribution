@@ -16,6 +16,9 @@ from pytest import LogCaptureFixture
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
+from dd_license_attribution.artifact_management.rust_archive import (
+    MAX_CRATES_IO_ARCHIVE_MEMBERS,
+)
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.rust_collection_strategy import (
     mark_rust_metadata,
@@ -307,8 +310,16 @@ helper = { path = "." }
     assert mock_download.call_count == 5
     mock_read_archive.assert_has_calls(
         [
-            call(b"crate archive", "regex-1.13.0/Cargo.toml"),
-            call(b"crate archive", "tracing-subscriber-0.3.20/Cargo.toml"),
+            call(
+                b"crate archive",
+                "regex-1.13.0/Cargo.toml",
+                max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
+            ),
+            call(
+                b"crate archive",
+                "tracing-subscriber-0.3.20/Cargo.toml",
+                max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
+            ),
         ]
     )
     assert mock_read_archive.call_count == 2
@@ -458,7 +469,9 @@ def test_direct_root_package_is_enriched_from_manifest_version(
     )
     assert mock_download.call_count == 2
     mock_read_archive.assert_called_once_with(
-        b"crate archive", "serde-1.0.0/Cargo.toml"
+        b"crate archive",
+        "serde-1.0.0/Cargo.toml",
+        max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
     )
 
 
@@ -538,7 +551,9 @@ def test_crate_name_requiring_url_encoding_is_quoted(
     )
     assert mock_download.call_count == 2
     mock_read_archive.assert_called_once_with(
-        b"crate archive", "crate name+special-1.0.0/Cargo.toml"
+        b"crate archive",
+        "crate name+special-1.0.0/Cargo.toml",
+        max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
     )
 
 
@@ -609,7 +624,9 @@ def test_crate_authors_download_url_encodes_semver_build_metadata(
     )
     assert mock_download.call_count == 2
     mock_read_archive.assert_called_once_with(
-        b"crate archive", "serde-1.0.2+build.1/Cargo.toml"
+        b"crate archive",
+        "serde-1.0.2+build.1/Cargo.toml",
+        max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
     )
 
 
@@ -829,7 +846,9 @@ def test_repository_mode_enriches_marked_rust_metadata(
     )
     assert mock_download.call_count == 2
     mock_read_archive.assert_called_once_with(
-        b"crate archive", "serde-1.0.228/Cargo.toml"
+        b"crate archive",
+        "serde-1.0.228/Cargo.toml",
+        max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
     )
 
 
@@ -1091,7 +1110,9 @@ def test_crates_io_cache_distinguishes_author_fetches(
     )
     assert mock_download.call_count == 3
     mock_read_archive.assert_called_once_with(
-        b"crate archive", "regex-1.13.0/Cargo.toml"
+        b"crate archive",
+        "regex-1.13.0/Cargo.toml",
+        max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
     )
 
 
@@ -1406,7 +1427,9 @@ def test_author_metadata_failures_preserve_other_crate_metadata(
         mock_read_archive.assert_not_called()
     else:
         mock_read_archive.assert_called_once_with(
-            b"crate archive", "regex-1.0.0/Cargo.toml"
+            b"crate archive",
+            "regex-1.0.0/Cargo.toml",
+            max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
         )
 
 
