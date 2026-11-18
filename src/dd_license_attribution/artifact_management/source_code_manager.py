@@ -67,6 +67,17 @@ class UnauthorizedRepository(Exception):
     pass
 
 
+def _repository_identity(parsed_url: Any) -> tuple[str, str, str]:
+    # Hostnames are case-insensitive everywhere, GitHub owner/repo names too.
+    if parsed_url.github:
+        return (
+            parsed_url.host.lower(),
+            parsed_url.owner.lower(),
+            parsed_url.repo.lower(),
+        )
+    return (parsed_url.host.lower(), parsed_url.owner, parsed_url.repo)
+
+
 def _output_from_git_command(args: list[str], git_env: dict[str, str] | None) -> str:
     if git_env is None:
         return output_from_command(args)
@@ -75,7 +86,7 @@ def _output_from_git_command(args: list[str], git_env: dict[str, str] | None) ->
     )
 
 
-def _response_headers(github_client: GitHub) -> dict[str, str] | None:
+def github_response_headers(github_client: GitHub) -> dict[str, str] | None:
     """Return the API client's most recent response headers, if usable.
 
     The agithub API class exposes getheaders() returning the headers of
@@ -272,7 +283,7 @@ def github_api_get_with_retry(
         number of fetch attempts performed (1 when no retry happened).
     """
     status, result = fetch()
-    headers = _response_headers(github_client)
+    headers = github_response_headers(github_client)
     attempt = 1
     while (
         _is_transient_response(status, result, headers)
@@ -310,7 +321,7 @@ def github_api_get_with_retry(
         sleep(delay)
         attempt += 1
         status, result = fetch()
-        headers = _response_headers(github_client)
+        headers = github_response_headers(github_client)
     return (status, result, attempt)
 
 
@@ -455,7 +466,7 @@ class SourceCodeManager(ArtifactManager):
         # they recover. Other failures (e.g. 404 not found, or a permanent
         # 403) are safe to cache.
         if not _is_transient_response(
-            status, repository, _response_headers(self.github_client)
+            status, repository, github_response_headers(self.github_client)
         ):
             self._canonical_urls_cache[url] = fallback_result
         return fallback_result
@@ -510,7 +521,7 @@ class SourceCodeManager(ArtifactManager):
         )
 
         if _is_transient_response(
-            status, result, _response_headers(self.github_client)
+            status, result, github_response_headers(self.github_client)
         ):
             # Transient failures (rate limits, 5xx server errors): don't
             # cache them so a later caller can retry once they recover.
@@ -615,6 +626,58 @@ class SourceCodeManager(ArtifactManager):
             raise NonAccessibleRepository(
                 f"Could not discover default branch for {url}"
             ) from e
+
+    def remaps_default_branch(self, repository_url: str) -> bool:
+        """Whether a mirror ref_mapping replaces the default branch of a repository.
+
+        When it does, the code analyzed for the repository is not its default
+        branch, so default-branch-only data (e.g. the GitHub dependency graph
+        SBOM) does not describe it.
+
+        Args:
+            repository_url: The canonical repository URL, as matched against
+                MirrorSpec.original_url.
+
+        Returns:
+            True if a mirror maps the repository's default branch to another
+            ref. When the default branch cannot be resolved, True if the
+            mirror maps any branch, since it may be the default one.
+        """
+        mirror = next(
+            (m for m in self.mirrors if m.original_url == repository_url),
+            None,
+        )
+        if mirror is None or not mirror.ref_mapping:
+            return False
+
+        default_branch: str | None = None
+        parsed_url = parse_git_url(repository_url)
+        parsed_mirror_url = parse_git_url(mirror.mirror_url)
+        # Compared by host/owner/repo so a token in the mirror URL doesn't count
+        # as a different repository.
+        same_repository = (
+            parsed_url.valid
+            and parsed_mirror_url.valid
+            and _repository_identity(parsed_mirror_url)
+            == _repository_identity(parsed_url)
+        )
+        if parsed_url.valid and parsed_url.github:
+            status, repository = self.get_repository_info(
+                parsed_url.owner, parsed_url.repo
+            )
+            if status == 200 and repository:
+                default_branch = repository.get("default_branch")
+
+        for (ref_type, ref_name), target_ref in mirror.ref_mapping.items():
+            # A same-repository identity mapping still checks out the original
+            # branch, so it doesn't replace it.
+            if same_repository and target_ref == (ref_type, ref_name):
+                continue
+            if ref_type == RefType.BRANCH and (
+                default_branch is None or ref_name == default_branch
+            ):
+                return True
+        return False
 
     def _get_mirror_url_and_ref(
         self,

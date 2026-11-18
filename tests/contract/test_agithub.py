@@ -15,11 +15,22 @@ Note: These tests make real API calls to GitHub and may be rate-limited.
 Consider marking them to run separately from unit tests if needed.
 """
 
+import json
+import logging
 import os
-from typing import Protocol
+import time
+from typing import Any, Protocol
 
 import pytest
 from agithub.GitHub import GitHub
+
+from dd_license_attribution.utils.bounded_download import download_bounded
+
+# Pending-report polling budget for the asynchronous SBOM flow: one immediate
+# fetch plus five retries with these delays, mirroring the strategy's schedule.
+SBOM_FETCH_RETRY_DELAYS_SECONDS: tuple[int, ...] = (1, 2, 4, 8, 16)
+
+logger = logging.getLogger("dd_license_attribution")
 
 
 class _GitHubGetEndpoint(Protocol):
@@ -43,6 +54,20 @@ def _skip_if_github_api_unavailable(status: int, result: object) -> None:
         )
 
 
+def _skip_if_tokenless_rate_limited(token: str | None, status: int) -> None:
+    """Skip (rather than fail) when an unauthenticated run is refused.
+
+    CI's contract job has no GITHUB_TOKEN, so 401/403/429 responses there are
+    environment limits, not contract violations.
+    """
+    if token is None and status in (401, 403, 429):
+        pytest.skip(
+            "Unauthenticated contract test hit status {status} (no GITHUB_TOKEN)".format(
+                status=status
+            )
+        )
+
+
 @pytest.fixture
 def github_client() -> GitHub:
     """Create a GitHub client for testing.
@@ -53,6 +78,26 @@ def github_client() -> GitHub:
     if token:
         return GitHub(token=token)
     return GitHub()
+
+
+def _token() -> str | None:
+    return os.environ.get("GITHUB_TOKEN")
+
+
+def _response_location_header(client: GitHub) -> str | None:
+    """Return the Location header of the client's most recent response."""
+    try:
+        raw = client.getheaders()
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if isinstance(raw, dict):
+        return {str(k).lower(): str(v) for k, v in raw.items()}.get("location")
+    if isinstance(raw, (list, tuple)):
+        try:
+            return {str(k).lower(): str(v) for k, v in raw}.get("location")
+        except (TypeError, ValueError):
+            return None
+    return None
 
 
 def test_repos_get_returns_expected_structure(github_client: GitHub) -> None:
@@ -127,69 +172,137 @@ def test_repos_get_handles_404_error(github_client: GitHub) -> None:
     assert status == 404, f"Expected status 404 for non-existent repo, got {status}"
 
 
-def test_dependency_graph_sbom_get_returns_expected_structure(
+def test_sbom_generate_report_returns_201_with_sbom_url(
     github_client: GitHub,
 ) -> None:
-    """Ensure dependency-graph.sbom.get() returns expected SBOM structure.
+    """The asynchronous SBOM generation endpoint returns 201 with an sbom_url.
 
-    We depend on: sbom.packages field with name, SPDXID in package data.
+    We depend on: a 201 status, a JSON object body, and an sbom_url string
+    pointing at the dependency-graph fetch-report endpoint of the same
+    repository. The signed download URL the report eventually serves is NOT
+    on api.github.com (it is a storage host), so the host check only applies
+    to the sbom_url itself.
     """
-    # Use DataDog/dd-license-attribution as a known public repository with dependencies
     status, result = _get_from_github_api(
-        github_client.repos["DataDog"]["dd-license-attribution"][
-            "dependency-graph"
-        ].sbom
+        github_client.repos["DataDog"]["dd-license-attribution"]["dependency-graph"][
+            "sbom"
+        ]["generate-report"]
     )
 
     _skip_if_github_api_unavailable(status, result)
+    _skip_if_tokenless_rate_limited(_token(), status)
 
     if status == 404:
         pytest.skip(
-            "SBOM API returned 404 - may require specific permissions or repo may not have SBOM"
+            "SBOM generation returned 404 - may require specific permissions or repo may have no dependency graph"
         )
 
-    # Validate successful response
-    assert status == 200, f"Expected status 200, got {status}"
-    assert isinstance(result, dict), "Result should be a dictionary"
-
-    # Validate SBOM structure
-    assert "sbom" in result, "Response should contain 'sbom' field"
-    sbom = result["sbom"]
-    assert isinstance(sbom, dict), "SBOM should be a dictionary"
-
-    # Validate packages structure
-    assert "packages" in sbom, "SBOM should contain 'packages' field"
-    packages = sbom["packages"]
-    assert isinstance(packages, list), "Packages should be a list"
-
-    if len(packages) > 0:
-        # Validate package structure
-        first_package = packages[0]
-        assert "name" in first_package, "Package should contain 'name' field"
-        assert isinstance(first_package["name"], str), "Package name should be a string"
-
-        # SPDXID is used to filter out GitHub Actions
-        if "SPDXID" in first_package:
-            assert isinstance(first_package["SPDXID"], str), "SPDXID should be a string"
+    assert status == 201, f"Expected status 201 for generation request, got {status}"
+    assert isinstance(result, dict), "Generation result should be a dictionary"
+    sbom_url = result.get("sbom_url")
+    assert isinstance(
+        sbom_url, str
+    ), "Generation result should contain a sbom_url string"
+    assert (
+        "/dependency-graph/sbom/fetch-report/" in sbom_url
+    ), "sbom_url should point at the fetch-report endpoint"
 
 
-def test_dependency_graph_sbom_get_handles_404(github_client: GitHub) -> None:
-    """Ensure dependency-graph.sbom.get() returns 404 for repos without access/SBOM."""
-    # Use a non-existent repository
+def test_sbom_generate_report_handles_404(github_client: GitHub) -> None:
+    """The SBOM generation endpoint returns 404 for repos without access/SBOM."""
     status, result = _get_from_github_api(
-        github_client.repos["NonExistentOwner"]["NonExistentRepo"][
-            "dependency-graph"
-        ].sbom
+        github_client.repos["NonExistentOwner"]["NonExistentRepo"]["dependency-graph"][
+            "sbom"
+        ]["generate-report"]
     )
     _skip_if_github_api_unavailable(status, result)
 
     assert status == 404, f"Expected status 404 for non-existent repo, got {status}"
 
 
+def test_sbom_async_flow_returns_bare_spdx_document(github_client: GitHub) -> None:
+    """The full async flow yields a bare SPDX JSON document via a signed URL.
+
+    Requests generation once, polls the same report within the bounded
+    retry budget until it is ready (302), then downloads the Location URL
+    with the bounded downloader (which sends no GitHub credentials, only a
+    User-Agent) and validates the bare document structure. The download is
+    served as text/plain, so the content type must not be assumed.
+    """
+    token = _token()
+
+    status, result = _get_from_github_api(
+        github_client.repos["DataDog"]["dd-license-attribution"]["dependency-graph"][
+            "sbom"
+        ]["generate-report"]
+    )
+    _skip_if_github_api_unavailable(status, result)
+    _skip_if_tokenless_rate_limited(token, status)
+    if status == 404:
+        pytest.skip(
+            "SBOM generation returned 404 - may require specific permissions or repo may have no dependency graph"
+        )
+    assert status == 201, f"Expected status 201 for generation request, got {status}"
+    assert isinstance(result, dict), "Generation result should be a dictionary"
+    sbom_url = result.get("sbom_url")
+    assert isinstance(
+        sbom_url, str
+    ), "Generation result should contain a sbom_url string"
+    report_id = sbom_url.rstrip("/").rsplit("/", 1)[-1]
+
+    # Poll the same report: one immediate fetch plus bounded retries with the
+    # fixed schedule. Generation is never re-requested.
+    fetch_endpoint = github_client.repos["DataDog"]["dd-license-attribution"][
+        "dependency-graph"
+    ]["sbom"]["fetch-report"][report_id]
+    pending_retries = 0
+    while True:
+        status, result = _get_from_github_api(fetch_endpoint)
+        _skip_if_github_api_unavailable(status, result)
+        _skip_if_tokenless_rate_limited(token, status)
+        if status == 302:
+            break
+        if status != 202:
+            pytest.skip(
+                "SBOM fetch-report returned unexpected status {status}: {result}".format(
+                    status=status, result=result
+                )
+            )
+        if pending_retries >= len(SBOM_FETCH_RETRY_DELAYS_SECONDS):
+            pytest.skip(
+                "SBOM report was not ready after {total} seconds".format(
+                    total=sum(SBOM_FETCH_RETRY_DELAYS_SECONDS)
+                )
+            )
+        time.sleep(SBOM_FETCH_RETRY_DELAYS_SECONDS[pending_retries])
+        pending_retries += 1
+
+    location = _response_location_header(github_client)
+    assert location is not None, "Expected a Location header on the 302 response"
+    assert location.startswith("https://"), "Location must be an https URL"
+
+    # Download through the bounded downloader: it forwards no GitHub
+    # authorization headers to the signed storage URL.
+    content = download_bounded(location)
+
+    document: Any = json.loads(content)
+    assert isinstance(document, dict), "Downloaded report should be a JSON object"
+    assert "packages" in document, "Report should contain 'packages'"
+    packages = document["packages"]
+    assert isinstance(packages, list), "Packages should be a list"
+    if len(packages) > 0:
+        first_package = packages[0]
+        assert isinstance(first_package, dict), "Package should be a JSON object"
+        if "name" in first_package:
+            assert isinstance(first_package["name"], str), "Name should be a string"
+
+
 def test_github_client_chaining_syntax() -> None:
     """Validate that the GitHub client chaining syntax works as expected.
 
-    We depend on the bracket notation: client.repos[owner][repo].get()
+    We depend on the bracket notation: client.repos[owner][repo].get(), and on
+    the dependency-graph SBOM endpoint chains for the asynchronous flow
+    (["sbom"]["generate-report"] and ["sbom"]["fetch-report"][id]).
     """
     # Test without authentication (just syntax validation)
     client = GitHub()
@@ -198,6 +311,13 @@ def test_github_client_chaining_syntax() -> None:
     endpoint = client.repos["DataDog"]["dd-license-attribution"]
     assert hasattr(endpoint, "get"), "Endpoint should have 'get' method"
 
-    # Validate dependency-graph endpoint
-    endpoint = client.repos["DataDog"]["dd-license-attribution"]["dependency-graph"]
-    assert hasattr(endpoint, "sbom"), "Endpoint should have 'sbom' attribute"
+    # Validate dependency-graph SBOM endpoints
+    generate_endpoint = client.repos["DataDog"]["dd-license-attribution"][
+        "dependency-graph"
+    ]["sbom"]["generate-report"]
+    assert hasattr(generate_endpoint, "get"), "Generate endpoint should have 'get'"
+
+    fetch_endpoint = client.repos["DataDog"]["dd-license-attribution"][
+        "dependency-graph"
+    ]["sbom"]["fetch-report"]["some-report-id"]
+    assert hasattr(fetch_endpoint, "get"), "Fetch endpoint should have 'get'"

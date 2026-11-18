@@ -7,6 +7,7 @@
 
 import logging
 import typing
+from unittest.mock import call
 
 import pytest
 import pytest_mock
@@ -2081,3 +2082,103 @@ def test_pypi_collection_strategy_logs_fetched_pypi_metadata_at_debug_level(
     mock_request.assert_called_once_with(
         "https://pypi.org/pypi/package_debug_logged/1.0.0/json"
     )
+
+
+@pytest.mark.parametrize(
+    "project_scope, expected_names, expected_pypi_urls",
+    [
+        # The project installed from the checkout is not its own dependency,
+        # so it is not looked up on PyPI either.
+        (
+            ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+            ["requests"],
+            ["https://pypi.org/pypi/requests/2.0/json"],
+        ),
+        (
+            ProjectScope.ALL,
+            ["github.com/org/my_project", "My_Project", "requests"],
+            [
+                "https://pypi.org/pypi/My_Project/1.0/json",
+                "https://pypi.org/pypi/requests/2.0/json",
+            ],
+        ),
+    ],
+)
+def test_pypi_strategy_excludes_the_scanned_project_in_transitive_mode(
+    mocker: pytest_mock.MockFixture,
+    project_scope: ProjectScope,
+    expected_names: list[str],
+    expected_pypi_urls: list[str],
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "github.com/org/my_project",
+        None,
+    )
+    source_code_manager_mock.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/my_project",
+        branch="main",
+        local_root_path="cache_dir/org-my_project/main",
+        local_full_path="cache_dir/org-my_project/main",
+    )
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = "venv"
+    get_dependencies_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_dependencies",
+        return_value=[("My_Project", "1.0"), ("requests", "2.0")],
+    )
+    get_project_name_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.PythonEnvManager.get_project_name",
+        return_value="my-project",
+    )
+    requests_get_mock = mocker.patch(
+        "requests.get",
+        side_effect=lambda url: MockedRequestsResponse(
+            200,
+            {
+                "info": {
+                    "license": "MIT",
+                    "author": "someone",
+                    "name": url.split("/")[4],
+                    "version": url.split("/")[5],
+                }
+            },
+        ),
+    )
+
+    strategy = PypiMetadataCollectionStrategy(
+        "github.com/org/my_project",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        project_scope,
+    )
+
+    result = strategy.augment_metadata(
+        [
+            Metadata(
+                name="github.com/org/my_project",
+                origin="https://github.com/org/my_project",
+                local_src_path=None,
+                license=[],
+                version=None,
+                copyright=[],
+            )
+        ]
+    )
+
+    assert [m.name for m in result] == expected_names
+    if project_scope == ProjectScope.ALL:
+        get_project_name_mock.assert_not_called()
+    else:
+        get_project_name_mock.assert_called_once_with("cache_dir/org-my_project/main")
+    source_code_manager_mock.get_canonical_urls.assert_called_once_with(
+        "github.com/org/my_project"
+    )
+    source_code_manager_mock.get_code.assert_called_once_with(
+        "https://github.com/org/my_project"
+    )
+    python_env_manager_mock.get_environment.assert_called_once_with(
+        "cache_dir/org-my_project/main"
+    )
+    get_dependencies_mock.assert_called_once_with("venv")
+    assert requests_get_mock.call_args_list == [call(url) for url in expected_pypi_urls]

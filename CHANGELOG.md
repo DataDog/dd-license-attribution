@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- The GitHub SBOM strategy no longer merges the default branch dependency graph into the report of a repository whose default branch is remapped by a mirror `ref_mapping` (e.g. `{"branch:main": "tag:v1.0"}`). GitHub's dependency graph only describes the default branch, so for such repositories it listed dependencies the analyzed ref does not have; the strategy now skips the SBOM for them and logs a warning. Dependencies found by the other strategies from the checked-out ref are unaffected. As for checkout, only the first mirror matching a repository is considered. This also applies to the GitHub Action's runs on a pull request, merge queue or non-default branch push: their auto-built mirror maps the default branch onto the branch under test, so they now take dependencies from the source-based strategies only, without setting `github-sbom-strategy: false`. Default branch pushes and `pull_request_target` runs are unchanged.
+- `--only-transitive-dependencies` reports of a GitHub repository no longer list the analyzed repository itself (`github.com/<owner>/<repo>`). Only the GitHub SBOM strategy used to remove it, so it leaked whenever that strategy did not run for the repository (disabled, failed, or skipped for a remapped default branch).
+- `--only-transitive-dependencies` reports of a Python repository no longer list the scanned project itself as a dependency: the unpinned `pip install .` installs it into the scan virtualenv, so `pip list` reported it (e.g. `scfw` when analyzing `DataDog/supply-chain-firewall`). The PyPI strategy now drops the distribution named in the project's `pyproject.toml` (`[project]` or `[tool.poetry]`); `setup.py`-only projects are unchanged.
+- `--only-transitive-dependencies` reports of an npm repository no longer list the scanned project itself when the GitHub SBOM strategy does not run for it (e.g. behind a mirror that maps the default branch to another ref): the npm strategy renames the root entry to its `package.json` name, which its transitive-only filter did not match (e.g. a lone `dc-polyfill` row when analyzing `DataDog/dc-polyfill`).
+- Rust crates.io archives with up to crates.io's 30,000-entry publication limit can now be analyzed, while the generic archive limit remains 10,000 entries and all existing size, path, link, and member-type protections remain enforced.
+
+## [0.10.0] - 2026-11-12
+
+### Changed
+- **Breaking upstream GitHub API change:** Migrated GitHub SBOM retrieval to GitHub's replacement asynchronous API. GitHub retires the synchronous API on November 13, 2026. Versions of datadog-license-attribution before 0.10.0 will no longer retrieve GitHub-generated SBOMs after retirement. Reports may still complete, but dependency, license, and copyright enrichment may be reduced. Upgrade to 0.10.0 or later to retain GitHub SBOM enrichment. The new flow (request report generation, retry a pending report with a bounded 1/2/4/8/16-second backoff, then download the ready report's signed URL through the existing bounded downloader, forwarding no GitHub credentials to it) preserves the previous enrichment semantics and per-package failure recovery; a malformed, unreachable, or never-ready report degrades that package's enrichment instead of aborting the run.
+
+### Fixed
+- Pinned `typer==0.27.2`: newer typer releases changed `BadParameter`'s `param` type in a way our CLI callback helpers no longer satisfy, failing the strict mypy gate. The pin will be removed once a typer release accepts the callback parameter type again.
+
 ## [0.9.0] - 2026-10-29
 
 ### Added

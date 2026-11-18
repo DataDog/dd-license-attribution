@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "datadog-license-attribution"
-version = "0.9.0"
+version = "0.10.0"
 description = "A tool that collects license and copyright information for third party dependencies of a project."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -36,7 +36,11 @@ dependencies = [
     # constraint.)
     "pluggy<1.7",
     "scancode-toolkit",
-    "typer>=0.27.0",
+    # DO NOT BUMP until typer's BadParameter accepts the CallbackParam
+    # type our CLI callbacks pass (newer typer requires _TyperParameter there,
+    # which fails the strict mypy gate); 0.27.2 is the last verified-good
+    # release. Then delete this pin.
+    "typer==0.27.2",
     "pytz",
     "giturlparse",
     "requests",
@@ -52,20 +56,20 @@ dependencies = [
 lint = [
     "black==26.10.1",
     "isort==9.0.2",
-    "ruff==0.17.3",
+    "ruff==0.17.5",
 ]
 dev = [
-    "pytest==9.1.1",
+    "pytest==9.2.0",
     "pytest-cov==7.1.0",
     "pytest-mock==3.17.0",
-    "mypy==2.4.0",
+    "mypy==2.4.1",
     "black==26.10.1",
     "isort==9.0.2",
-    "ruff==0.17.3",
-    "mutmut==3.8.0",
+    "ruff==0.17.5",
+    "mutmut==3.8.1",
     "pytest-timeout==2.4.0",
-    "types-pytz==2026.5.0.20261006",
-    "types-requests==2.33.0.20261006"
+    "types-pytz==2026.6.0.20261031",
+    "types-requests==2.33.0.20261030"
 ]
 
 [project.scripts]
