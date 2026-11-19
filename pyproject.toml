@@ -40,7 +40,7 @@ dependencies = [
     # type our CLI callbacks pass (newer typer requires _TyperParameter there,
     # which fails the strict mypy gate); 0.27.2 is the last verified-good
     # release. Then delete this pin.
-    "typer==0.27.2",
+    "typer==0.29.1",
     "pytz",
     "giturlparse",
     "requests",
