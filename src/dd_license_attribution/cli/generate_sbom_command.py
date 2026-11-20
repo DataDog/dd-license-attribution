@@ -197,14 +197,20 @@ def _without_analyzed_repository(
 
     Used for --only-transitive-dependencies: when the GitHub SBOM strategy
     does not run for a repository (disabled, failed, or skipped for a remapped
-    default branch), nothing else removes its root row.
+    default branch), nothing else removes its root row. That strategy also
+    renames the seed to the canonical name, so a seed from a non-canonical URL
+    (e.g. ending in .git, or a pre-rename name) is matched as passed too.
     """
     canonical_url, _ = source_code_manager.get_canonical_urls(repository_url)
     parsed_url = parse_git_url(canonical_url)
     if not parsed_url.valid or not parsed_url.github:
         return metadata
-    root_name = f"github.com/{parsed_url.owner}/{parsed_url.repo}".lower()
-    return [m for m in metadata if (m.name or "").lower() != root_name]
+    seed_name = repository_url.replace("https://", "").replace("http://", "")
+    root_names = {
+        f"github.com/{parsed_url.owner}/{parsed_url.repo}".lower(),
+        seed_name.lower(),
+    }
+    return [m for m in metadata if (m.name or "").lower() not in root_names]
 
 
 def _build_writer(
