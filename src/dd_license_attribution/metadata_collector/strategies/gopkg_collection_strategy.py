@@ -13,6 +13,8 @@ from typing import Any
 from dd_license_attribution.adaptors.os import (
     open_file,
     output_from_command,
+    path_exists,
+    path_join,
     walk_directory,
 )
 from dd_license_attribution.artifact_management.go_package_resolver import (
@@ -37,10 +39,15 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         source_code_manager: SourceCodeManager,
         project_scope: ProjectScope,
         local_project_path: str | None = None,
+        single_module: bool = False,
     ) -> None:
         self.local_project_path = local_project_path
         self.source_code_manager = source_code_manager
         self.only_root_project = project_scope == ProjectScope.ONLY_ROOT_PROJECT
+        self.only_transitive_dependencies = (
+            project_scope == ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
+        )
+        self.single_module = single_module
         self._head_branch_cache: dict[str, str] = {}
 
         if local_project_path is not None:
@@ -61,6 +68,10 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         # Walk through the directory to find go.mod files
         if not source_code_ref:
             return metadata
+        if self.single_module:
+            return self._augment_metadata_from_single_module(
+                metadata, source_code_ref.local_full_path
+            )
         for root, _, files in walk_directory(source_code_ref.local_full_path):
             if "go.mod" in files:
                 if self._is_example_package(root):
@@ -75,6 +86,32 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
 
                     self._upsert_metadata(metadata, module_data)
 
+        return metadata
+
+    def _augment_metadata_from_single_module(
+        self, metadata: list[Metadata], module_dir: str
+    ) -> list[Metadata]:
+        """Collect only the Go module whose go.mod is in module_dir.
+
+        Nested modules are not walked and any enclosing go.work is ignored:
+        consumers of the published module resolve its own go.mod only.
+        """
+        if not path_exists(path_join(module_dir, "go.mod")):
+            logger.warning(
+                "Single Go module mode: no go.mod in %s, skipping Go module collection.",
+                module_dir,
+            )
+            return metadata
+        for module_data in self._run_go_list_modules(
+            module_dir, disable_workspace=True
+        ):
+            if self.only_transitive_dependencies and module_data.get("Main"):
+                continue
+            if self.only_root_project and not any(
+                meta.name == module_data["Path"] for meta in metadata
+            ):
+                continue
+            self._upsert_metadata(metadata, module_data)
         return metadata
 
     def _augment_metadata_from_local_path(
@@ -150,16 +187,22 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         return metadata
 
-    def _run_go_list_modules(self, project_path: str) -> list[dict[str, Any]]:
+    def _run_go_list_modules(
+        self, project_path: str, disable_workspace: bool = False
+    ) -> list[dict[str, Any]]:
         """Run go list -json all and return deduplicated module dicts.
 
         Parses package-level output and extracts unique modules from the
         nested Module key, skipping stdlib packages (no Module key).
+        When disable_workspace is set, any enclosing go.work is ignored.
         """
+        env = {"GOTOOLCHAIN": "auto"}
+        if disable_workspace:
+            env["GOWORK"] = "off"
         output = output_from_command(
             ["go", "list", "-json", "all"],
             cwd=project_path,
-            env={"GOTOOLCHAIN": "auto"},
+            env=env,
         )
         if not output.strip():
             logger.warning("go list produced no output in %s", project_path)

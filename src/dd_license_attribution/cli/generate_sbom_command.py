@@ -408,6 +408,14 @@ def generate_sbom(
             rich_help_panel="Scanning Options",
         ),
     ] = False,
+    go_single_module: Annotated[
+        bool,
+        typer.Option(
+            "--go-single-module",
+            help="Only analyze the Go module whose go.mod is at the root of the analyzed repository: nested Go modules and go.work are ignored. Also skips the GitHub SBOM collection strategy, which covers the whole repository.",
+            rich_help_panel="Scanning Options",
+        ),
+    ] = False,
     skip_npm: Annotated[
         bool,
         typer.Option(
@@ -585,6 +593,11 @@ def generate_sbom(
         )
     ecosystem = _canonical_ecosystem(ecosystem)
 
+    if go_single_module and ecosystem is not None:
+        raise typer.BadParameter(
+            "--go-single-module only applies to GitHub repository scans, not to --ecosystem."
+        )
+
     if not only_root_project and not only_transitive_dependencies:
         project_scope = ProjectScope.ALL
     elif only_root_project:
@@ -646,6 +659,15 @@ def generate_sbom(
             enabled_strategies["GoPkgsMetadataCollectionStrategy"] = False
 
         if skip_github_sbom:
+            enabled_strategies["GitHubSbomMetadataCollectionStrategy"] = False
+
+        if (
+            go_single_module
+            and enabled_strategies["GitHubSbomMetadataCollectionStrategy"]
+        ):
+            logger.info(
+                "--go-single-module: skipping the GitHub SBOM strategy, which covers the whole repository."
+            )
             enabled_strategies["GitHubSbomMetadataCollectionStrategy"] = False
 
         if skip_npm:
@@ -878,7 +900,10 @@ def generate_sbom(
             if enabled_strategies["GoPkgsMetadataCollectionStrategy"]:
                 strategies.append(
                     GoPkgMetadataCollectionStrategy(
-                        package, source_code_manager, project_scope
+                        package,
+                        source_code_manager,
+                        project_scope,
+                        single_module=go_single_module,
                     )
                 )
 

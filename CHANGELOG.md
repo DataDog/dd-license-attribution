@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `--go-single-module` scopes a repository scan to the Go module whose `go.mod` is at the repository root. Without it, every `go.mod` in the repository is analyzed inside any `go.work` workspace, so a monorepo's root module report also lists the dependencies of all its nested modules: an `--only-transitive-dependencies` scan of `DataDog/dd-trace-go` (146 `go.mod` files) lists 784 entries, 114 of them its own modules, where the root module has 86 dependencies. With the flag, only the root module is listed, with `GOWORK=off`, the GitHub SBOM strategy is skipped since GitHub's dependency graph covers the whole repository, and `--only-transitive-dependencies` drops the root module's own entry (e.g. `github.com/DataDog/dd-trace-go/v2`). Default behavior is unchanged.
+
 ## [0.10.1] - 2026-11-19
 
 ### Fixed

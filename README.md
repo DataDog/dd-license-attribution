@@ -111,6 +111,7 @@ The following optional parameters are available for `generate-sbom`:
 ##### Scope Control
 - `--only-transitive-dependencies`: Extracts license and copyright from the passed package, only its dependencies.
 - `--only-root-project`: Extracts information from the licenses and copyright of the passed package, not its dependencies.
+- `--go-single-module`: Only analyzes the Go module whose `go.mod` is at the root of the analyzed repository. By default every `go.mod` in the repository is analyzed, inside any `go.work` workspace, which merges the dependencies of all nested modules (e.g. the `contrib/*` modules of `DataDog/dd-trace-go`). With this flag, nested modules and `go.work` are ignored (`GOWORK=off`), and the GitHub SBOM strategy is skipped because GitHub's dependency graph covers the whole repository. Not compatible with `--ecosystem`.
 
 ##### Ecosystem Mode
 - `--ecosystem <name>`: Treat the package argument as a package name in the given ecosystem instead of a GitHub repository URL. Supported ecosystems: `go`, `npm`, `python` (alias: `pypi`), `rust`. Both `python` and `pypi` are equivalent and produce identical output. Example: `--ecosystem go github.com/stretchr/testify@v1.9.0`, `--ecosystem npm express`, `--ecosystem python requests==2.31.0`, `--ecosystem pypi requests==2.31.0`, `--ecosystem rust serde@1.0`. Rust ecosystem mode uses Cargo to select the exact crate version, then analyzes that version's published crates.io source archive for both library and binary-only crates. A `Cargo.lock` included in the published archive is preserved for reproducible, release-specific attribution.
@@ -387,6 +388,12 @@ cat LICENSE-cleaned.csv
 #### Basic License Attribution
 ```bash
 dd-license-attribution generate-sbom https://github.com/owner/repo > LICENSE-3rdparty.csv
+```
+
+#### Analyzing Only the Root Go Module of a Monorepo
+```bash
+# Dependencies of github.com/DataDog/dd-trace-go/v2 only, not of its nested contrib modules
+dd-license-attribution generate-sbom --go-single-module --only-transitive-dependencies https://github.com/DataDog/dd-trace-go > LICENSE-3rdparty.csv
 ```
 
 #### Analyzing Go Packages by Module Path

@@ -870,3 +870,67 @@ def test_only_transitive_dependencies_drops_the_analyzed_repository(
     mock_csv.return_value.write.assert_called_once()
     (written,), _ = mock_csv.return_value.write.call_args
     assert [m.name for m in written] == expected_names
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@pytest.mark.parametrize("go_single_module", [True, False])
+def test_go_single_module_scopes_gopkg_and_skips_github_sbom(
+    mock_csv: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    mock_three_phase_collector: Mock,
+    go_single_module: bool,
+) -> None:
+    mock_three_phase_collector.return_value.collect_metadata.return_value = []
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        None,
+    )
+    mock_csv.return_value.write.return_value = ""
+
+    result = runner.invoke(
+        app,
+        ["generate-sbom", "https://github.com/org/repo", "--no-gh-auth"]
+        + (["--go-single-module"] if go_single_module else []),
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_three_phase_collector.assert_called_once()
+    _, kwargs = mock_three_phase_collector.call_args
+    pre_finder_classes = [f.__class__.__name__ for f in kwargs["pre_finders"]]
+    gopkg_finders = [
+        f
+        for f in kwargs["finders"]
+        if f.__class__.__name__ == "GoPkgMetadataCollectionStrategy"
+    ]
+    assert len(gopkg_finders) == 1
+    assert gopkg_finders[0].single_module is go_single_module
+    assert (
+        "GitHubSbomMetadataCollectionStrategy" in pre_finder_classes
+    ) is not go_single_module
+
+
+def test_go_single_module_is_rejected_with_ecosystem() -> None:
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "github.com/foo/bar",
+            "--no-gh-auth",
+            "--ecosystem",
+            "go",
+            "--go-single-module",
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code != 0
+    assert "--go-single-module only applies to GitHub repository scans" in (
+        result.output
+    )
