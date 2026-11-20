@@ -197,14 +197,20 @@ def _without_analyzed_repository(
 
     Used for --only-transitive-dependencies: when the GitHub SBOM strategy
     does not run for a repository (disabled, failed, or skipped for a remapped
-    default branch), nothing else removes its root row.
+    default branch), nothing else removes its root row. That strategy also
+    renames the seed to the canonical name, so a seed from a non-canonical URL
+    (e.g. ending in .git, or a pre-rename name) is matched as passed too.
     """
     canonical_url, _ = source_code_manager.get_canonical_urls(repository_url)
     parsed_url = parse_git_url(canonical_url)
     if not parsed_url.valid or not parsed_url.github:
         return metadata
-    root_name = f"github.com/{parsed_url.owner}/{parsed_url.repo}".lower()
-    return [m for m in metadata if (m.name or "").lower() != root_name]
+    seed_name = repository_url.replace("https://", "").replace("http://", "")
+    root_names = {
+        f"github.com/{parsed_url.owner}/{parsed_url.repo}".lower(),
+        seed_name.lower(),
+    }
+    return [m for m in metadata if (m.name or "").lower() not in root_names]
 
 
 def _build_writer(
@@ -408,6 +414,14 @@ def generate_sbom(
             rich_help_panel="Scanning Options",
         ),
     ] = False,
+    go_single_module: Annotated[
+        bool,
+        typer.Option(
+            "--go-single-module",
+            help="Only analyze the Go module whose go.mod is at the root of the analyzed repository: nested Go modules and go.work are ignored. Also skips the GitHub SBOM collection strategy for the whole scan, including non-Go dependencies, since it covers the whole repository.",
+            rich_help_panel="Scanning Options",
+        ),
+    ] = False,
     skip_npm: Annotated[
         bool,
         typer.Option(
@@ -585,6 +599,11 @@ def generate_sbom(
         )
     ecosystem = _canonical_ecosystem(ecosystem)
 
+    if go_single_module and ecosystem is not None:
+        raise typer.BadParameter(
+            "--go-single-module only applies to GitHub repository scans, not to --ecosystem."
+        )
+
     if not only_root_project and not only_transitive_dependencies:
         project_scope = ProjectScope.ALL
     elif only_root_project:
@@ -646,6 +665,15 @@ def generate_sbom(
             enabled_strategies["GoPkgsMetadataCollectionStrategy"] = False
 
         if skip_github_sbom:
+            enabled_strategies["GitHubSbomMetadataCollectionStrategy"] = False
+
+        if (
+            go_single_module
+            and enabled_strategies["GitHubSbomMetadataCollectionStrategy"]
+        ):
+            logger.info(
+                "--go-single-module: skipping the GitHub SBOM strategy, which covers the whole repository."
+            )
             enabled_strategies["GitHubSbomMetadataCollectionStrategy"] = False
 
         if skip_npm:
@@ -878,7 +906,10 @@ def generate_sbom(
             if enabled_strategies["GoPkgsMetadataCollectionStrategy"]:
                 strategies.append(
                     GoPkgMetadataCollectionStrategy(
-                        package, source_code_manager, project_scope
+                        package,
+                        source_code_manager,
+                        project_scope,
+                        single_module=go_single_module,
                     )
                 )
 

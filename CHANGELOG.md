@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- `--go-single-module` scopes a repository scan to the Go module whose `go.mod` is at the repository root, ignoring nested modules and `go.work` (`GOWORK=off`), so a monorepo's root module report no longer lists the dependencies of every nested module. It also skips the GitHub SBOM strategy for the whole scan, and under `--only-transitive-dependencies` drops the root module's own entry. Default behavior is unchanged.
+
 ## [0.10.1] - 2026-11-19
 
 ### Fixed
