@@ -418,7 +418,7 @@ def generate_sbom(
         bool,
         typer.Option(
             "--go-single-module",
-            help="Only analyze the Go module whose go.mod is at the root of the analyzed repository: nested Go modules and go.work are ignored. Also skips the GitHub SBOM collection strategy, which covers the whole repository.",
+            help="Only analyze the Go module whose go.mod is at the root of the analyzed repository: nested Go modules and go.work are ignored. Also skips the GitHub SBOM collection strategy for the whole scan, including non-Go dependencies, since it covers the whole repository.",
             rich_help_panel="Scanning Options",
         ),
     ] = False,
