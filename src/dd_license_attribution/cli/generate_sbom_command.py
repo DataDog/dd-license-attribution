@@ -95,6 +95,9 @@ from dd_license_attribution.metadata_collector.strategies.rust_crates_io_collect
 from dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
     ScanCodeToolkitMetadataCollectionStrategy,
 )
+from dd_license_attribution.metadata_collector.three_phase_metadata_collector import (
+    root_seed_name,
+)
 from dd_license_attribution.report_generator.report_generator import ReportGenerator
 from dd_license_attribution.report_generator.writters.abstract_reporting_writter import (
     ReportingWritter,
@@ -205,10 +208,9 @@ def _without_analyzed_repository(
     parsed_url = parse_git_url(canonical_url)
     if not parsed_url.valid or not parsed_url.github:
         return metadata
-    seed_name = repository_url.replace("https://", "").replace("http://", "")
     root_names = {
         f"github.com/{parsed_url.owner}/{parsed_url.repo}".lower(),
-        seed_name.lower(),
+        root_seed_name(repository_url).lower(),
     }
     return [m for m in metadata if (m.name or "").lower() not in root_names]
 

@@ -20,6 +20,7 @@ from dd_license_attribution.metadata_collector.strategies.override_strategy impo
 )
 from dd_license_attribution.metadata_collector.three_phase_metadata_collector import (
     ThreePhaseMetadataCollector,
+    root_seed_name,
 )
 
 _SEED = Metadata(
@@ -61,6 +62,19 @@ class TestThreePhaseMetadataCollectorNoStrategies:
         result = collector.collect_metadata("https://github.com/owner/repo")
         assert result[0].name == "github.com/owner/repo"
         assert result[0].origin == "https://github.com/owner/repo"
+
+    @pytest.mark.parametrize(
+        "package",
+        [
+            "https://github.com/owner/repo.git",
+            "http://github.com/owner/repo",
+            "github.com/owner/repo",
+        ],
+    )
+    def test_seed_name_matches_root_seed_name(self, package: str) -> None:
+        collector = ThreePhaseMetadataCollector(finders=[], enrichers=[])
+        result = collector.collect_metadata(package)
+        assert result[0].name == root_seed_name(package)
 
 
 class TestThreePhaseMetadataCollectorFinderPhase:
