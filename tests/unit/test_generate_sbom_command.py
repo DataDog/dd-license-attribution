@@ -877,7 +877,10 @@ def test_only_transitive_dependencies_drops_the_analyzed_repository(
 @patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
-@pytest.mark.parametrize("go_single_module", [True, False])
+@pytest.mark.parametrize(
+    "go_single_module, skip_github_sbom",
+    [(True, False), (False, False), (True, True)],
+)
 def test_go_single_module_scopes_gopkg_and_skips_github_sbom(
     mock_csv: Mock,
     mock_python_env_manager: Mock,
@@ -885,6 +888,7 @@ def test_go_single_module_scopes_gopkg_and_skips_github_sbom(
     mock_github: Mock,
     mock_three_phase_collector: Mock,
     go_single_module: bool,
+    skip_github_sbom: bool,
 ) -> None:
     mock_three_phase_collector.return_value.collect_metadata.return_value = []
     mock_source_code_manager.return_value.get_canonical_urls.return_value = (
@@ -896,7 +900,8 @@ def test_go_single_module_scopes_gopkg_and_skips_github_sbom(
     result = runner.invoke(
         app,
         ["generate-sbom", "https://github.com/org/repo", "--no-gh-auth"]
-        + (["--go-single-module"] if go_single_module else []),
+        + (["--go-single-module"] if go_single_module else [])
+        + (["--no-github-sbom-strategy"] if skip_github_sbom else []),
         env={"GITHUB_TOKEN": ""},
     )
 
@@ -911,9 +916,9 @@ def test_go_single_module_scopes_gopkg_and_skips_github_sbom(
     ]
     assert len(gopkg_finders) == 1
     assert gopkg_finders[0].single_module is go_single_module
-    assert (
-        "GitHubSbomMetadataCollectionStrategy" in pre_finder_classes
-    ) is not go_single_module
+    assert ("GitHubSbomMetadataCollectionStrategy" in pre_finder_classes) is not (
+        go_single_module or skip_github_sbom
+    )
 
 
 def test_go_single_module_is_rejected_with_ecosystem() -> None:
