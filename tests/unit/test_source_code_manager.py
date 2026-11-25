@@ -3064,8 +3064,9 @@ def test_get_subdirectory_path_returns_none_when_ref_unvalidated(
         ),
     ) as mock_get_canonical_urls:
         assert source_code_manager.get_subdirectory_path(url) is None
-    mock_get_canonical_urls.assert_called_once_with(url)
-    mock_extract_ref.assert_called_once()
+        assert source_code_manager.get_code(url) is None
+    assert mock_get_canonical_urls.call_count == 2
+    assert mock_extract_ref.call_count == 2
 
 
 @patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")

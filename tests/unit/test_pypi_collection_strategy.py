@@ -2409,3 +2409,49 @@ def test_pypi_collection_strategy_honors_overridden_origin(
     python_env_manager_mock.get_environment.assert_called_once_with(
         "cache_dir/fork_replacement/main"
     )
+
+
+def test_pypi_collection_strategy_reuses_original_url_for_renamed_repo_scope_check(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/org/new-repo",
+        "https://api.github.com/repos/org/new-repo",
+    )
+    source_code_manager_mock.get_subdirectory_path.return_value = ""
+    source_code_manager_mock.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/new-repo",
+        branch="v1.0",
+        local_root_path="cache_dir/org_new-repo/v1.0",
+        local_full_path="cache_dir/org_new-repo/v1.0",
+    )
+    python_env_manager_mock = mocker.Mock()
+    python_env_manager_mock.get_environment.return_value = None
+
+    strategy = PypiMetadataCollectionStrategy(
+        "https://github.com/org/old-repo/tree/v1.0",
+        source_code_manager_mock,
+        python_env_manager_mock,
+        ProjectScope.ALL,
+    )
+
+    strategy.augment_metadata(
+        [
+            Metadata(
+                name="github.com/org/new-repo",
+                version=None,
+                origin="https://github.com/org/new-repo",
+                local_src_path=None,
+                license=[],
+                copyright=[],
+            )
+        ]
+    )
+
+    source_code_manager_mock.get_subdirectory_path.assert_called_once_with(
+        "https://github.com/org/old-repo/tree/v1.0"
+    )
+    source_code_manager_mock.get_code.assert_called_once_with(
+        "https://github.com/org/new-repo/tree/v1.0"
+    )

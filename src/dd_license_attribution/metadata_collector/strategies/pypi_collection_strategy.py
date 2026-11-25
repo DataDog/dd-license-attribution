@@ -353,8 +353,9 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
     def _find_top_metadata_path(self, metadata: list[Metadata]) -> str | None:
         candidate_list = [self.top_package, self.original_top_package]
         if (
-            not has_repository_path(self.top_package)
-            or self.source_code_manager.get_subdirectory_path(self.top_package) == ""
+            not has_repository_path(self.original_top_package)
+            or self.source_code_manager.get_subdirectory_path(self.original_top_package)
+            == ""
         ):
             candidate_list.append(self.canonical_top_package)
         candidate_packages = tuple(candidate_list)

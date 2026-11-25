@@ -916,7 +916,8 @@ class SourceCodeManager(ArtifactManager):
     ) -> tuple[str, str | None]:
         """Split a parsed GitHub URL into its ref and sanitized subdirectory.
 
-        Returns `(branch, None)` if the path contains a `..` traversal segment.
+        Returns `(branch, None)` if the path contains a `..` traversal segment
+        or if a `/tree/` or `/blob/` URL's ref cannot be resolved.
         """
         branch = "default_branch"
         if original_parsed_url.branch:
@@ -928,7 +929,7 @@ class SourceCodeManager(ArtifactManager):
                 branch = validated_ref
         if original_parsed_url.path_raw.startswith("/tree/"):
             if branch == "default_branch":
-                return branch, ""
+                return branch, None
             raw_path = original_parsed_url.path_raw.removeprefix(f"/tree/{branch}")
             return branch, _sanitize_repo_subpath(raw_path)
         if original_parsed_url.path_raw.startswith("/blob/"):
@@ -939,7 +940,7 @@ class SourceCodeManager(ArtifactManager):
                 blob_dir, repository_url, git_env=git_env
             )
             if validated_ref == "":
-                return branch, ""
+                return branch, None
             branch = validated_ref
             raw_path = blob_dir.removeprefix(f"{branch}")
             return branch, _sanitize_repo_subpath(raw_path)
@@ -994,7 +995,9 @@ class SourceCodeManager(ArtifactManager):
             original_parsed_url, repository_url, git_env
         )
         if path is None:
-            logger.warning("Unsafe repository path in URL %s, skipping.", resource_url)
+            logger.warning(
+                "Could not resolve safe ref/path in URL %s, skipping.", resource_url
+            )
             return None
         logger.debug(
             "Using branch: %s and path: %s for repository URL: %s",

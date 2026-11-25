@@ -157,8 +157,11 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
     def _is_repository_seed_metadata(self, metadata: Metadata) -> bool:
         candidate_urls = {self.requested_top_package, self.top_package}
         if (
-            not has_repository_path(self.top_package)
-            or self.source_code_manager.get_subdirectory_path(self.top_package) == ""
+            not has_repository_path(self.requested_top_package)
+            or self.source_code_manager.get_subdirectory_path(
+                self.requested_top_package
+            )
+            == ""
         ):
             candidate_urls.add(self.canonical_top_package)
         root_names = {self._strip_url_scheme(url) for url in candidate_urls}
