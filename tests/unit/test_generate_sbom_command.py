@@ -1065,7 +1065,7 @@ def test_generate_sbom_only_transitive_drops_subdirectory_seed(
     )
 
     assert result.exit_code == 0, result.output
-    mock_source_code_manager.return_value.get_subdirectory_path.assert_called_once_with(
+    mock_source_code_manager.return_value.get_subdirectory_path.assert_any_call(
         "https://github.com/org/repo/tree/main/apis"
     )
     mock_csv_reporting_writter.return_value.write.assert_called_once_with(
@@ -1106,5 +1106,41 @@ def test_generate_sbom_keeps_subdirectory_seed_when_root_is_in_scope(
     )
 
     assert result.exit_code == 0, result.output
-    mock_source_code_manager.return_value.get_subdirectory_path.assert_not_called()
+    mock_source_code_manager.return_value.get_subdirectory_path.assert_called_once_with(
+        "https://github.com/org/repo/tree/main/apis"
+    )
     mock_csv_reporting_writter.return_value.write.assert_called_once_with(metadata)
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
+def test_generate_sbom_exits_with_error_when_repository_path_unresolved(
+    mock_three_phase_collector: Mock,
+    mock_csv_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    mock_source_code_manager.return_value.get_subdirectory_path.return_value = None
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo/tree/0123456789abcdef/apis",
+            "--only-transitive-dependencies",
+            "--no-gh-auth",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 1
+    mock_source_code_manager.return_value.get_subdirectory_path.assert_called_once_with(
+        "https://github.com/org/repo/tree/0123456789abcdef/apis"
+    )
+    mock_three_phase_collector.return_value.collect_metadata.assert_not_called()
+    mock_csv_reporting_writter.return_value.write.assert_not_called()

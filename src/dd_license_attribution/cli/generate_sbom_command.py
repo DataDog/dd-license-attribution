@@ -889,6 +889,18 @@ def generate_sbom(
                 )
         else:
             # Standard GitHub repository mode
+            if (
+                has_repository_path(package)
+                and source_code_manager.get_subdirectory_path(package) is None
+            ):
+                logger.error(
+                    "Could not resolve requested repository ref/path for '%s'. "
+                    "Verify that the ref exists on the repository (or configured "
+                    "mirror) and that the path is valid.",
+                    package,
+                )
+                sys.exit(1)
+
             repository_has_cargo_project = False
             if enabled_strategies["RustMetadataCollectionStrategy"]:
                 try:
