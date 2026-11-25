@@ -20,6 +20,11 @@ logger = logging.getLogger(__name__)
 _FINDER_LOOP_MAX_ITERATIONS: int = 5
 
 
+def root_seed_name(package: str) -> str:
+    """Name of the root seed that collect_metadata creates for package."""
+    return package.replace("https://", "").replace("http://", "")
+
+
 class ThreePhaseMetadataCollector:
     """Three-phase (pre-find / find / enrich) collector: the default and only collection pipeline.
 
@@ -55,7 +60,7 @@ class ThreePhaseMetadataCollector:
     def collect_metadata(self, package: str) -> list[Metadata]:
         metadata: list[Metadata] = [
             Metadata(
-                name=package.replace("https://", "").replace("http://", ""),
+                name=root_seed_name(package),
                 version=None,
                 origin=package,
                 local_src_path=None,
