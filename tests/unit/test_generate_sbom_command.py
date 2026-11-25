@@ -1065,7 +1065,7 @@ def test_generate_sbom_only_transitive_drops_subdirectory_seed(
     )
 
     assert result.exit_code == 0, result.output
-    mock_source_code_manager.return_value.get_subdirectory_path.assert_any_call(
+    mock_source_code_manager.return_value.get_subdirectory_path.assert_called_once_with(
         "https://github.com/org/repo/tree/main/apis"
     )
     mock_csv_reporting_writter.return_value.write.assert_called_once_with(
@@ -1106,9 +1106,7 @@ def test_generate_sbom_keeps_subdirectory_seed_when_root_is_in_scope(
     )
 
     assert result.exit_code == 0, result.output
-    mock_source_code_manager.return_value.get_subdirectory_path.assert_called_once_with(
-        "https://github.com/org/repo/tree/main/apis"
-    )
+    mock_source_code_manager.return_value.get_subdirectory_path.assert_not_called()
     mock_csv_reporting_writter.return_value.write.assert_called_once_with(metadata)
 
 
@@ -1124,6 +1122,16 @@ def test_generate_sbom_exits_with_error_when_repository_path_unresolved(
     mock_source_code_manager: Mock,
     mock_github: Mock,
 ) -> None:
+    mock_three_phase_collector.return_value.collect_metadata.return_value = [
+        Metadata(
+            name="github.com/org/repo/tree/0123456789abcdef/apis",
+            version=None,
+            origin="https://github.com/org/repo/tree/0123456789abcdef/apis",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        )
+    ]
     mock_source_code_manager.return_value.get_subdirectory_path.return_value = None
 
     result = runner.invoke(
@@ -1142,5 +1150,47 @@ def test_generate_sbom_exits_with_error_when_repository_path_unresolved(
     mock_source_code_manager.return_value.get_subdirectory_path.assert_called_once_with(
         "https://github.com/org/repo/tree/0123456789abcdef/apis"
     )
-    mock_three_phase_collector.return_value.collect_metadata.assert_not_called()
     mock_csv_reporting_writter.return_value.write.assert_not_called()
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
+def test_generate_sbom_succeeds_when_unresolved_ref_is_overridden_with_checkout(
+    mock_three_phase_collector: Mock,
+    mock_csv_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    overridden_seed = Metadata(
+        name="github.com/org/repo/tree/0123456789abcdef/apis",
+        version=None,
+        origin="https://github.com/fork/replacement",
+        local_src_path="cache_dir/fork_replacement/main",
+        license=["MIT"],
+        copyright=["Fork"],
+    )
+    mock_three_phase_collector.return_value.collect_metadata.return_value = [
+        overridden_seed
+    ]
+    mock_source_code_manager.return_value.get_subdirectory_path.return_value = None
+    mock_csv_reporting_writter.return_value.write.return_value = "csv-output"
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo/tree/0123456789abcdef/apis",
+            "--no-gh-auth",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_csv_reporting_writter.return_value.write.assert_called_once_with(
+        [overridden_seed]
+    )

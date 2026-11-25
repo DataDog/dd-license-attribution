@@ -889,18 +889,6 @@ def generate_sbom(
                 )
         else:
             # Standard GitHub repository mode
-            if (
-                has_repository_path(package)
-                and source_code_manager.get_subdirectory_path(package) is None
-            ):
-                logger.error(
-                    "Could not resolve requested repository ref/path for '%s'. "
-                    "Verify that the ref exists on the repository (or configured "
-                    "mirror) and that the path is valid.",
-                    package,
-                )
-                sys.exit(1)
-
             repository_has_cargo_project = False
             if enabled_strategies["RustMetadataCollectionStrategy"]:
                 try:
@@ -1053,6 +1041,25 @@ def generate_sbom(
             sys.exit(1)
         except RustLicenseToolNotInstalledError as e:
             logger.error(str(e))
+            sys.exit(1)
+
+        # Fail closed if a /tree/ or /blob/ target produced neither a checkout
+        # nor any dependencies and its ref/path still cannot be resolved.
+        # Checked post-collection so transient Git timeouts can recover and
+        # --override-spec source replacements can take effect first.
+        if (
+            ecosystem is None
+            and has_repository_path(package)
+            and len(metadata) <= 1
+            and all(m.local_src_path is None for m in metadata)
+            and source_code_manager.get_subdirectory_path(package) is None
+        ):
+            logger.error(
+                "Could not resolve requested repository ref/path for '%s'. "
+                "Verify that the ref exists on the repository (or configured "
+                "mirror) and that the path is valid.",
+                package,
+            )
             sys.exit(1)
 
         if (
