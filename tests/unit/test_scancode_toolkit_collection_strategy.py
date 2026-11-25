@@ -15,6 +15,7 @@ from pytest import LogCaptureFixture
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
+from dd_license_attribution.config.cli_configs import default_config
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
     ScanCodeToolkitMetadataCollectionStrategy,
@@ -1411,3 +1412,65 @@ def test_scancode_toolkit_no_skip_summary_when_all_packages_enriched_or_complete
     assert not any(
         "Enrichment skipped" in record.message for record in caplog.records
     ), caplog.records
+
+
+def test_scancode_toolkit_matches_glob_patterns_and_ignores_non_matching_files(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Preset glob patterns match suffixed license files (e.g. LICENSE.BSD, LICENSE.MPL-2.0, COPYING.md)
+    without matching source files or LICENSE-3rdparty.csv."""
+    listdir_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        return_value=[
+            "LICENSE.BSD",
+            "LICENSE.MPL-2.0",
+            "COPYING.md",
+            "LICENSE-MIT",
+            "LICENSE-3rdparty.csv",
+            "license.go",
+            "license.py",
+            "license.cc",
+            "README.md",
+        ],
+    )
+    scancode_api_mock = mocker.patch("scancode.api")
+    scancode_api_mock.get_licenses.side_effect = [
+        {"detected_license_expression_spdx": "BSD-3-Clause"},
+        {"detected_license_expression_spdx": "MPL-2.0"},
+        {"detected_license_expression_spdx": "BSD-3-Clause AND MPL-2.0"},
+        {"detected_license_expression_spdx": "MIT"},
+    ]
+    source_code_manager_mock = mocker.Mock()
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        source_code_manager_mock,
+        license_source_files=default_config.preset_license_file_locations,
+        copyright_source_files=default_config.preset_copyright_file_locations,
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/cyphar/filepath-securejoin",
+            version="v0.7.0",
+            origin="https://github.com/cyphar/filepath-securejoin",
+            local_src_path="/go/pkg/mod/github.com/cyphar/filepath-securejoin@v0.7.0",
+            license=[],
+            copyright=["SUSE LLC"],
+        )
+    ]
+
+    updated = strategy.augment_metadata(initial_metadata)
+
+    assert len(updated) == 1
+    assert set(updated[0].license) == {"BSD-3-Clause", "MIT", "MPL-2.0"}
+    listdir_mock.assert_called_once_with(
+        "/go/pkg/mod/github.com/cyphar/filepath-securejoin@v0.7.0"
+    )
+    assert scancode_api_mock.get_licenses.call_args_list == [
+        call("/go/pkg/mod/github.com/cyphar/filepath-securejoin@v0.7.0/LICENSE.BSD"),
+        call(
+            "/go/pkg/mod/github.com/cyphar/filepath-securejoin@v0.7.0/LICENSE.MPL-2.0"
+        ),
+        call("/go/pkg/mod/github.com/cyphar/filepath-securejoin@v0.7.0/COPYING.md"),
+        call("/go/pkg/mod/github.com/cyphar/filepath-securejoin@v0.7.0/LICENSE-MIT"),
+    ]
+    scancode_api_mock.get_copyrights.assert_not_called()
+    source_code_manager_mock.get_code.assert_not_called()
