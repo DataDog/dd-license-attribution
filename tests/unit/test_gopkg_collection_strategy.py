@@ -1358,3 +1358,211 @@ def test_gopkg_local_project_path_module_graph_empty_output(
             ),
         ]
     )
+
+
+_SINGLE_MODULE_GO_LIST_OUTPUT = """
+{
+    "ImportPath": "github.com/org/package1/v2",
+    "Module": {
+        "Path": "github.com/org/package1/v2",
+        "Main": true,
+        "Dir": "cache_dir/org_package1"
+    }
+}
+{
+    "ImportPath": "github.com/org/package4",
+    "Module": {
+        "Path": "github.com/org/package4",
+        "Version": "v1.2.3",
+        "Dir": "/tmp/go/pkg/mod/github.com/org/package4@v1.2.3"
+    }
+}
+{
+    "ImportPath": "bytes",
+    "Standard": true
+}"""
+
+
+def _single_module_strategy(
+    mocker: pytest_mock.MockFixture, project_scope: ProjectScope
+) -> tuple[GoPkgMetadataCollectionStrategy, pytest_mock.MockType]:
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/package1",
+        None,
+    )
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/package1",
+        branch="main",
+        local_root_path="cache_dir/org_package1",
+        local_full_path="cache_dir/org_package1",
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/package1",
+        mock_source_code_manager,
+        project_scope,
+        single_module=True,
+    )
+    return strategy, mock_source_code_manager
+
+
+def test_gopkg_single_module_lists_only_the_root_module_without_workspace(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    strategy, mock_source_code_manager = _single_module_strategy(
+        mocker, ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
+    )
+    mock_walk_directory = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory"
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.path_exists",
+        return_value=True,
+    )
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=_SINGLE_MODULE_GO_LIST_OUTPUT,
+    )
+
+    result = strategy.augment_metadata([])
+
+    # The main module itself is not a transitive dependency.
+    assert result == [
+        Metadata(
+            name="github.com/org/package4",
+            origin="https://github.com/org/package4",
+            local_src_path="/tmp/go/pkg/mod/github.com/org/package4@v1.2.3",
+            license=[],
+            version="v1.2.3",
+            copyright=[],
+        ),
+    ]
+    mock_source_code_manager.get_code.assert_called_once_with(
+        "https://github.com/org/package1"
+    )
+    mock_walk_directory.assert_not_called()
+    mock_path_exists.assert_called_once_with("cache_dir/org_package1/go.mod")
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="cache_dir/org_package1",
+        env={"GOTOOLCHAIN": "auto", "GOWORK": "off"},
+    )
+
+
+def test_gopkg_single_module_keeps_the_main_module_when_not_transitive_only(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    strategy, _ = _single_module_strategy(mocker, ProjectScope.ALL)
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.path_exists",
+        return_value=True,
+    )
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=[
+            _SINGLE_MODULE_GO_LIST_OUTPUT,
+            "ref: refs/heads/main\tHEAD\n72a11341aa684010caf1ca5dee779f0e7e84dfe9\tHEAD\n",
+        ],
+    )
+
+    result = strategy.augment_metadata([])
+
+    assert [m.name for m in result] == [
+        "github.com/org/package1/v2",
+        "github.com/org/package4",
+    ]
+    assert result[0].origin == "https://github.com/org/package1/tree/main/v2"
+    assert mock_output_from_command.call_args_list == [
+        call(
+            ["go", "list", "-json", "all"],
+            cwd="cache_dir/org_package1",
+            env={"GOTOOLCHAIN": "auto", "GOWORK": "off"},
+        ),
+        call(
+            [
+                "git",
+                "ls-remote",
+                "--symref",
+                "https://github.com/org/package1",
+                "HEAD",
+            ]
+        ),
+    ]
+
+
+def test_gopkg_single_module_only_root_project_updates_known_entries_only(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    strategy, _ = _single_module_strategy(mocker, ProjectScope.ONLY_ROOT_PROJECT)
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.path_exists",
+        return_value=True,
+    )
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=_SINGLE_MODULE_GO_LIST_OUTPUT,
+    )
+    root = Metadata(
+        name="github.com/org/package4",
+        origin=None,
+        local_src_path=None,
+        license=[],
+        version=None,
+        copyright=[],
+    )
+
+    result = strategy.augment_metadata([root])
+
+    assert result == [
+        Metadata(
+            name="github.com/org/package4",
+            origin="https://github.com/org/package4",
+            local_src_path="/tmp/go/pkg/mod/github.com/org/package4@v1.2.3",
+            license=[],
+            version="v1.2.3",
+            copyright=[],
+        )
+    ]
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="cache_dir/org_package1",
+        env={"GOTOOLCHAIN": "auto", "GOWORK": "off"},
+    )
+
+
+def test_gopkg_single_module_without_root_go_mod_skips_collection(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    strategy, _ = _single_module_strategy(
+        mocker, ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.path_exists",
+        return_value=False,
+    )
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command"
+    )
+    mock_logger = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.logger"
+    )
+    initial_metadata = [
+        Metadata(
+            name="package2",
+            origin="package2_origin",
+            local_src_path=None,
+            license=["MIT"],
+            version="1.2",
+            copyright=[],
+        )
+    ]
+
+    result = strategy.augment_metadata(list(initial_metadata))
+
+    assert result == initial_metadata
+    mock_path_exists.assert_called_once_with("cache_dir/org_package1/go.mod")
+    mock_output_from_command.assert_not_called()
+    mock_logger.warning.assert_called_once_with(
+        "Single Go module mode: no go.mod in %s, skipping Go module collection.",
+        "cache_dir/org_package1",
+    )
