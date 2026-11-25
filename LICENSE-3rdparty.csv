@@ -57,7 +57,7 @@
 "normality","https://github.com/pudo/normality","['MIT']","['Friedrich Lindenberg', 'Gregor Aisch']"
 "openai","https://github.com/openai/openai-python","['Apache-2.0']","['Karen Petrosyan', 'Monkeys Agency AB', 'OpenAI']"
 "packageurl-python","https://github.com/package-url/packageurl-python","['MIT']","['the purl authors']"
-"packaging","https://github.com/pypa/packaging","['Apache-2.0', 'BSD-2-Clause', 'BSD-3-Clause OR Apache-2.0']","['Donald Stufft and individual contributors']"
+"packaging","https://github.com/pypa/packaging","['BSD-3-Clause OR Apache-2.0']","['pypa']"
 "packvers","https://github.com/aboutcode-org/packvers","['BSD-2-Clause or Apache-2.0']","['Donald Stufft and individual contributors']"
 "parameter-expansion-patched","https://github.com/nexB/parameter-expansion-patched","['Apache-2.0']","['Michael A. Smith and Philippe Ombredanne']"
 "pdfminer.six","https://github.com/pdfminer/pdfminer.six","['MIT']","['Pieter Marsman', 'Yusuke Shinyama']"

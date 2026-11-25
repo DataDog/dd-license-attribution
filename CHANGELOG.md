@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 ## [Unreleased]
 
 ### Fixed
-- `ScanCodeToolkitMetadataCollectionStrategy` now supports case-insensitive glob patterns in license and copyright filename filters, and default presets recognize common suffixed license files such as `LICENSE.BSD`, `LICENSE.MPL-2.0`, `LICENSE-MIT`, `LICENSE-APACHE`, `COPYING.md`, `COPYING.txt`, `COPYING.LESSER`, and `LICENCE.txt` (without matching source code files or `LICENSE-3rdparty.csv`). Previously dual-licensed repositories like `github.com/cyphar/filepath-securejoin` returned empty license lists when scanning locally.
+- Default ScanCode license and copyright presets now recognize additional standard umbrella license filename extensions (`COPYING.md`, `COPYING.txt`, `COPYING.rst`, `LICENSE.rst`, `LICENCE.txt`, `LICENCE.rst`), allowing repositories such as `github.com/cyphar/filepath-securejoin` (which declares its license in `COPYING.md`) to be detected locally without merging separate per-license choice files into an incorrect `AND`.
 
 ## [0.10.1] - 2026-11-19
 

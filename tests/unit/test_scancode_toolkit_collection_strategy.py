@@ -1414,32 +1414,30 @@ def test_scancode_toolkit_no_skip_summary_when_all_packages_enriched_or_complete
     ), caplog.records
 
 
-def test_scancode_toolkit_matches_glob_patterns_and_ignores_non_matching_files(
+def test_scancode_toolkit_matches_umbrella_license_extensions_and_skips_per_license_files(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    """Preset glob patterns match suffixed license files (e.g. LICENSE.BSD, LICENSE.MPL-2.0, COPYING.md)
-    without matching source files or LICENSE-3rdparty.csv."""
+    """Default presets match standard umbrella license extensions (e.g. COPYING.md, LICENSE.rst, LICENCE.txt)
+    without merging sibling per-license files (e.g. LICENSE.APACHE, LICENSE.BSD, LICENSE-MIT) into an AND.
+    """
     listdir_mock = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
         return_value=[
+            "COPYING.md",
             "LICENSE.BSD",
             "LICENSE.MPL-2.0",
-            "COPYING.md",
+            "LICENSE.APACHE",
             "LICENSE-MIT",
             "LICENSE-3rdparty.csv",
             "license.go",
             "license.py",
-            "license.cc",
             "README.md",
         ],
     )
     scancode_api_mock = mocker.patch("scancode.api")
-    scancode_api_mock.get_licenses.side_effect = [
-        {"detected_license_expression_spdx": "BSD-3-Clause"},
-        {"detected_license_expression_spdx": "MPL-2.0"},
-        {"detected_license_expression_spdx": "BSD-3-Clause AND MPL-2.0"},
-        {"detected_license_expression_spdx": "MIT"},
-    ]
+    scancode_api_mock.get_licenses.return_value = {
+        "detected_license_expression_spdx": "BSD-3-Clause AND MPL-2.0"
+    }
     source_code_manager_mock = mocker.Mock()
     strategy = ScanCodeToolkitMetadataCollectionStrategy(
         source_code_manager_mock,
@@ -1460,17 +1458,52 @@ def test_scancode_toolkit_matches_glob_patterns_and_ignores_non_matching_files(
     updated = strategy.augment_metadata(initial_metadata)
 
     assert len(updated) == 1
-    assert set(updated[0].license) == {"BSD-3-Clause", "MIT", "MPL-2.0"}
+    assert set(updated[0].license) == {"BSD-3-Clause", "MPL-2.0"}
     listdir_mock.assert_called_once_with(
         "/go/pkg/mod/github.com/cyphar/filepath-securejoin@v0.7.0"
     )
-    assert scancode_api_mock.get_licenses.call_args_list == [
-        call("/go/pkg/mod/github.com/cyphar/filepath-securejoin@v0.7.0/LICENSE.BSD"),
-        call(
-            "/go/pkg/mod/github.com/cyphar/filepath-securejoin@v0.7.0/LICENSE.MPL-2.0"
-        ),
-        call("/go/pkg/mod/github.com/cyphar/filepath-securejoin@v0.7.0/COPYING.md"),
-        call("/go/pkg/mod/github.com/cyphar/filepath-securejoin@v0.7.0/LICENSE-MIT"),
+    scancode_api_mock.get_licenses.assert_called_once_with(
+        "/go/pkg/mod/github.com/cyphar/filepath-securejoin@v0.7.0/COPYING.md"
+    )
+    scancode_api_mock.get_copyrights.assert_not_called()
+    source_code_manager_mock.get_code.assert_not_called()
+
+
+def test_scancode_toolkit_does_not_turn_dual_license_choice_into_and(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Packages with an umbrella LICENSE plus per-license sibling files (e.g. packaging, cryptography)
+    keep the umbrella OR expression rather than appending sibling files as AND."""
+    listdir_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        return_value=["LICENSE", "LICENSE.APACHE", "LICENSE.BSD"],
+    )
+    scancode_api_mock = mocker.patch("scancode.api")
+    scancode_api_mock.get_licenses.return_value = {
+        "detected_license_expression_spdx": "BSD-3-Clause OR Apache-2.0"
+    }
+    source_code_manager_mock = mocker.Mock()
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        source_code_manager_mock,
+        license_source_files=default_config.preset_license_file_locations,
+        copyright_source_files=default_config.preset_copyright_file_locations,
+    )
+    initial_metadata = [
+        Metadata(
+            name="packaging",
+            version="26.3",
+            origin="https://github.com/pypa/packaging",
+            local_src_path="/local/packaging",
+            license=[],
+            copyright=["pypa"],
+        )
     ]
+
+    updated = strategy.augment_metadata(initial_metadata)
+
+    assert len(updated) == 1
+    assert updated[0].license == ["BSD-3-Clause OR Apache-2.0"]
+    listdir_mock.assert_called_once_with("/local/packaging")
+    scancode_api_mock.get_licenses.assert_called_once_with("/local/packaging/LICENSE")
     scancode_api_mock.get_copyrights.assert_not_called()
     source_code_manager_mock.get_code.assert_not_called()

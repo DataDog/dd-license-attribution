@@ -5,7 +5,6 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
-import fnmatch
 import logging
 
 # Get application-specific logger
@@ -120,10 +119,7 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
         return [
             f"{root}/{file}"
             for file in all_files
-            if filter_files is None
-            or any(
-                fnmatch.fnmatchcase(file.lower(), pattern) for pattern in filter_files
-            )
+            if filter_files is None or file.lower() in filter_files
         ]
 
     def _get_candidate_files(
