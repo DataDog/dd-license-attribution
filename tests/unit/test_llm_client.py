@@ -19,6 +19,23 @@ from dd_license_attribution.license_cleaner.llm_client import (
 )
 
 
+def _mock_request() -> Mock:
+    """Create a mock HTTP request compatible with Stainless SDK error redaction."""
+    request = Mock()
+    request.headers = {}
+    return request
+
+
+def _mock_response(status_code: int) -> Mock:
+    """Create a mock HTTP response compatible with Stainless SDK error redaction."""
+    response = Mock(status_code=status_code)
+    response.headers = {}
+    response.request = _mock_request()
+    response.history = []
+    response.next_request = None
+    return response
+
+
 class TestOpenAIClient:
     """Test OpenAI client for license conversion."""
 
@@ -127,7 +144,7 @@ class TestOpenAIClient:
         # Create a proper APIStatusError
         mock_client.chat.completions.create.side_effect = openai.APIStatusError(
             message="Bad Request",
-            response=Mock(status_code=400),
+            response=_mock_response(400),
             body={"error": {"message": "Bad Request"}},
         )
 
@@ -148,7 +165,7 @@ class TestOpenAIClient:
         mock_openai_class.return_value = mock_client
         mock_client.chat.completions.create.side_effect = openai.RateLimitError(
             message="Rate limit exceeded",
-            response=Mock(status_code=429),
+            response=_mock_response(429),
             body={"error": {"message": "Rate limit exceeded"}},
         )
 
@@ -171,7 +188,7 @@ class TestOpenAIClient:
         mock_openai_class.return_value = mock_client
         mock_client.chat.completions.create.side_effect = openai.AuthenticationError(
             message="Invalid API key",
-            response=Mock(status_code=401),
+            response=_mock_response(401),
             body={"error": {"message": "Invalid API key"}},
         )
 
@@ -191,7 +208,7 @@ class TestOpenAIClient:
         mock_client = Mock()
         mock_openai_class.return_value = mock_client
         mock_client.chat.completions.create.side_effect = openai.APIConnectionError(
-            request=Mock()
+            request=_mock_request()
         )
 
         client = OpenAIClient(api_key=self.api_key)
@@ -212,7 +229,7 @@ class TestOpenAIClient:
         # OpenAI returns 404 NotFoundError for invalid/non-existent models
         mock_client.chat.completions.create.side_effect = openai.NotFoundError(
             message="The model `invalid-model-xyz` does not exist or you do not have access to it.",
-            response=Mock(status_code=404),
+            response=_mock_response(404),
             body={
                 "message": "The model `invalid-model-xyz` does not exist or you do not have access to it.",
                 "type": "invalid_request_error",
@@ -248,7 +265,7 @@ class TestOpenAIClient:
         }
         mock_client.chat.completions.create.side_effect = openai.BadRequestError(
             message="Bad Request",
-            response=Mock(status_code=400),
+            response=_mock_response(400),
             body=error_body,
         )
 
@@ -435,7 +452,7 @@ class TestAnthropicClient:
         # Create a proper APIStatusError
         mock_client.messages.create.side_effect = anthropic.APIStatusError(
             message="Bad Request",
-            response=Mock(status_code=400),
+            response=_mock_response(400),
             body={"error": {"message": "Bad Request"}},
         )
 
@@ -456,7 +473,7 @@ class TestAnthropicClient:
         mock_anthropic_class.return_value = mock_client
         mock_client.messages.create.side_effect = anthropic.RateLimitError(
             message="Rate limit exceeded",
-            response=Mock(status_code=429),
+            response=_mock_response(429),
             body={"error": {"message": "Rate limit exceeded"}},
         )
 
@@ -479,7 +496,7 @@ class TestAnthropicClient:
         mock_anthropic_class.return_value = mock_client
         mock_client.messages.create.side_effect = anthropic.AuthenticationError(
             message="Invalid API key",
-            response=Mock(status_code=401),
+            response=_mock_response(401),
             body={"error": {"message": "Invalid API key"}},
         )
 
@@ -499,7 +516,7 @@ class TestAnthropicClient:
         mock_client = Mock()
         mock_anthropic_class.return_value = mock_client
         mock_client.messages.create.side_effect = anthropic.APIConnectionError(
-            request=Mock()
+            request=_mock_request()
         )
 
         client = AnthropicClient(api_key=self.api_key)
@@ -520,7 +537,7 @@ class TestAnthropicClient:
         # Anthropic returns 404 NotFoundError for invalid/non-existent models
         mock_client.messages.create.side_effect = anthropic.NotFoundError(
             message="model: invalid-model-xyz",
-            response=Mock(status_code=404),
+            response=_mock_response(404),
             body={
                 "type": "error",
                 "error": {
@@ -557,7 +574,7 @@ class TestAnthropicClient:
         }
         mock_client.messages.create.side_effect = anthropic.APIStatusError(
             message="Bad Request",
-            response=Mock(status_code=400),
+            response=_mock_response(400),
             body=error_body,
         )
 
