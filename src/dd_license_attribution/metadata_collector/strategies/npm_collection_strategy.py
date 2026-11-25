@@ -28,6 +28,7 @@ from dd_license_attribution.adaptors.os import (
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
+    has_repository_path,
     keep_tree_path,
 )
 from dd_license_attribution.metadata_collector.metadata import Metadata
@@ -502,11 +503,14 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         # Only the root seed, by name: in transitive-only mode the GitHub SBOM
         # may have removed it, and other rows can share or extend its origin.
-        candidate_urls = (
-            self.top_package,
-            self.original_top_package,
-            self.canonical_top_package,
-        )
+        candidate_list = [self.top_package, self.original_top_package]
+        if (
+            not has_repository_path(self.original_top_package)
+            or self.source_code_manager.get_subdirectory_path(self.original_top_package)
+            == ""
+        ):
+            candidate_list.append(self.canonical_top_package)
+        candidate_urls = tuple(candidate_list)
         root_names = {
             url.removeprefix("https://").removeprefix("http://")
             for url in candidate_urls

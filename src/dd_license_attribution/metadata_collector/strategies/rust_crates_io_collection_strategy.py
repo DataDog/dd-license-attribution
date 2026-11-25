@@ -66,13 +66,15 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
 
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = metadata.copy()
-        project_paths = self._get_project_paths()
+        project_paths, workspace_root = self._get_project_paths_and_root()
         locked_crate_versions: dict[str, set[str]] = {}
         manifest_crate_versions: dict[str, set[str]] = {}
         for project_path in project_paths:
             self._merge_crate_versions(
                 locked_crate_versions,
-                self._get_locked_crate_versions(project_path),
+                self._get_locked_crate_versions(
+                    project_path, workspace_root=workspace_root
+                ),
             )
             self._merge_crate_versions(
                 manifest_crate_versions,
@@ -139,12 +141,16 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         return bool(package.origin and package.origin != package.name)
 
     def _get_project_paths(self) -> list[str]:
+        project_paths, _ = self._get_project_paths_and_root()
+        return project_paths
+
+    def _get_project_paths_and_root(self) -> tuple[list[str], str | None]:
         if self.local_project_path is not None:
-            return [self.local_project_path]
+            return [self.local_project_path], self.local_project_path
 
         source_code_ref = self.source_code_manager.get_code(self.top_package)
         if source_code_ref is None:
-            return []
+            return [], None
 
         project_paths: list[str] = []
         for root, dirs, files in walk_directory(source_code_ref.local_full_path):
@@ -154,11 +160,33 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
             if "Cargo.toml" in files:
                 project_paths.append(root)
                 dirs[:] = []
-        return project_paths
+        return project_paths, source_code_ref.local_root_path
 
-    def _get_locked_crate_versions(self, project_path: str) -> dict[str, set[str]]:
-        cargo_lock_path = path_join(project_path, "Cargo.lock")
-        if not path_exists(cargo_lock_path):
+    def _find_cargo_lock_path(
+        self, project_path: str, workspace_root: str | None
+    ) -> str | None:
+        direct_candidate = path_join(project_path, "Cargo.lock")
+        if path_exists(direct_candidate):
+            return direct_candidate
+        if not workspace_root or workspace_root == project_path:
+            return None
+        current = normalize_path(project_path)
+        stop_root = normalize_path(workspace_root)
+        while current != stop_root:
+            parent = normalize_path(path_join(current, ".."))
+            if parent == current:
+                return None
+            current = parent
+            candidate = path_join(current, "Cargo.lock")
+            if path_exists(candidate):
+                return candidate
+        return None
+
+    def _get_locked_crate_versions(
+        self, project_path: str, workspace_root: str | None = None
+    ) -> dict[str, set[str]]:
+        cargo_lock_path = self._find_cargo_lock_path(project_path, workspace_root)
+        if cargo_lock_path is None:
             return {}
         try:
             cargo_lock = tomllib.loads(open_file(cargo_lock_path))

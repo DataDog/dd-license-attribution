@@ -206,17 +206,16 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
                 updated_metadata.append(package)
                 continue
 
-            # The dependency graph covers the whole repository and cannot be
-            # scoped to a subdirectory: leave those (and unresolved /tree/ or
-            # /blob/ targets) to the ecosystem strategies.
-            if (
-                has_repository_path(package.origin)
-                and self.source_code_manager.get_subdirectory_path(package.origin) != ""
-            ):
+            # The dependency graph covers only the default branch of the whole
+            # repository and cannot be scoped to a subdirectory or a non-default
+            # ref: leave those (and unresolved /tree/ or /blob/ targets) to the
+            # ecosystem strategies.
+            if has_repository_path(
+                package.origin
+            ) and not self.source_code_manager.is_default_branch_root(package.origin):
                 logger.info(
-                    "Package origin '%s' points to a repository subdirectory or "
-                    "an unresolved repository path, skipping the repository-wide "
-                    "GitHub SBOM.",
+                    "Package origin '%s' does not target the default-branch "
+                    "repository root, skipping the repository-wide GitHub SBOM.",
                     package.origin,
                 )
                 updated_metadata.append(package)

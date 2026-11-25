@@ -2145,7 +2145,7 @@ def test_github_sbom_collection_strategy_skips_subdirectory_origins(
 ) -> None:
     github_client_mock = mocker.MagicMock()
     source_code_manager_mock = mocker.Mock()
-    source_code_manager_mock.get_subdirectory_path.return_value = "/apis"
+    source_code_manager_mock.is_default_branch_root.return_value = False
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
@@ -2166,7 +2166,7 @@ def test_github_sbom_collection_strategy_skips_subdirectory_origins(
     updated_metadata = strategy.augment_metadata(initial_metadata)
 
     assert updated_metadata == initial_metadata
-    source_code_manager_mock.get_subdirectory_path.assert_called_once_with(
+    source_code_manager_mock.is_default_branch_root.assert_called_once_with(
         "https://github.com/org/repo/tree/main/apis"
     )
     source_code_manager_mock.get_canonical_urls.assert_not_called()
@@ -2178,7 +2178,7 @@ def test_github_sbom_collection_strategy_uses_sbom_for_tree_urls_without_subdire
 ) -> None:
     github_client_mock = mocker.MagicMock()
     source_code_manager_mock = mocker.Mock()
-    source_code_manager_mock.get_subdirectory_path.return_value = ""
+    source_code_manager_mock.is_default_branch_root.return_value = True
     source_code_manager_mock.get_canonical_urls.return_value = (
         "not_a_github_purl",
         None,
@@ -2202,7 +2202,7 @@ def test_github_sbom_collection_strategy_uses_sbom_for_tree_urls_without_subdire
 
     strategy.augment_metadata(initial_metadata)
 
-    source_code_manager_mock.get_subdirectory_path.assert_called_once_with(
+    source_code_manager_mock.is_default_branch_root.assert_called_once_with(
         "https://github.com/org/repo/tree/main"
     )
     source_code_manager_mock.get_canonical_urls.assert_called_once_with(
@@ -2211,12 +2211,12 @@ def test_github_sbom_collection_strategy_uses_sbom_for_tree_urls_without_subdire
     assert github_client_mock.mock_calls == []
 
 
-def test_github_sbom_collection_strategy_skips_unresolved_repository_path(
+def test_github_sbom_collection_strategy_skips_non_default_ref_and_unresolved_paths(
     mocker: pytest_mock.MockFixture,
 ) -> None:
     github_client_mock = mocker.MagicMock()
     source_code_manager_mock = mocker.Mock()
-    source_code_manager_mock.get_subdirectory_path.return_value = None
+    source_code_manager_mock.is_default_branch_root.return_value = False
 
     strategy = GitHubSbomMetadataCollectionStrategy(
         github_client=github_client_mock,
@@ -2225,9 +2225,9 @@ def test_github_sbom_collection_strategy_skips_unresolved_repository_path(
     )
     initial_metadata = [
         Metadata(
-            name="github.com/org/repo/tree/main/apis",
+            name="github.com/org/repo/tree/v1.0.0",
             version=None,
-            origin="https://github.com/org/repo/tree/main/apis",
+            origin="https://github.com/org/repo/tree/v1.0.0",
             local_src_path=None,
             license=[],
             copyright=[],
@@ -2237,8 +2237,8 @@ def test_github_sbom_collection_strategy_skips_unresolved_repository_path(
     updated_metadata = strategy.augment_metadata(initial_metadata)
 
     assert updated_metadata == initial_metadata
-    source_code_manager_mock.get_subdirectory_path.assert_called_once_with(
-        "https://github.com/org/repo/tree/main/apis"
+    source_code_manager_mock.is_default_branch_root.assert_called_once_with(
+        "https://github.com/org/repo/tree/v1.0.0"
     )
     source_code_manager_mock.get_canonical_urls.assert_not_called()
     assert github_client_mock.mock_calls == []

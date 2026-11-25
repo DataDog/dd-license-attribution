@@ -682,12 +682,15 @@ def test_repository_mode_ignores_manifest_ranges_without_lockfile(
     mock_path_exists.assert_has_calls(
         [
             call("/cache/org-project/crate/Cargo.lock"),
+            call("/cache/org-project/Cargo.lock"),
             call("/cache/org-project/crate/Cargo.toml"),
             call("/cache/org-project/crate/nested/Cargo.lock"),
+            call("/cache/org-project/crate/Cargo.lock"),
+            call("/cache/org-project/Cargo.lock"),
             call("/cache/org-project/crate/nested/Cargo.toml"),
         ]
     )
-    assert mock_path_exists.call_count == 4
+    assert mock_path_exists.call_count == 7
     mock_open_file.assert_has_calls(
         [
             call("/cache/org-project/crate/Cargo.toml"),

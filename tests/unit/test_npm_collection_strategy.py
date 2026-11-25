@@ -4619,6 +4619,7 @@ def test_npm_collection_strategy_enriches_root_when_github_sbom_strips_tree_ref(
         "https://github.com/org/repo",
         "https://api.github.com/repos/org/repo",
     )
+    source_code_manager_mock.get_subdirectory_path.return_value = ""
     strategy = NpmMetadataCollectionStrategy(
         "https://github.com/org/repo/tree/main",
         source_code_manager_mock,
@@ -4642,3 +4643,35 @@ def test_npm_collection_strategy_enriches_root_when_github_sbom_strips_tree_ref(
     assert metadata[0].name == "my-pkg"
     assert metadata[0].version == "1.2.3"
     assert metadata[0].license == ["MIT"]
+
+
+def test_npm_collection_strategy_subdirectory_does_not_corrupt_parent_root_dependency(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    source_code_manager_mock.get_subdirectory_path.return_value = "/packages/ui"
+    strategy = NpmMetadataCollectionStrategy(
+        "https://github.com/org/repo/tree/main/packages/ui",
+        source_code_manager_mock,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+    )
+    parent_dep = Metadata(
+        name="github.com/org/repo",
+        version="2.0.0",
+        origin="https://github.com/org/repo",
+        local_src_path=None,
+        license=["Apache-2.0"],
+        copyright=["Parent"],
+    )
+
+    strategy._enrich_root_package_from_package_json(
+        {"name": "ui-pkg", "version": "1.0.0", "license": "MIT"}, [parent_dep]
+    )
+
+    assert parent_dep.name == "github.com/org/repo"
+    assert parent_dep.version == "2.0.0"
+    assert parent_dep.license == ["Apache-2.0"]

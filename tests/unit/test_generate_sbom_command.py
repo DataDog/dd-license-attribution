@@ -1130,9 +1130,23 @@ def test_generate_sbom_exits_with_error_when_repository_path_unresolved(
             local_src_path=None,
             license=[],
             copyright=[],
-        )
+        ),
+        # An ADD override row must not mask failed source collection.
+        Metadata(
+            name="manual-dep",
+            version="1.0.0",
+            origin="https://example.com/manual-dep",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["Manual"],
+        ),
     ]
-    mock_source_code_manager.return_value.get_subdirectory_path.return_value = None
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    mock_source_code_manager.return_value.has_unresolved_path.return_value = True
+    mock_source_code_manager.return_value.has_successful_checkout.return_value = False
 
     result = runner.invoke(
         app,
@@ -1147,9 +1161,6 @@ def test_generate_sbom_exits_with_error_when_repository_path_unresolved(
     )
 
     assert result.exit_code == 1
-    mock_source_code_manager.return_value.get_subdirectory_path.assert_called_once_with(
-        "https://github.com/org/repo/tree/0123456789abcdef/apis"
-    )
     mock_csv_reporting_writter.return_value.write.assert_not_called()
 
 
@@ -1158,32 +1169,40 @@ def test_generate_sbom_exits_with_error_when_repository_path_unresolved(
 @patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
 @patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
 @patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
-def test_generate_sbom_succeeds_when_unresolved_ref_is_overridden_with_checkout(
+def test_generate_sbom_succeeds_when_checkout_succeeded_without_row_local_path(
     mock_three_phase_collector: Mock,
     mock_csv_reporting_writter: Mock,
     mock_python_env_manager: Mock,
     mock_source_code_manager: Mock,
     mock_github: Mock,
 ) -> None:
-    overridden_seed = Metadata(
-        name="github.com/org/repo/tree/0123456789abcdef/apis",
-        version=None,
-        origin="https://github.com/fork/replacement",
-        local_src_path="cache_dir/fork_replacement/main",
-        license=["MIT"],
-        copyright=["Fork"],
+    root_only_seed = Metadata(
+        name="github.com/org/repo/tree/main/apis",
+        version="1.0.0",
+        origin="https://github.com/org/repo/tree/main/apis",
+        local_src_path=None,
+        license=["Apache-2.0"],
+        copyright=["Org"],
     )
     mock_three_phase_collector.return_value.collect_metadata.return_value = [
-        overridden_seed
+        root_only_seed
     ]
-    mock_source_code_manager.return_value.get_subdirectory_path.return_value = None
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    # Even if an earlier or later scope lookup failed, a successful checkout
+    # for the target preserves the valid scan result.
+    mock_source_code_manager.return_value.has_unresolved_path.return_value = True
+    mock_source_code_manager.return_value.has_successful_checkout.return_value = True
     mock_csv_reporting_writter.return_value.write.return_value = "csv-output"
 
     result = runner.invoke(
         app,
         [
             "generate-sbom",
-            "https://github.com/org/repo/tree/0123456789abcdef/apis",
+            "https://github.com/org/repo/tree/main/apis",
+            "--only-root-project",
             "--no-gh-auth",
             *_SKIP_DEPENDENCY_STRATEGIES,
         ],
@@ -1192,5 +1211,5 @@ def test_generate_sbom_succeeds_when_unresolved_ref_is_overridden_with_checkout(
 
     assert result.exit_code == 0, result.output
     mock_csv_reporting_writter.return_value.write.assert_called_once_with(
-        [overridden_seed]
+        [root_only_seed]
     )

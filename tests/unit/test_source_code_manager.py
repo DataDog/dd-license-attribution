@@ -228,15 +228,16 @@ def test_source_code_manager_get_non_cached_code(
             args[0]
             for args, _ in output_from_command_mock.call_args_list
             if args
-            and args[0][:3]
+            and args[0][:4]
             == [
                 "git",
                 "ls-remote",
+                "--",
                 expected_source_code_reference.repo_url,
             ]
         ]
         assert any(
-            expected_source_code_reference.branch in cmd[3:] for cmd in ls_remote_calls
+            expected_source_code_reference.branch in cmd[4:] for cmd in ls_remote_calls
         )
         run_command_mock.assert_called_once_with(
             [
@@ -260,6 +261,7 @@ def test_source_code_manager_get_non_cached_code(
                 "git",
                 "ls-remote",
                 "--symref",
+                "--",
                 expected_source_code_reference.repo_url,
                 "HEAD",
             ]
@@ -343,6 +345,7 @@ def test_source_code_manager_get_cached_code(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -417,6 +420,7 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -506,6 +510,7 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -622,6 +627,7 @@ def test_artifact_manager_get_non_cached_code_for_ambiguous_branch_names(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             "test_branch/test_dir",
             expected_source_code_reference.branch,
@@ -744,6 +750,7 @@ def test_source_code_manager_with_mirror_url(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -835,6 +842,7 @@ def test_source_code_manager_with_mirror_ref_mapping(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -939,6 +947,7 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -1050,6 +1059,7 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
         [
             "git",
             "ls-remote",
+            "--",
             "https://github.com/test_owner/test_repo",
             "test_branch",
         ]
@@ -1159,7 +1169,13 @@ def test_source_code_manager_mirror_tag_forced_retry_after_failed_fetch(
     )
     assert mock_create_dirs.call_count == 2
     ls_remote_call = call(
-        ["git", "ls-remote", "https://github.com/test_owner/test_repo", "test_branch"]
+        [
+            "git",
+            "ls-remote",
+            "--",
+            "https://github.com/test_owner/test_repo",
+            "test_branch",
+        ]
     )
     output_from_command_mock.assert_has_calls([ls_remote_call, ls_remote_call])
     assert output_from_command_mock.call_count == 2
@@ -1317,6 +1333,7 @@ def test_source_code_manager_mirror_tag_clone_with_git_env(
         [
             "git",
             "ls-remote",
+            "--",
             "https://github.com/test_owner/test_repo",
             "test_branch",
         ],
@@ -1395,7 +1412,13 @@ def test_source_code_manager_with_unsupported_commit_ref_type(
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     source_code_list_dir_mock.assert_not_called()
     output_from_command_mock.assert_called_once_with(
-        ["git", "ls-remote", "https://github.com/test_owner/test_repo", "test_branch"]
+        [
+            "git",
+            "ls-remote",
+            "--",
+            "https://github.com/test_owner/test_repo",
+            "test_branch",
+        ]
     )
     run_command_mock.assert_not_called()
 
@@ -1471,6 +1494,7 @@ def test_source_code_manager_with_mirror_url_and_ref_mapping_for_the_default_bra
             "git",
             "ls-remote",
             "--symref",
+            "--",
             expected_source_code_reference.repo_url,
             "HEAD",
         ]
@@ -1568,6 +1592,7 @@ def test_source_code_manager_with_multiple_mirrors(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -1656,6 +1681,7 @@ def test_source_code_manager_with_no_mirror_match(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -2078,6 +2104,7 @@ def test_extract_ref_with_commit_hash(output_from_command_mock: Mock) -> None:
                 [
                     "git",
                     "ls-remote",
+                    "--",
                     url,
                     "abc123def456/path/to/file",
                     "abc123def456/path/to",
@@ -2085,7 +2112,7 @@ def test_extract_ref_with_commit_hash(output_from_command_mock: Mock) -> None:
                     "abc123def456",
                 ]
             ),
-            call(["git", "ls-remote", url]),
+            call(["git", "ls-remote", "--", url]),
         ]
     )
 
@@ -2112,6 +2139,7 @@ def test_extract_ref_returns_longest_matching_ref_prefix_in_one_call(
         [
             "git",
             "ls-remote",
+            "--",
             "https://github.com/owner/repo",
             "feature/slash/path",
             "feature/slash",
@@ -2141,8 +2169,8 @@ def test_extract_ref_with_invalid_hash_returns_empty(
     assert result == ""
     output_from_command_mock.assert_has_calls(
         [
-            call(["git", "ls-remote", url, "invalid_ref/path", "invalid_ref"]),
-            call(["git", "ls-remote", url]),
+            call(["git", "ls-remote", "--", url, "invalid_ref/path", "invalid_ref"]),
+            call(["git", "ls-remote", "--", url]),
         ]
     )
     assert output_from_command_mock.call_count == 2
@@ -2196,7 +2224,7 @@ def test_discover_default_branch_with_exception(
     assert "Could not discover default branch for" in str(exc_info.value)
     assert url in str(exc_info.value)
     output_from_command_mock.assert_called_once_with(
-        ["git", "ls-remote", "--symref", url, "HEAD"]
+        ["git", "ls-remote", "--symref", "--", url, "HEAD"]
     )
 
 
@@ -2242,6 +2270,7 @@ def test_get_code_returns_none_when_default_branch_cannot_be_discovered(
             "git",
             "ls-remote",
             "--symref",
+            "--",
             "https://github.com/test_owner/test_repo",
             "HEAD",
         ]
@@ -2312,6 +2341,7 @@ def test_get_code_can_skip_canonical_lookup_for_direct_git_checkout(
             "git",
             "ls-remote",
             "--symref",
+            "--",
             "https://github.com/test_owner/test_repo",
             "HEAD",
         ],
@@ -3248,3 +3278,210 @@ def test_get_subdirectory_path_is_empty_without_a_repository_path(
         assert source_code_manager.get_subdirectory_path(url) == ""
     mock_get_canonical_urls.assert_not_called()
     mock_extract_ref.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "url,expected_branch,default_branch,expected",
+    [
+        ("https://github.com/DataDog/repo/tree/main", "main", "main", True),
+        ("https://github.com/DataDog/repo/tree/v1.0.0", "v1.0.0", "main", False),
+        ("https://github.com/DataDog/repo/tree/main/apis", "main", "main", False),
+        ("https://github.com/DataDog/repo/tree/missing", "", "main", False),
+    ],
+)
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_is_default_branch_root(
+    mock_path_exists: Mock,
+    mock_list_dir: Mock,
+    mock_extract_ref: Mock,
+    url: str,
+    expected_branch: str,
+    default_branch: str,
+    expected: bool,
+) -> None:
+    mock_path_exists.return_value = True
+    mock_list_dir.return_value = []
+    mock_extract_ref.return_value = expected_branch
+    source_code_manager = SourceCodeManager(
+        "cache_dir", _github_client_with_default_branch(200, default_branch)
+    )
+    with patch.object(
+        source_code_manager,
+        "get_canonical_urls",
+        return_value=(
+            "https://github.com/DataDog/repo",
+            "https://api.github.com/repos/DataDog/repo",
+        ),
+    ):
+        assert source_code_manager.is_default_branch_root(url) is expected
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_get_subdirectory_path_handles_repeated_slashes_and_mirror_ref_mapping(
+    mock_path_exists: Mock,
+    mock_list_dir: Mock,
+    mock_extract_ref: Mock,
+) -> None:
+    mock_path_exists.return_value = True
+    mock_list_dir.return_value = []
+    # Original fails, first mirror has no match, second mirror maps main -> mirror-main.
+    mock_extract_ref.side_effect = ["", "", "", "mirror-main"]
+    mirrors = [
+        MirrorSpec(
+            original_url="https://github.com/DataDog/repo",
+            mirror_url="https://mirror1.example/DataDog/repo",
+        ),
+        MirrorSpec(
+            original_url="https://github.com/DataDog/repo",
+            mirror_url="https://mirror2.example/DataDog/repo",
+            ref_mapping={(RefType.BRANCH, "main"): (RefType.BRANCH, "mirror-main")},
+        ),
+    ]
+    source_code_manager = SourceCodeManager("cache_dir", Mock(), mirrors=mirrors)
+    url = "https://github.com/DataDog/repo/tree//main/apis"
+    with patch.object(
+        source_code_manager,
+        "get_canonical_urls",
+        return_value=(
+            "https://github.com/DataDog/repo",
+            "https://api.github.com/repos/DataDog/repo",
+        ),
+    ):
+        assert source_code_manager.get_subdirectory_path(url) == "/apis"
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_get_code_catches_os_error_from_ref_resolution(
+    mock_path_exists: Mock,
+    mock_list_dir: Mock,
+    mock_extract_ref: Mock,
+) -> None:
+    mock_path_exists.return_value = True
+    mock_list_dir.return_value = []
+    mock_extract_ref.side_effect = OSError("git timed out")
+    source_code_manager = SourceCodeManager("cache_dir", Mock())
+    url = "https://github.com/DataDog/repo/tree/main/apis"
+    assert source_code_manager.get_code(url, skip_canonical_lookup=True) is None
+    assert source_code_manager.has_unresolved_path(url) is True
+    assert source_code_manager.has_successful_checkout(url) is False
+
+
+def test_has_repository_path_detects_bare_tree_and_blob() -> None:
+    assert has_repository_path("https://github.com/DataDog/repo/tree/") is True
+    assert has_repository_path("https://github.com/DataDog/repo/blob/") is True
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_is_default_branch_root_plain_url_and_invalid_and_api_failure(
+    mock_path_exists: Mock,
+    mock_list_dir: Mock,
+    mock_extract_ref: Mock,
+) -> None:
+    mock_path_exists.return_value = True
+    mock_list_dir.return_value = []
+    mock_extract_ref.return_value = "main"
+    source_code_manager = SourceCodeManager(
+        "cache_dir", _github_client_with_default_branch(404, "main")
+    )
+    assert (
+        source_code_manager.is_default_branch_root("https://github.com/DataDog/repo")
+        is True
+    )
+    assert (
+        source_code_manager.get_subdirectory_path(
+            "https://github.com/DataDog/repo/tree/"
+        )
+        is None
+    )
+    with patch.object(
+        source_code_manager,
+        "get_canonical_urls",
+        return_value=(
+            "https://github.com/DataDog/repo",
+            "https://api.github.com/repos/DataDog/repo",
+        ),
+    ):
+        assert (
+            source_code_manager.is_default_branch_root(
+                "https://github.com/DataDog/repo/tree/main"
+            )
+            is False
+        )
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.is_dir")
+@patch("dd_license_attribution.artifact_management.source_code_manager.path_exists")
+@patch("dd_license_attribution.artifact_management.source_code_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+@patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+def test_get_code_cached_checkout_rejects_missing_subdirectory(
+    mock_now: Mock,
+    mock_am_path_exists: Mock,
+    mock_am_list_dir: Mock,
+    mock_extract_ref: Mock,
+    mock_list_dir: Mock,
+    mock_path_exists: Mock,
+    mock_is_dir: Mock,
+) -> None:
+    mock_now.return_value = datetime.fromisoformat("2022-01-01T00:00:00+00:00")
+    mock_am_path_exists.return_value = True
+    mock_am_list_dir.return_value = ["20220101_000000Z"]
+    mock_list_dir.return_value = ["20220101_000000Z"]
+    mock_path_exists.return_value = True
+    mock_extract_ref.return_value = "main"
+    mock_is_dir.side_effect = [True, False]
+
+    source_code_manager = SourceCodeManager("cache_dir", Mock(), 86400)
+    url = "https://github.com/DataDog/repo/tree/main/missing-dir"
+    assert source_code_manager.get_code(url, skip_canonical_lookup=True) is None
+    assert source_code_manager.has_unresolved_path(url) is True
+    assert source_code_manager.has_successful_checkout(url) is False
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.is_dir")
+@patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
+@patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
+@patch("dd_license_attribution.artifact_management.source_code_manager.path_exists")
+@patch("dd_license_attribution.artifact_management.source_code_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_get_code_fetches_commit_sha_and_rejects_missing_subdirectory(
+    mock_am_path_exists: Mock,
+    mock_am_list_dir: Mock,
+    mock_extract_ref: Mock,
+    mock_list_dir: Mock,
+    mock_path_exists: Mock,
+    mock_create_dirs: Mock,
+    mock_run_command: Mock,
+    mock_is_dir: Mock,
+) -> None:
+    mock_am_path_exists.return_value = True
+    mock_am_list_dir.return_value = []
+    mock_list_dir.return_value = []
+    mock_path_exists.return_value = False
+    mock_run_command.return_value = 0
+    sha = "0123456789abcdef0123456789abcdef01234567"
+    mock_extract_ref.return_value = sha
+    # .git dir exists after clone, requested subdirectory does NOT exist.
+    mock_is_dir.side_effect = [True, False]
+
+    source_code_manager = SourceCodeManager("cache_dir", Mock())
+    url = f"https://github.com/DataDog/repo/tree/{sha}/missing-dir"
+    assert source_code_manager.get_code(url, skip_canonical_lookup=True) is None
+    assert source_code_manager.has_unresolved_path(url) is True
+    assert source_code_manager.has_successful_checkout(url) is False
+    # Verify commit SHA used git init + fetch instead of git clone --branch=<sha>.
+    commands = [c.args[0] for c in mock_run_command.call_args_list]
+    assert ["git", "init", "--quiet"] in commands
+    assert ["git", "fetch", "--depth", "1", "origin", sha] in commands

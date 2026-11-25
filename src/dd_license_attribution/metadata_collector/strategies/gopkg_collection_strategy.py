@@ -91,7 +91,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                     module_path = module_data["Path"]
 
                     if self.only_root_project:
-                        if not any(meta.name == module_path for meta in metadata):
+                        if not self._matches_root_project(metadata, module_data):
                             continue
 
                     self._upsert_metadata(metadata, module_data)
@@ -117,12 +117,26 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         ):
             if self.only_transitive_dependencies and module_data.get("Main"):
                 continue
-            if self.only_root_project and not any(
-                meta.name == module_data["Path"] for meta in metadata
+            if self.only_root_project and not self._matches_root_project(
+                metadata, module_data
             ):
                 continue
             self._upsert_metadata(metadata, module_data)
         return metadata
+
+    def _matches_root_project(
+        self, metadata: list[Metadata], module_data: dict[str, Any]
+    ) -> bool:
+        module_path = module_data["Path"]
+        if any(meta.name == module_path for meta in metadata):
+            return True
+        if not module_data.get("Main"):
+            return False
+        top_name = self.top_package.removeprefix("https://").removeprefix("http://")
+        return any(
+            meta.origin == self.top_package or meta.name == top_name
+            for meta in metadata
+        )
 
     def _augment_metadata_from_local_path(
         self, metadata: list[Metadata]
