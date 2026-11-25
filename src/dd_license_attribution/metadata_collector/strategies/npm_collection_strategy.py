@@ -70,11 +70,13 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         if local_project_path is not None:
             # In npm-package mode, top_package is a package name, not a URL
             self.top_package = top_package
+            self.canonical_top_package = top_package
         else:
             # This ensures we can match packages that were canonicalized by earlier strategies
             # Resolve the canonical GitHub URL, keeping any /tree/<ref>/<path>
             # suffix so subdirectory URLs stay scoped to that subdirectory.
             canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
+            self.canonical_top_package = canonical_url if canonical_url else top_package
             self.top_package = keep_tree_path(canonical_url, top_package)
 
         self.source_code_manager = source_code_manager
@@ -500,9 +502,14 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         # Only the root seed, by name: in transitive-only mode the GitHub SBOM
         # may have removed it, and other rows can share or extend its origin.
+        candidate_urls = (
+            self.top_package,
+            self.original_top_package,
+            self.canonical_top_package,
+        )
         root_names = {
             url.removeprefix("https://").removeprefix("http://")
-            for url in (self.top_package, self.original_top_package)
+            for url in candidate_urls
         }
         candidates = [m for m in metadata if m.name in root_names]
         if self.root_metadata is not None:
@@ -512,10 +519,7 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         # The root package is typically the first entry, or one whose origin matches our top_package URLs
         for idx, meta in enumerate(candidates):
             # Match if it's the first entry, or if origin contains either canonical or original top_package
-            is_root = meta.origin and (
-                self.top_package in meta.origin
-                or self.original_top_package in meta.origin
-            )
+            is_root = meta.origin and any(url in meta.origin for url in candidate_urls)
 
             if is_root:
                 self.root_metadata = meta

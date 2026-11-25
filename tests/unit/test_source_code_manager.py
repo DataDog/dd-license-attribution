@@ -205,7 +205,9 @@ def test_source_code_manager_get_non_cached_code(
         if "--symref" in args:
             return "ref: refs/heads/main\tHEAD\n72a11341aa684010caf1ca5dee779f0e7e84dfe9\tHEAD\n"
         ref = args[-1] if len(args) > 3 else ""
-        return f"72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/{ref}\n"
+        if ref in ("test_branch", "test_tag"):
+            return f"72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/{ref}\n"
+        return ""
 
     output_from_command_mock.side_effect = _fake_output
     get_datetime_now_mock.side_effect = [
@@ -610,13 +612,25 @@ def test_artifact_manager_get_non_cached_code_for_ambiguous_branch_names(
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     source_code_list_dir_mock.assert_called_once_with("cache_dir")
 
-    assert output_from_command_mock.call_count == 1
-    output_from_command_mock.assert_called_once_with(
+    assert output_from_command_mock.call_count == 2
+    output_from_command_mock.assert_has_calls(
         [
-            "git",
-            "ls-remote",
-            expected_source_code_reference.repo_url,
-            expected_source_code_reference.branch,
+            call(
+                [
+                    "git",
+                    "ls-remote",
+                    expected_source_code_reference.repo_url,
+                    "test_branch/test_dir",
+                ]
+            ),
+            call(
+                [
+                    "git",
+                    "ls-remote",
+                    expected_source_code_reference.repo_url,
+                    expected_source_code_reference.branch,
+                ]
+            ),
         ]
     )
     run_command_mock.assert_called_once_with(
@@ -2096,7 +2110,14 @@ def test_extract_ref_returns_first_matching_ref_prefix(
     assert result == "feature/slash"
     output_from_command_mock.assert_has_calls(
         [
-            call(["git", "ls-remote", "https://github.com/owner/repo", "feature"]),
+            call(
+                [
+                    "git",
+                    "ls-remote",
+                    "https://github.com/owner/repo",
+                    "feature/slash/path",
+                ]
+            ),
             call(
                 [
                     "git",
@@ -2121,11 +2142,6 @@ def test_extract_ref_with_invalid_hash_returns_empty(
         extract_ref,
     )
 
-    # extract_ref tries progressively longer prefixes:
-    # 1. "invalid_ref" - no match in output
-    # 2. "invalid_ref/path" - no match
-    # Then tries hash fallback:
-    # 3. "invalid_ref" as hash - also no match
     output_from_command_mock.side_effect = ["", "", ""]
 
     ref = "invalid_ref/path"
@@ -2136,8 +2152,8 @@ def test_extract_ref_with_invalid_hash_returns_empty(
     assert result == ""
     output_from_command_mock.assert_has_calls(
         [
-            call(["git", "ls-remote", url, "invalid_ref"]),
             call(["git", "ls-remote", url, "invalid_ref/path"]),
+            call(["git", "ls-remote", url, "invalid_ref"]),
             call(["git", "ls-remote", url]),
         ]
     )
@@ -2927,7 +2943,12 @@ def test_source_code_manager_remaps_default_branch_non_github_path_case(
         (
             "https://github.com/DataDog/repo",
             "https://github.com/DataDog/repo/blob/main/apis/go.mod",
+            "https://github.com/DataDog/repo/blob/main/apis/go.mod",
+        ),
+        (
             "https://github.com/DataDog/repo",
+            "https://github.com/DataDog/repo/tree/main/apis?tab=readme-ov-file#top",
+            "https://github.com/DataDog/repo/tree/main/apis",
         ),
         (
             # get_canonical_urls returns non-GitHub URLs unchanged
@@ -3056,6 +3077,141 @@ def test_get_subdirectory_path_returns_empty_when_canonical_lookup_fails(
         assert source_code_manager.get_subdirectory_path(url) == ""
     mock_get_canonical_urls.assert_called_once_with(url)
     mock_extract_ref.assert_not_called()
+
+
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+def test_extract_ref_rejects_suffix_match_and_hash_substring(
+    output_from_command_mock: Mock,
+) -> None:
+    from dd_license_attribution.artifact_management.source_code_manager import (
+        extract_ref,
+    )
+
+    # "ci/release" must not match "release", and "heads" must not match as a SHA.
+    output_from_command_mock.side_effect = [
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/ci/release\n",
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/main\n",
+    ]
+    assert extract_ref("release", "https://github.com/owner/repo") == ""
+
+    output_from_command_mock.side_effect = [
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/main\n",
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/main\n",
+    ]
+    assert extract_ref("heads", "https://github.com/owner/repo") == ""
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://github.com/DataDog/repo/tree/main/../../../../tmp/outside",
+        "https://github.com/DataDog/repo/tree/main/apis/..",
+        "https://github.com/DataDog/repo/blob/main/../../etc/passwd",
+    ],
+)
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_path_traversal_rejected_in_get_subdirectory_path_and_get_code(
+    mock_path_exists: Mock,
+    mock_list_dir: Mock,
+    mock_extract_ref: Mock,
+    url: str,
+) -> None:
+    mock_path_exists.return_value = True
+    mock_list_dir.return_value = []
+    mock_extract_ref.return_value = "main"
+    source_code_manager = SourceCodeManager("cache_dir", Mock())
+    with patch.object(
+        source_code_manager,
+        "get_canonical_urls",
+        return_value=(
+            "https://github.com/DataDog/repo",
+            "https://api.github.com/repos/DataDog/repo",
+        ),
+    ):
+        assert source_code_manager.get_subdirectory_path(url) == ""
+        assert source_code_manager.get_code(url) is None
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_get_subdirectory_path_falls_back_to_mirror_for_ref_validation(
+    mock_path_exists: Mock,
+    mock_list_dir: Mock,
+    mock_extract_ref: Mock,
+) -> None:
+    mock_path_exists.return_value = True
+    mock_list_dir.return_value = []
+    # Original repo fails auth (returns ""), mirror succeeds.
+    mock_extract_ref.side_effect = ["", "main"]
+    mirror = MirrorSpec(
+        original_url="https://github.com/DataDog/private-repo",
+        mirror_url="https://x-access-token:tok@github.com/DataDog/private-repo",
+    )
+    source_code_manager = SourceCodeManager("cache_dir", Mock(), mirrors=[mirror])
+    url = "https://github.com/DataDog/private-repo/tree/main/apis"
+    with patch.object(
+        source_code_manager,
+        "get_canonical_urls",
+        return_value=(
+            "https://github.com/DataDog/private-repo",
+            "https://api.github.com/repos/DataDog/private-repo",
+        ),
+    ):
+        assert source_code_manager.get_subdirectory_path(url) == "/apis"
+    assert mock_extract_ref.call_args_list == [
+        call(
+            "main/apis",
+            "https://github.com/DataDog/private-repo",
+            git_env=NONINTERACTIVE_GIT_ENV,
+        ),
+        call(
+            "main/apis",
+            "https://x-access-token:tok@github.com/DataDog/private-repo",
+            git_env=NONINTERACTIVE_GIT_ENV,
+        ),
+    ]
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_get_subdirectory_path_does_not_cache_transient_failures_or_os_error(
+    mock_path_exists: Mock,
+    mock_list_dir: Mock,
+    mock_extract_ref: Mock,
+) -> None:
+    mock_path_exists.return_value = True
+    mock_list_dir.return_value = []
+    source_code_manager = SourceCodeManager("cache_dir", Mock())
+    url = "https://github.com/DataDog/repo/tree/main/apis"
+
+    # Transient canonical lookup failure (not in _canonical_urls_cache) must not poison cache.
+    with patch.object(
+        source_code_manager,
+        "get_canonical_urls",
+        side_effect=[
+            ("", None),
+            (
+                "https://github.com/DataDog/repo",
+                "https://api.github.com/repos/DataDog/repo",
+            ),
+            (
+                "https://github.com/DataDog/repo",
+                "https://api.github.com/repos/DataDog/repo",
+            ),
+        ],
+    ):
+        assert source_code_manager.get_subdirectory_path(url) == ""
+        # Timeout OSError returns "" without caching either.
+        mock_extract_ref.side_effect = [OSError("git timed out"), "main"]
+        assert source_code_manager.get_subdirectory_path(url) == ""
+        # Subsequent call recovers and returns "/apis".
+        assert source_code_manager.get_subdirectory_path(url) == "/apis"
 
 
 @pytest.mark.parametrize(

@@ -1404,3 +1404,41 @@ def test_github_mode_keeps_subdirectory_of_canonical_top_package() -> None:
     source_code_manager.get_canonical_urls.assert_called_once_with(
         "https://github.com/old-org/monorepo/tree/main/crates/core"
     )
+
+
+def test_rust_seed_filter_drops_rewritten_tree_ref_root_but_keeps_parent_for_subdir() -> (
+    None
+):
+    source_code_manager = Mock()
+    source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/monorepo",
+        "https://api.github.com/repos/org/monorepo",
+    )
+    rewritten_root = Metadata(
+        name="github.com/org/monorepo",
+        version=None,
+        origin="https://github.com/org/monorepo",
+        local_src_path=None,
+        license=[],
+        copyright=[],
+    )
+
+    # /tree/main (no subdirectory): rewritten root seed is dropped.
+    source_code_manager.get_subdirectory_path.return_value = ""
+    root_strategy = RustMetadataCollectionStrategy(
+        "https://github.com/org/monorepo/tree/main",
+        source_code_manager,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+    )
+    assert root_strategy._without_repository_seed([rewritten_root]) == []
+
+    # /tree/main/crates/core (subdirectory): parent repo entry is kept.
+    source_code_manager.get_subdirectory_path.return_value = "/crates/core"
+    subdir_strategy = RustMetadataCollectionStrategy(
+        "https://github.com/org/monorepo/tree/main/crates/core",
+        source_code_manager,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+    )
+    assert subdir_strategy._without_repository_seed([rewritten_root]) == [
+        rewritten_root
+    ]

@@ -325,24 +325,73 @@ def github_api_get_with_retry(
     return (status, result, attempt)
 
 
+def _ls_remote_matches_ref(ls_output: str, ref_guess: str) -> bool:
+    """Check whether `git ls-remote` output contains an exact branch/tag named ref_guess."""
+    expected_refs = (
+        f"refs/heads/{ref_guess}",
+        f"refs/tags/{ref_guess}",
+        f"refs/tags/{ref_guess}^{{}}",
+    )
+    for line in ls_output.splitlines():
+        parts = line.split("\t", 1)
+        if len(parts) == 2 and parts[1].strip() in expected_refs:
+            return True
+    return False
+
+
+def _ls_remote_matches_sha(ls_output: str, sha_guess: str) -> bool:
+    """Check whether `git ls-remote` output contains a ref pointing to exact commit sha_guess."""
+    for line in ls_output.splitlines():
+        parts = line.split("\t", 1)
+        if len(parts) == 2 and parts[0].strip() == sha_guess:
+            return True
+    return False
+
+
 def extract_ref(ref: str, url: str, git_env: dict[str, str] | None = None) -> str:
     logger.debug("Extracting ref %s from %s", ref, url)
-    split_ref = ref.split("/")
-    for i in range(len(split_ref)):
-        ref_guess = "/".join(split_ref[: i + 1])
+    split_ref = [segment for segment in ref.split("/") if segment]
+    # Probe longest prefix first so slash branches (e.g. "release/v2") win over "release".
+    for i in range(len(split_ref), 0, -1):
+        ref_guess = "/".join(split_ref[:i])
         ls_output = _output_from_git_command(
             ["git", "ls-remote", url, ref_guess], git_env
         )
-        if ref_guess in ls_output:
+        if _ls_remote_matches_ref(ls_output, ref_guess):
             logger.debug("Found valid ref: %s", ref_guess)
             return ref_guess
     if len(split_ref) > 0:  # may be a hash
         ref_guess = split_ref[0]
         ls_output = _output_from_git_command(["git", "ls-remote", url], git_env)
-        if ref_guess in ls_output:
+        if _ls_remote_matches_sha(ls_output, ref_guess):
             logger.debug("Found valid ref from hash: %s", ref_guess)
             return ref_guess
     return ""
+
+
+def _strip_url_query_and_fragment(url: str) -> str:
+    return url.split("#", 1)[0].split("?", 1)[0]
+
+
+def _sanitize_repo_subpath(path: str) -> str | None:
+    """Normalize a repository-relative subpath and reject any `..` traversal.
+
+    Returns "" for the repository root, "/a/b" for a valid nested path, or
+    None when any path segment is "..".
+    """
+    stripped = path.strip("/")
+    if not stripped:
+        return ""
+    parts: list[str] = []
+    for part in stripped.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            return None
+        parts.append(part)
+    if not parts:
+        return ""
+    return "/" + "/".join(parts)
 
 
 def has_repository_path(url: str) -> bool:
@@ -351,7 +400,7 @@ def has_repository_path(url: str) -> bool:
     A cheap syntactic check: the path may still only name a ref (e.g.
     `/tree/main`); use SourceCodeManager.get_subdirectory_path to resolve it.
     """
-    parsed_url = parse_git_url(url)
+    parsed_url = parse_git_url(_strip_url_query_and_fragment(url))
     return bool(
         parsed_url.valid
         and parsed_url.github
@@ -360,10 +409,10 @@ def has_repository_path(url: str) -> bool:
 
 
 def keep_tree_path(canonical_url: str, original_url: str) -> str:
-    """Re-attach the `/tree/<ref>/<path>` suffix of original_url to canonical_url.
+    """Re-attach a `/tree/<ref>/<path>` or `/blob/<ref>/<path>` suffix to canonical_url.
 
     get_canonical_urls returns the bare repository URL; keeping the suffix
-    lets get_code on the result still target the requested subdirectory.
+    lets get_code on the result still target the requested ref and subdirectory.
 
     Examples:
         ("https://github.com/DataDog/dd-license-attribution",
@@ -376,11 +425,11 @@ def keep_tree_path(canonical_url: str, original_url: str) -> str:
     """
     if not canonical_url:
         return original_url
-    parsed_url = parse_git_url(original_url)
+    parsed_url = parse_git_url(_strip_url_query_and_fragment(original_url))
     if (
         parsed_url.valid
         and parsed_url.github
-        and parsed_url.path_raw.startswith("/tree/")
+        and parsed_url.path_raw.startswith(("/tree/", "/blob/"))
         and not has_repository_path(canonical_url)
     ):
         return f"{canonical_url.rstrip('/')}{parsed_url.path_raw}"
@@ -807,6 +856,20 @@ class SourceCodeManager(ArtifactManager):
             )
         return original_url, original_ref_type, original_ref_name, original_ref_name
 
+    def _extract_ref_with_mirror_fallback(
+        self,
+        ref: str,
+        repository_url: str,
+        git_env: dict[str, str] | None,
+    ) -> str:
+        validated_ref = extract_ref(ref, repository_url, git_env=git_env)
+        if validated_ref != "":
+            return validated_ref
+        for mirror_map in self.mirrors:
+            if mirror_map.original_url == repository_url:
+                return extract_ref(ref, mirror_map.mirror_url, git_env=git_env)
+        return ""
+
     def get_subdirectory_path(self, url: str) -> str:
         """Get the repository subdirectory a GitHub URL points to.
 
@@ -815,22 +878,30 @@ class SourceCodeManager(ArtifactManager):
         the path relative to the repository root with a leading slash
         (e.g. "/apis").
         """
-        if not has_repository_path(url):
+        clean_url = _strip_url_query_and_fragment(url)
+        if not has_repository_path(clean_url):
             return ""
-        if url in self._subdirectory_path_cache:
-            return self._subdirectory_path_cache[url]
-        parsed_url = parse_git_url(url)
-        repository_url, api_url = self.get_canonical_urls(url)
+        if clean_url in self._subdirectory_path_cache:
+            return self._subdirectory_path_cache[clean_url]
+        parsed_url = parse_git_url(clean_url)
+        repository_url, api_url = self.get_canonical_urls(clean_url)
         if not repository_url or api_url is None:
-            self._subdirectory_path_cache[url] = ""
+            # Only cache permanent failures; transient API errors leave clean_url
+            # uncached in _canonical_urls_cache so later calls can recover.
+            if clean_url in self._canonical_urls_cache:
+                self._subdirectory_path_cache[clean_url] = ""
             return ""
-        branch, path = self._resolve_ref_and_path(
-            parsed_url, repository_url, NONINTERACTIVE_GIT_ENV
-        )
-        # If the ref could not be validated, removeprefix("/tree/default_branch")
-        # leaves the raw "/tree/..." prefix intact rather than a real subpath.
-        result = "" if branch == "default_branch" else path.rstrip("/")
-        self._subdirectory_path_cache[url] = result
+        try:
+            branch, path = self._resolve_ref_and_path(
+                parsed_url, repository_url, NONINTERACTIVE_GIT_ENV
+            )
+        except OSError as e:
+            logger.warning(
+                "Failed to resolve subdirectory path for %s: %s", clean_url, e
+            )
+            return ""
+        result = "" if branch == "default_branch" or path is None else path
+        self._subdirectory_path_cache[clean_url] = result
         return result
 
     def _resolve_ref_and_path(
@@ -838,29 +909,37 @@ class SourceCodeManager(ArtifactManager):
         original_parsed_url: Any,
         repository_url: str,
         git_env: dict[str, str] | None,
-    ) -> tuple[str, str]:
-        """Split a parsed GitHub URL into its ref and repository subdirectory."""
+    ) -> tuple[str, str | None]:
+        """Split a parsed GitHub URL into its ref and sanitized subdirectory.
+
+        Returns `(branch, None)` if the path contains a `..` traversal segment.
+        """
         branch = "default_branch"
         if original_parsed_url.branch:
             # branches are guessed from url, and may fail to be correct specially on tags and branches with slashes
-            validated_ref = extract_ref(
+            validated_ref = self._extract_ref_with_mirror_fallback(
                 original_parsed_url.branch, repository_url, git_env=git_env
             )
             if validated_ref != "":
                 branch = validated_ref
         if original_parsed_url.path_raw.startswith("/tree/"):
-            path = original_parsed_url.path_raw.removeprefix(f"/tree/{branch}")
-        elif original_parsed_url.path_raw.startswith("/blob/"):
-            path = "/".join(
+            if branch == "default_branch":
+                return branch, ""
+            raw_path = original_parsed_url.path_raw.removeprefix(f"/tree/{branch}")
+            return branch, _sanitize_repo_subpath(raw_path)
+        if original_parsed_url.path_raw.startswith("/blob/"):
+            blob_dir = "/".join(
                 original_parsed_url.path_raw.removeprefix("/blob/").split("/")[:-1]
             )
-            validated_ref = extract_ref(path, repository_url, git_env=git_env)
-            if validated_ref != "":
-                branch = validated_ref
-                path = path.removeprefix(f"{branch}")
-        else:
-            path = ""
-        return branch, path
+            validated_ref = self._extract_ref_with_mirror_fallback(
+                blob_dir, repository_url, git_env=git_env
+            )
+            if validated_ref == "":
+                return branch, ""
+            branch = validated_ref
+            raw_path = blob_dir.removeprefix(f"{branch}")
+            return branch, _sanitize_repo_subpath(raw_path)
+        return branch, ""
 
     def get_code(
         self,
@@ -870,7 +949,8 @@ class SourceCodeManager(ArtifactManager):
     ) -> SourceCodeReference | None:
         logger.debug("Getting code for resource URL: %s", resource_url)
 
-        original_parsed_url = parse_git_url(resource_url)
+        clean_resource_url = _strip_url_query_and_fragment(resource_url)
+        original_parsed_url = parse_git_url(clean_resource_url)
         if not original_parsed_url.valid or not original_parsed_url.github:
             return None
 
@@ -882,7 +962,7 @@ class SourceCodeManager(ArtifactManager):
             api_url = None
             git_env = NONINTERACTIVE_GIT_ENV
         else:
-            canonical_url, api_url = self.get_canonical_urls(resource_url)
+            canonical_url, api_url = self.get_canonical_urls(clean_resource_url)
             git_env = None
 
         if api_url is None and not skip_canonical_lookup:
@@ -909,6 +989,9 @@ class SourceCodeManager(ArtifactManager):
         branch, path = self._resolve_ref_and_path(
             original_parsed_url, repository_url, git_env
         )
+        if path is None:
+            logger.warning("Unsafe repository path in URL %s, skipping.", resource_url)
+            return None
         logger.debug(
             "Using branch: %s and path: %s for repository URL: %s",
             branch,

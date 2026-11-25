@@ -109,7 +109,14 @@ class PythonEnvManager(ArtifactManager):
             toolchain and feed spurious rows into the SBOM, so callers
             skip enumeration instead.
         """
-        files = list_dir(resource_path)
+        try:
+            files = list_dir(resource_path)
+        except FileNotFoundError:
+            logger.warning(
+                "Python project path %s does not exist, skipping Python environment setup.",
+                resource_path,
+            )
+            return None
         is_python_project = False
         python_project_files = [
             "requirements.txt",

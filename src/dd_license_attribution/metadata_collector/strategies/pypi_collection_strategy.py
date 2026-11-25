@@ -50,11 +50,13 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         if local_project_path is not None:
             # In pypi-package mode, top_package is a package name, not a URL
             self.top_package = top_package
+            self.canonical_top_package = top_package
         else:
             # This ensures we can match packages that were canonicalized by earlier strategies
             # Resolve the canonical GitHub URL, keeping any /tree/<ref>/<path>
             # suffix so subdirectory URLs stay scoped to that subdirectory.
             canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
+            self.canonical_top_package = canonical_url if canonical_url else top_package
             self.top_package = keep_tree_path(canonical_url, top_package)
 
         self.source_code_manager = source_code_manager
@@ -337,23 +339,47 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         return ret
 
     def _find_top_metadata_path(self, metadata: list[Metadata]) -> str | None:
-        candidate_packages = (self.top_package, self.original_top_package)
+        candidate_packages = (
+            self.top_package,
+            self.original_top_package,
+            self.canonical_top_package,
+        )
         translated_names = {
             self._translate_name_gh_to_pypi_sbom(pkg) for pkg in candidate_packages
         }
+        stripped_names = {
+            pkg.removeprefix("https://").removeprefix("http://")
+            for pkg in candidate_packages
+        }
         for package in metadata:
-            if package.name in candidate_packages or package.name in translated_names:
+            if (
+                package.name in candidate_packages
+                or package.name in translated_names
+                or package.name in stripped_names
+            ):
                 if package.local_src_path is not None:
                     return package.local_src_path
                 if package.origin is not None:
-                    pkg_source = self.source_code_manager.get_code(package.origin)
+                    # Pass self.top_package when it carries a ref/path suffix
+                    # that GitHubSbom stripped from package.origin.
+                    code_url = (
+                        self.top_package
+                        if self.top_package.startswith(("https://", "http://"))
+                        else package.origin
+                    )
+                    pkg_source = self.source_code_manager.get_code(code_url)
                     if pkg_source is not None:
                         package.local_src_path = pkg_source.local_full_path
                         return pkg_source.local_full_path
             if package.origin is not None and any(
                 package.origin.endswith(pkg) for pkg in candidate_packages
             ):
-                pkg_source = self.source_code_manager.get_code(package.origin)
+                code_url = (
+                    self.top_package
+                    if self.top_package.startswith(("https://", "http://"))
+                    else package.origin
+                )
+                pkg_source = self.source_code_manager.get_code(code_url)
                 if pkg_source is not None:
                     package.local_src_path = pkg_source.local_full_path
                     return pkg_source.local_full_path

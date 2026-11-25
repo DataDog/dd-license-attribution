@@ -4609,3 +4609,36 @@ def test_npm_collection_strategy_keeps_subdirectory_of_canonical_top_package(
     source_code_manager_mock.get_canonical_urls.assert_called_once_with(
         "https://github.com/old-org/monorepo/tree/main/packages/core"
     )
+
+
+def test_npm_collection_strategy_enriches_root_when_github_sbom_strips_tree_ref(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    strategy = NpmMetadataCollectionStrategy(
+        "https://github.com/org/repo/tree/main",
+        source_code_manager_mock,
+        ProjectScope.ALL,
+    )
+    metadata = [
+        Metadata(
+            name="github.com/org/repo",
+            version=None,
+            origin="https://github.com/org/repo",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        )
+    ]
+
+    strategy._enrich_root_package_from_package_json(
+        {"name": "my-pkg", "version": "1.2.3", "license": "MIT"}, metadata
+    )
+
+    assert metadata[0].name == "my-pkg"
+    assert metadata[0].version == "1.2.3"
+    assert metadata[0].license == ["MIT"]

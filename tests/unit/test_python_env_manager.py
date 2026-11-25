@@ -2625,3 +2625,24 @@ def test_get_project_name(
     assert PythonEnvManager.get_project_name("project_dir") == expected
     if pyproject is not None:
         open_file_mock.assert_called_once_with("project_dir/pyproject.toml")
+
+
+def test_get_environment_returns_none_when_resource_path_missing(
+    mocker: MockFixture,
+) -> None:
+    mocker.patch(
+        "dd_license_attribution.artifact_management.artifact_manager.path_exists",
+        return_value=True,
+    )
+    mocker.patch(
+        "dd_license_attribution.artifact_management.artifact_manager.list_dir",
+        return_value=[],
+    )
+    list_dir_mock = mocker.patch(
+        "dd_license_attribution.artifact_management.python_env_manager.list_dir",
+        side_effect=FileNotFoundError("no such directory"),
+    )
+    env_manager = PythonEnvManager("cache_dir")
+
+    assert env_manager.get_environment("cache_dir/missing/subdir") is None
+    list_dir_mock.assert_called_once_with("cache_dir/missing/subdir")
