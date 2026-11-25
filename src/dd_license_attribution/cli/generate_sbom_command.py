@@ -213,9 +213,9 @@ def _without_analyzed_repository(
     if not parsed_url.valid or not parsed_url.github:
         return metadata
     root_names = {root_seed_name(repository_url).lower()}
-    if not (
-        has_repository_path(repository_url)
-        and source_code_manager.get_subdirectory_path(repository_url)
+    if (
+        not has_repository_path(repository_url)
+        or source_code_manager.get_subdirectory_path(repository_url) == ""
     ):
         root_names.add(f"github.com/{parsed_url.owner}/{parsed_url.repo}".lower())
     return [m for m in metadata if (m.name or "").lower() not in root_names]

@@ -349,23 +349,25 @@ def _ls_remote_matches_sha(ls_output: str, sha_guess: str) -> bool:
 
 
 def extract_ref(ref: str, url: str, git_env: dict[str, str] | None = None) -> str:
-    logger.debug("Extracting ref %s from %s", ref, url)
+    logger.debug("Extracting Git ref %s", ref)
     split_ref = [segment for segment in ref.split("/") if segment]
+    if not split_ref:
+        return ""
+    candidate_refs = ["/".join(split_ref[:i]) for i in range(len(split_ref), 0, -1)]
+    ls_output = _output_from_git_command(
+        ["git", "ls-remote", url, *candidate_refs], git_env
+    )
     # Probe longest prefix first so slash branches (e.g. "release/v2") win over "release".
-    for i in range(len(split_ref), 0, -1):
-        ref_guess = "/".join(split_ref[:i])
-        ls_output = _output_from_git_command(
-            ["git", "ls-remote", url, ref_guess], git_env
-        )
+    for ref_guess in candidate_refs:
         if _ls_remote_matches_ref(ls_output, ref_guess):
             logger.debug("Found valid ref: %s", ref_guess)
             return ref_guess
-    if len(split_ref) > 0:  # may be a hash
-        ref_guess = split_ref[0]
-        ls_output = _output_from_git_command(["git", "ls-remote", url], git_env)
-        if _ls_remote_matches_sha(ls_output, ref_guess):
-            logger.debug("Found valid ref from hash: %s", ref_guess)
-            return ref_guess
+    # May be a commit hash
+    ref_guess = split_ref[0]
+    ls_output = _output_from_git_command(["git", "ls-remote", url], git_env)
+    if _ls_remote_matches_sha(ls_output, ref_guess):
+        logger.debug("Found valid ref from hash: %s", ref_guess)
+        return ref_guess
     return ""
 
 
@@ -486,7 +488,7 @@ class SourceCodeManager(ArtifactManager):
         self.github_client = github_client
         self._canonical_urls_cache: dict[str, tuple[str, str | None]] = {}
         self._repository_info_cache: dict[str, tuple[int, dict[str, Any] | None]] = {}
-        self._subdirectory_path_cache: dict[str, str] = {}
+        self._subdirectory_path_cache: dict[str, str | None] = {}
         logger.info(
             "SourceCodeManager initialized with %d mirror(s) with %d seconds TTL.",
             len(self.mirrors),
@@ -870,13 +872,13 @@ class SourceCodeManager(ArtifactManager):
                 return extract_ref(ref, mirror_map.mirror_url, git_env=git_env)
         return ""
 
-    def get_subdirectory_path(self, url: str) -> str:
+    def get_subdirectory_path(self, url: str) -> str | None:
         """Get the repository subdirectory a GitHub URL points to.
 
-        Returns an empty string when the URL targets the repository root
-        (or is not a GitHub URL, or its ref cannot be validated), otherwise
-        the path relative to the repository root with a leading slash
-        (e.g. "/apis").
+        Returns an empty string when the URL is confirmed to target the
+        repository root (or has no `/tree/` or `/blob/` suffix), a leading-slash
+        path (e.g. `"/apis"`) when it targets a subdirectory, or `None` when a
+        `/tree/` or `/blob/` URL cannot be resolved or contains an invalid path.
         """
         clean_url = _strip_url_query_and_fragment(url)
         if not has_repository_path(clean_url):
@@ -889,8 +891,8 @@ class SourceCodeManager(ArtifactManager):
             # Only cache permanent failures; transient API errors leave clean_url
             # uncached in _canonical_urls_cache so later calls can recover.
             if clean_url in self._canonical_urls_cache:
-                self._subdirectory_path_cache[clean_url] = ""
-            return ""
+                self._subdirectory_path_cache[clean_url] = None
+            return None
         try:
             branch, path = self._resolve_ref_and_path(
                 parsed_url, repository_url, NONINTERACTIVE_GIT_ENV
@@ -899,8 +901,10 @@ class SourceCodeManager(ArtifactManager):
             logger.warning(
                 "Failed to resolve subdirectory path for %s: %s", clean_url, e
             )
-            return ""
-        result = "" if branch == "default_branch" or path is None else path
+            return None
+        result: str | None = (
+            None if branch == "default_branch" or path is None else path
+        )
         self._subdirectory_path_cache[clean_url] = result
         return result
 

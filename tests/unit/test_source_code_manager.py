@@ -224,13 +224,19 @@ def test_source_code_manager_get_non_cached_code(
 
     assert code_ref == expected_source_code_reference
     if mocked_parser_results.path_raw != "":
-        output_from_command_mock.assert_any_call(
-            [
+        ls_remote_calls = [
+            args[0]
+            for args, _ in output_from_command_mock.call_args_list
+            if args
+            and args[0][:3]
+            == [
                 "git",
                 "ls-remote",
                 expected_source_code_reference.repo_url,
-                expected_source_code_reference.branch,
             ]
+        ]
+        assert any(
+            expected_source_code_reference.branch in cmd[3:] for cmd in ls_remote_calls
         )
         run_command_mock.assert_called_once_with(
             [
@@ -612,25 +618,13 @@ def test_artifact_manager_get_non_cached_code_for_ambiguous_branch_names(
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     source_code_list_dir_mock.assert_called_once_with("cache_dir")
 
-    assert output_from_command_mock.call_count == 2
-    output_from_command_mock.assert_has_calls(
+    output_from_command_mock.assert_called_once_with(
         [
-            call(
-                [
-                    "git",
-                    "ls-remote",
-                    expected_source_code_reference.repo_url,
-                    "test_branch/test_dir",
-                ]
-            ),
-            call(
-                [
-                    "git",
-                    "ls-remote",
-                    expected_source_code_reference.repo_url,
-                    expected_source_code_reference.branch,
-                ]
-            ),
+            "git",
+            "ls-remote",
+            expected_source_code_reference.repo_url,
+            "test_branch/test_dir",
+            expected_source_code_reference.branch,
         ]
     )
     run_command_mock.assert_called_once_with(
@@ -2064,17 +2058,9 @@ def test_extract_ref_with_commit_hash(output_from_command_mock: Mock) -> None:
         extract_ref,
     )
 
-    # extract_ref tries progressively longer prefixes:
-    # 1. "abc123def456" - no match in output
-    # 2. "abc123def456/path" - no match
-    # 3. "abc123def456/path/to" - no match
-    # 4. "abc123def456/path/to/file" - no match
-    # Then tries hash fallback:
-    # 5. "abc123def456" as hash - found in full ls-remote output
+    # First call queries all candidate ref prefixes together (no match),
+    # second call queries all refs for the commit-hash fallback.
     output_from_command_mock.side_effect = [
-        "",
-        "",
-        "",
         "",
         "abc123def456\trefs/heads/main\n",
     ]
@@ -2085,50 +2071,53 @@ def test_extract_ref_with_commit_hash(output_from_command_mock: Mock) -> None:
     result = extract_ref(ref, url)
 
     assert result == "abc123def456"
-    assert output_from_command_mock.call_count == 5
-    # Verify the hash check was called
-    output_from_command_mock.assert_any_call(["git", "ls-remote", url])
-
-
-@patch(
-    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
-)
-def test_extract_ref_returns_first_matching_ref_prefix(
-    output_from_command_mock: Mock,
-) -> None:
-    from dd_license_attribution.artifact_management.source_code_manager import (
-        extract_ref,
-    )
-
-    output_from_command_mock.side_effect = [
-        "",
-        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/feature/slash\n",
-    ]
-
-    result = extract_ref("feature/slash/path", "https://github.com/owner/repo")
-
-    assert result == "feature/slash"
+    assert output_from_command_mock.call_count == 2
     output_from_command_mock.assert_has_calls(
         [
             call(
                 [
                     "git",
                     "ls-remote",
-                    "https://github.com/owner/repo",
-                    "feature/slash/path",
+                    url,
+                    "abc123def456/path/to/file",
+                    "abc123def456/path/to",
+                    "abc123def456/path",
+                    "abc123def456",
                 ]
             ),
-            call(
-                [
-                    "git",
-                    "ls-remote",
-                    "https://github.com/owner/repo",
-                    "feature/slash",
-                ]
-            ),
+            call(["git", "ls-remote", url]),
         ]
     )
-    assert output_from_command_mock.call_count == 2
+
+
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+def test_extract_ref_returns_longest_matching_ref_prefix_in_one_call(
+    output_from_command_mock: Mock,
+) -> None:
+    from dd_license_attribution.artifact_management.source_code_manager import (
+        extract_ref,
+    )
+
+    output_from_command_mock.return_value = (
+        "1111111111111111111111111111111111111111\trefs/heads/feature\n"
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/feature/slash\n"
+    )
+
+    result = extract_ref("feature/slash/path", "https://github.com/owner/repo")
+
+    assert result == "feature/slash"
+    output_from_command_mock.assert_called_once_with(
+        [
+            "git",
+            "ls-remote",
+            "https://github.com/owner/repo",
+            "feature/slash/path",
+            "feature/slash",
+            "feature",
+        ]
+    )
 
 
 @patch(
@@ -2142,7 +2131,7 @@ def test_extract_ref_with_invalid_hash_returns_empty(
         extract_ref,
     )
 
-    output_from_command_mock.side_effect = ["", "", ""]
+    output_from_command_mock.side_effect = ["", ""]
 
     ref = "invalid_ref/path"
     url = "https://github.com/owner/repo"
@@ -2152,12 +2141,34 @@ def test_extract_ref_with_invalid_hash_returns_empty(
     assert result == ""
     output_from_command_mock.assert_has_calls(
         [
-            call(["git", "ls-remote", url, "invalid_ref/path"]),
-            call(["git", "ls-remote", url, "invalid_ref"]),
+            call(["git", "ls-remote", url, "invalid_ref/path", "invalid_ref"]),
             call(["git", "ls-remote", url]),
         ]
     )
-    assert output_from_command_mock.call_count == 3
+    assert output_from_command_mock.call_count == 2
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.logger")
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+def test_extract_ref_does_not_log_url_credentials(
+    output_from_command_mock: Mock,
+    logger_mock: Mock,
+) -> None:
+    from dd_license_attribution.artifact_management.source_code_manager import (
+        extract_ref,
+    )
+
+    output_from_command_mock.return_value = (
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/main\n"
+    )
+    secret = "ghp_super_secret_mirror_token"
+    url = f"https://x-access-token:{secret}@github.com/owner/repo"
+
+    assert extract_ref("main/apis", url) == "main"
+    for log_call in logger_mock.debug.call_args_list:
+        assert secret not in str(log_call)
 
 
 @patch(
@@ -3034,7 +3045,7 @@ def test_get_subdirectory_path_strips_the_ref(
 @patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
 @patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
-def test_get_subdirectory_path_returns_empty_when_ref_unvalidated(
+def test_get_subdirectory_path_returns_none_when_ref_unvalidated(
     mock_path_exists: Mock,
     mock_list_dir: Mock,
     mock_extract_ref: Mock,
@@ -3052,7 +3063,7 @@ def test_get_subdirectory_path_returns_empty_when_ref_unvalidated(
             "https://api.github.com/repos/DataDog/repo",
         ),
     ) as mock_get_canonical_urls:
-        assert source_code_manager.get_subdirectory_path(url) == ""
+        assert source_code_manager.get_subdirectory_path(url) is None
     mock_get_canonical_urls.assert_called_once_with(url)
     mock_extract_ref.assert_called_once()
 
@@ -3060,7 +3071,7 @@ def test_get_subdirectory_path_returns_empty_when_ref_unvalidated(
 @patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
 @patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
-def test_get_subdirectory_path_returns_empty_when_canonical_lookup_fails(
+def test_get_subdirectory_path_returns_none_when_canonical_lookup_fails(
     mock_path_exists: Mock,
     mock_list_dir: Mock,
     mock_extract_ref: Mock,
@@ -3074,7 +3085,7 @@ def test_get_subdirectory_path_returns_empty_when_canonical_lookup_fails(
         "get_canonical_urls",
         return_value=("", None),
     ) as mock_get_canonical_urls:
-        assert source_code_manager.get_subdirectory_path(url) == ""
+        assert source_code_manager.get_subdirectory_path(url) is None
     mock_get_canonical_urls.assert_called_once_with(url)
     mock_extract_ref.assert_not_called()
 
@@ -3132,7 +3143,7 @@ def test_path_traversal_rejected_in_get_subdirectory_path_and_get_code(
             "https://api.github.com/repos/DataDog/repo",
         ),
     ):
-        assert source_code_manager.get_subdirectory_path(url) == ""
+        assert source_code_manager.get_subdirectory_path(url) is None
         assert source_code_manager.get_code(url) is None
 
 
@@ -3206,10 +3217,10 @@ def test_get_subdirectory_path_does_not_cache_transient_failures_or_os_error(
             ),
         ],
     ):
-        assert source_code_manager.get_subdirectory_path(url) == ""
-        # Timeout OSError returns "" without caching either.
+        assert source_code_manager.get_subdirectory_path(url) is None
+        # Timeout OSError returns None without caching either.
         mock_extract_ref.side_effect = [OSError("git timed out"), "main"]
-        assert source_code_manager.get_subdirectory_path(url) == ""
+        assert source_code_manager.get_subdirectory_path(url) is None
         # Subsequent call recovers and returns "/apis".
         assert source_code_manager.get_subdirectory_path(url) == "/apis"
 

@@ -20,6 +20,7 @@ from dd_license_attribution.artifact_management.python_env_manager import (
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
+    has_repository_path,
     keep_tree_path,
 )
 from dd_license_attribution.config import string_formatting_config
@@ -338,12 +339,25 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         ret = ret.replace("github.com/", "com.github.")
         return ret
 
-    def _find_top_metadata_path(self, metadata: list[Metadata]) -> str | None:
-        candidate_packages = (
-            self.top_package,
-            self.original_top_package,
+    def _resolve_top_package_code_url(self, package_origin: str) -> str:
+        # Pass self.top_package when it carries a ref/path suffix that
+        # GitHubSbom stripped from package.origin, while still honoring
+        # --override-spec replacements pointing to another repository.
+        if self.top_package != self.canonical_top_package and package_origin in (
             self.canonical_top_package,
-        )
+            self.original_top_package,
+        ):
+            return self.top_package
+        return package_origin
+
+    def _find_top_metadata_path(self, metadata: list[Metadata]) -> str | None:
+        candidate_list = [self.top_package, self.original_top_package]
+        if (
+            not has_repository_path(self.top_package)
+            or self.source_code_manager.get_subdirectory_path(self.top_package) == ""
+        ):
+            candidate_list.append(self.canonical_top_package)
+        candidate_packages = tuple(candidate_list)
         translated_names = {
             self._translate_name_gh_to_pypi_sbom(pkg) for pkg in candidate_packages
         }
@@ -360,13 +374,7 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
                 if package.local_src_path is not None:
                     return package.local_src_path
                 if package.origin is not None:
-                    # Pass self.top_package when it carries a ref/path suffix
-                    # that GitHubSbom stripped from package.origin.
-                    code_url = (
-                        self.top_package
-                        if self.top_package.startswith(("https://", "http://"))
-                        else package.origin
-                    )
+                    code_url = self._resolve_top_package_code_url(package.origin)
                     pkg_source = self.source_code_manager.get_code(code_url)
                     if pkg_source is not None:
                         package.local_src_path = pkg_source.local_full_path
@@ -374,11 +382,7 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
             if package.origin is not None and any(
                 package.origin.endswith(pkg) for pkg in candidate_packages
             ):
-                code_url = (
-                    self.top_package
-                    if self.top_package.startswith(("https://", "http://"))
-                    else package.origin
-                )
+                code_url = self._resolve_top_package_code_url(package.origin)
                 pkg_source = self.source_code_manager.get_code(code_url)
                 if pkg_source is not None:
                     package.local_src_path = pkg_source.local_full_path
