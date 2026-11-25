@@ -53,27 +53,18 @@ Before suggesting any code changes, verify:
 - [ ] Contract tests added for any new external library dependencies
 - [ ] Full end-to-end CLI validation run completed for new user-facing features
 - [ ] All Python files include SPDX-License-Identifier header on first line
-- [ ] Pre-Push Self-Review checks completed for touched areas (see below)
+- [ ] Adversarial pre-push review completed on `git diff origin/main...HEAD` (see below)
 
-## 🔍 Pre-Push Self-Review
+## 🔍 Adversarial Pre-Push Review
 
-Before pushing, review your diff against the most common failure modes in this codebase:
+Before pushing a PR, run an independent, adversarial review pass (ideally in a fresh subagent/context) against `git diff origin/main...HEAD` to try to break your own change locally rather than discovering issues in CI or automated PR review:
 
-- **SPDX & dual-license semantics:**
-  - Do not merge sibling per-license choice files (e.g., `LICENSE-APACHE`, `LICENSE-MIT`) into `AND`; parenthesize `OR` expressions when joining with `AND` in `SPDXReportingWritter` (after `combine_metadata`).
-  - When emitting compound or parenthesized expressions, check `LicenseChecker._is_cautionary_license` (currently prefix-based) so cautionary licenses are not silently missed.
-- **Cross-ecosystem leakage in shared enrichers:**
-  - `ScanCodeToolkitMetadataCollectionStrategy`, `SourceCodeManager`, and writers serve Go, Python, npm, and Rust — gate ecosystem-specific fallbacks on real provenance, never a path segment alone.
-  - Test non-matching ecosystems, including scoped npm names (`@org/pkg`, `@org.com/pkg`).
-- **Case sensitivity, aliasing & caching:**
-  - Preserve case-distinct modules and uppercase subpackages (e.g., Go `V2/` vs major-version `/v2`).
-  - When merging or caching package lookups: reserve exact matches across listings before aliases, clear stale attribution on version mismatch, and avoid ancestor-prefix caches that shadow nested modules.
-- **Untrusted remote URLs & redirects:**
-  - Validate initial URLs *and* every redirect hop with `allow_redirects=False` (do not rely on `stream_url`'s `allow_redirects=True` for untrusted URLs): `https://` only, public non-IP/non-localhost host (reject `%`-encoded hostnames), no custom ports or credentials.
-  - Catch `ValueError` from both `urllib.parse.urlparse` and `parsed.port` on malformed URLs.
-- **Mutation testing & self-SBOM check:**
-  - For modified files outside `cli/`, `adaptors/`, and `config/` (see `[tool.mutmut]` in `pyproject.toml`), run `pipenv run mutmut run --max-children 4 "<module_or_fn_glob>"` and inspect `pipenv run mutmut results` before pushing.
-  - If your change alters runtime deps (`pyproject.toml`/`pylock.toml`) or SBOM collection/output, verify against `LICENSE-3rdparty.csv` using `--override-spec .ddla-overrides --no-github-sbom-strategy` (matching `.github/workflows/integration-test.yml`) and update it if intentionally affected.
+1. **Trace downstream impact:** Follow modified outputs through the full pipeline (`ThreePhaseMetadataCollector`, `LicenseChecker`, `combine_metadata`, and CSV/Markdown/SPDX writers) for silent semantic changes, ordering dependence, or weakened license/attribution guarantees.
+2. **Check cross-ecosystem blast radius:** Shared code (enrichers, `SourceCodeManager`, writers, utils) serves Go, Python, npm, and Rust — verify ecosystem-specific heuristics cannot misfire on packages from other ecosystems.
+3. **Probe adversarial inputs & boundaries:** Test malformed inputs, casing/encoding/path edge cases, partial or conflicting metadata across phases, and untrusted remote URLs including redirect targets.
+4. **Run local regression gates before pushing:** Run targeted `mutmut` on modified non-excluded functions (see `[tool.mutmut]` in `pyproject.toml`) and, when changing collection/output/deps, check `LICENSE-3rdparty.csv` with `--override-spec .ddla-overrides --no-github-sbom-strategy`.
+
+For every concrete, reproducible correctness or security defect found, add a failing unit test first, fix it, and re-check (stop once no concrete defects remain — do not chase speculative style nits).
 
 ## 🔧 Type Safety Requirements
 
