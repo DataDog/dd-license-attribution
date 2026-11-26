@@ -1085,7 +1085,11 @@ def generate_sbom(
                         if rule.replacement.origin:
                             target_urls.add(rule.replacement.origin)
                         if rule not in override_strategy.unused_rules and (
-                            (rule.replacement.license and rule.replacement.copyright)
+                            (
+                                project_scope == ProjectScope.ONLY_ROOT_PROJECT
+                                and rule.replacement.license
+                                and rule.replacement.copyright
+                            )
                             or (
                                 rule.replacement.origin
                                 and not has_repository_path(rule.replacement.origin)
@@ -1093,23 +1097,33 @@ def generate_sbom(
                             )
                         ):
                             root_override_satisfied = True
-            if (
-                not root_override_satisfied
-                and any(
-                    source_code_manager.has_unresolved_path(url) for url in target_urls
-                )
-                and not any(
+            if not root_override_satisfied:
+                has_checkout = any(
                     source_code_manager.has_successful_checkout(url)
                     for url in target_urls
                 )
-            ):
-                logger.error(
-                    "Could not resolve requested repository ref/path for '%s'. "
-                    "Verify that the ref exists on the repository (or configured "
-                    "mirror) and that the path is valid.",
-                    package,
+                has_unresolved = any(
+                    source_code_manager.has_unresolved_path(url) for url in target_urls
                 )
-                sys.exit(1)
+                if not has_checkout and not has_unresolved:
+                    has_resolved = any(
+                        source_code_manager.has_resolved_path(url)
+                        for url in target_urls
+                        if has_repository_path(url)
+                    )
+                    if (
+                        not has_resolved
+                        and source_code_manager.get_subdirectory_path(package) is None
+                    ):
+                        has_unresolved = True
+                if has_unresolved and not has_checkout:
+                    logger.error(
+                        "Could not resolve requested repository ref/path for '%s'. "
+                        "Verify that the ref exists on the repository (or configured "
+                        "mirror) and that the path is valid.",
+                        package,
+                    )
+                    sys.exit(1)
 
         if (
             ecosystem is None

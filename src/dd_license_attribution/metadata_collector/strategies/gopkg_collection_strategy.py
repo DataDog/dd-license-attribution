@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 from dd_license_attribution.adaptors.os import (
+    normalize_path,
     open_file,
     output_from_command,
     path_exists,
@@ -77,21 +78,26 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         # A repository-level go.work would pull sibling modules outside the
         # requested subdirectory into the build list; consumers of a published
         # module never see it, so ignore it when scoped to a subdirectory.
-        disable_workspace = source_code_ref.local_full_path.rstrip(
-            "/"
-        ) != source_code_ref.local_root_path.rstrip("/")
+        selected_module_dir = normalize_path(source_code_ref.local_full_path)
+        disable_workspace = selected_module_dir != normalize_path(
+            source_code_ref.local_root_path
+        )
         for root, _, files in walk_directory(source_code_ref.local_full_path):
             if "go.mod" in files:
                 if self._is_example_package(root):
                     continue
+                current_module_dir = normalize_path(root)
                 module_data_list = self._run_go_list_modules(
                     root, disable_workspace=disable_workspace
                 )
                 for module_data in module_data_list:
-                    module_path = module_data["Path"]
-
                     if self.only_root_project:
-                        if not self._matches_root_project(metadata, module_data):
+                        if not self._matches_root_project(
+                            metadata,
+                            module_data,
+                            selected_module_dir=selected_module_dir,
+                            current_module_dir=current_module_dir,
+                        ):
                             continue
 
                     self._upsert_metadata(metadata, module_data)
@@ -112,25 +118,38 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                 module_dir,
             )
             return metadata
+        selected_module_dir = normalize_path(module_dir)
         for module_data in self._run_go_list_modules(
             module_dir, disable_workspace=True
         ):
             if self.only_transitive_dependencies and module_data.get("Main"):
                 continue
             if self.only_root_project and not self._matches_root_project(
-                metadata, module_data
+                metadata,
+                module_data,
+                selected_module_dir=selected_module_dir,
+                current_module_dir=selected_module_dir,
             ):
                 continue
             self._upsert_metadata(metadata, module_data)
         return metadata
 
     def _matches_root_project(
-        self, metadata: list[Metadata], module_data: dict[str, Any]
+        self,
+        metadata: list[Metadata],
+        module_data: dict[str, Any],
+        selected_module_dir: str,
+        current_module_dir: str,
     ) -> bool:
         module_path = module_data["Path"]
         if any(meta.name == module_path for meta in metadata):
             return True
         if not module_data.get("Main"):
+            return False
+        if current_module_dir != selected_module_dir:
+            return False
+        module_dir = module_data.get("Dir")
+        if module_dir is not None and normalize_path(module_dir) != selected_module_dir:
             return False
         top_name = self.top_package.removeprefix("https://").removeprefix("http://")
         return any(

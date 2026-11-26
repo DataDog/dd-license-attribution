@@ -5,6 +5,8 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2026-present Datadog, Inc.
 
+import json
+from pathlib import Path
 from unittest.mock import ANY, Mock, call, patch
 
 import pytest
@@ -1213,3 +1215,149 @@ def test_generate_sbom_succeeds_when_checkout_succeeded_without_row_local_path(
     mock_csv_reporting_writter.return_value.write.assert_called_once_with(
         [root_only_seed]
     )
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
+def test_generate_sbom_metadata_only_replace_override_does_not_mask_failed_dependency_scan(
+    mock_three_phase_collector: Mock,
+    mock_csv_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    tmp_path: Path,
+) -> None:
+    override_file = tmp_path / "overrides.json"
+    override_file.write_text(
+        json.dumps(
+            [
+                {
+                    "override_type": "replace",
+                    "target": {
+                        "origin": "https://github.com/org/repo/tree/missing-ref/apis"
+                    },
+                    "replacement": {
+                        "name": "github.com/org/repo/tree/missing-ref/apis",
+                        "origin": "https://github.com/org/repo/tree/missing-ref/apis",
+                        "license": ["Apache-2.0"],
+                        "copyright": ["Org"],
+                    },
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    def _collect(package: str) -> list[Metadata]:
+        override_strategy = mock_three_phase_collector.call_args.kwargs[
+            "override_strategy"
+        ]
+        # Mark the override rule as used (as OverrideCollectionStrategy would).
+        override_strategy.unused_rules = []
+        return [
+            Metadata(
+                name="github.com/org/repo/tree/missing-ref/apis",
+                version=None,
+                origin="https://github.com/org/repo/tree/missing-ref/apis",
+                local_src_path=None,
+                license=["Apache-2.0"],
+                copyright=["Org"],
+            )
+        ]
+
+    mock_three_phase_collector.return_value.collect_metadata.side_effect = _collect
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    mock_source_code_manager.return_value.has_unresolved_path.return_value = True
+    mock_source_code_manager.return_value.has_successful_checkout.return_value = False
+    mock_csv_reporting_writter.return_value.write.return_value = "csv-output"
+
+    # Under --only-transitive-dependencies, a metadata-only REPLACE override must
+    # not bypass the checkout check and emit a header-only CSV.
+    transitive_result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo/tree/missing-ref/apis",
+            "--only-transitive-dependencies",
+            "--override-spec",
+            str(override_file),
+            "--no-gh-auth",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+    assert transitive_result.exit_code == 1
+    mock_csv_reporting_writter.return_value.write.assert_not_called()
+
+    # Under --only-root-project, a metadata-only REPLACE override satisfies the scan.
+    root_only_result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo/tree/missing-ref/apis",
+            "--only-root-project",
+            "--override-spec",
+            str(override_file),
+            "--no-gh-auth",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+    assert root_only_result.exit_code == 0, root_only_result.output
+    mock_csv_reporting_writter.return_value.write.assert_called_once()
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
+def test_generate_sbom_validates_scoped_url_when_no_collector_attempted_lookup(
+    mock_three_phase_collector: Mock,
+    mock_csv_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    mock_three_phase_collector.return_value.collect_metadata.return_value = [
+        Metadata(
+            name="github.com/org/repo/tree/nonexistent/apis",
+            version=None,
+            origin="https://github.com/org/repo/tree/nonexistent/apis",
+            local_src_path=None,
+            license=["Apache-2.0"],
+            copyright=["Org"],
+        )
+    ]
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    # Neither checkout nor path lookup ran during collection.
+    mock_source_code_manager.return_value.has_successful_checkout.return_value = False
+    mock_source_code_manager.return_value.has_unresolved_path.return_value = False
+    mock_source_code_manager.return_value.has_resolved_path.return_value = False
+    mock_source_code_manager.return_value.get_subdirectory_path.return_value = None
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo/tree/nonexistent/apis",
+            "--no-gh-auth",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 1
+    mock_source_code_manager.return_value.get_subdirectory_path.assert_called_once_with(
+        "https://github.com/org/repo/tree/nonexistent/apis"
+    )
+    mock_csv_reporting_writter.return_value.write.assert_not_called()

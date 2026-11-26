@@ -1719,3 +1719,76 @@ def test_gopkg_collection_strategy_single_module_in_subdirectory(
         env={"GOTOOLCHAIN": "auto", "GOWORK": "off"},
     )
     assert [(m.name, m.version) for m in result] == [("github.com/org/dep", "v1.0.0")]
+
+
+def test_gopkg_only_root_project_excludes_nested_and_workspace_main_modules(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/monorepo",
+        "https://api.github.com/repos/org/monorepo",
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/monorepo/tree/main/pkg",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+    )
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/monorepo",
+        branch="main",
+        local_root_path="/cache/org_monorepo",
+        local_full_path="/cache/org_monorepo/pkg",
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        return_value="module github.com/org/monorepo/pkg\n",
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+        return_value=[
+            ("/cache/org_monorepo/pkg", ["nested"], ["go.mod"]),
+            ("/cache/org_monorepo/pkg/nested", [], ["go.mod"]),
+        ],
+    )
+
+    def _fake_output(
+        args: list[str],
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+    ) -> str:
+        if args[:2] == ["git", "ls-remote"]:
+            return "ref: refs/heads/main\tHEAD\n"
+        if cwd == "/cache/org_monorepo/pkg":
+            return """{
+    "ImportPath": "github.com/org/monorepo/pkg",
+    "Module": {"Path": "github.com/org/monorepo/pkg", "Dir": "/cache/org_monorepo/pkg", "Main": true}
+}
+{
+    "ImportPath": "github.com/org/monorepo/sibling",
+    "Module": {"Path": "github.com/org/monorepo/sibling", "Dir": "/cache/org_monorepo/sibling", "Main": true}
+}"""
+        return """{
+    "ImportPath": "github.com/org/monorepo/pkg/nested",
+    "Module": {"Path": "github.com/org/monorepo/pkg/nested", "Dir": "/cache/org_monorepo/pkg/nested", "Main": true}
+}"""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=_fake_output,
+    )
+    seed = Metadata(
+        name="github.com/org/monorepo/tree/main/pkg",
+        version=None,
+        origin="https://github.com/org/monorepo/tree/main/pkg",
+        local_src_path=None,
+        license=[],
+        copyright=[],
+    )
+
+    result = strategy.augment_metadata([seed])
+
+    assert [m.name for m in result] == [
+        "github.com/org/monorepo/tree/main/pkg",
+        "github.com/org/monorepo/pkg",
+    ]

@@ -7,6 +7,7 @@
 
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Any  # used for auxiliary testing function only
 from unittest.mock import Mock, call, patch
 
@@ -26,6 +27,11 @@ from dd_license_attribution.artifact_management.source_code_manager import (
     has_repository_path,
     keep_tree_path,
 )
+
+
+def _assert_staging_dir(actual_dir: str, expected_cache_dir: str) -> str:
+    assert actual_dir.startswith(f"{expected_cache_dir}.tmp-")
+    return actual_dir
 
 
 class GitUrlParseMock:
@@ -239,6 +245,9 @@ def test_source_code_manager_get_non_cached_code(
         assert any(
             expected_source_code_reference.branch in cmd[4:] for cmd in ls_remote_calls
         )
+        staging_dir = _assert_staging_dir(
+            run_command_mock.call_args.args[0][-1], expected_local_path_root
+        )
         run_command_mock.assert_called_once_with(
             [
                 "git",
@@ -249,7 +258,7 @@ def test_source_code_manager_get_non_cached_code(
                 "1",
                 f"--branch={expected_branch}",
                 expected_clone_url,
-                expected_local_path_root,
+                staging_dir,
             ]
         )
     if (
@@ -425,6 +434,9 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
             expected_source_code_reference.branch,
         ]
     )
+    staging_dir = _assert_staging_dir(
+        mock_create_dirs.call_args.args[0], expected_cache_dir
+    )
     run_command_mock.assert_called_once_with(
         [
             "git",
@@ -435,10 +447,10 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
             "1",
             f"--branch={expected_source_code_reference.branch}",
             expected_source_code_reference.repo_url,
-            expected_cache_dir,
+            staging_dir,
         ]
     )
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    mock_create_dirs.assert_called_once_with(staging_dir)
 
 
 @patch(
@@ -504,7 +516,10 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
     artifact_mock_list_dir.assert_called_once_with("cache_dir")
     source_code_mock_list_dir.assert_called_once_with("cache_dir")
 
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    staging_dir = _assert_staging_dir(
+        mock_create_dirs.call_args.args[0], expected_cache_dir
+    )
+    mock_create_dirs.assert_called_once_with(staging_dir)
 
     output_from_command_mock.assert_called_once_with(
         [
@@ -525,7 +540,7 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
             "1",
             f"--branch={expected_source_code_reference.branch}",
             expected_source_code_reference.repo_url,
-            expected_cache_dir,
+            staging_dir,
         ]
     )
 
@@ -633,6 +648,10 @@ def test_artifact_manager_get_non_cached_code_for_ambiguous_branch_names(
             expected_source_code_reference.branch,
         ]
     )
+    staging_dir = _assert_staging_dir(
+        run_command_mock.call_args.args[0][-1],
+        expected_source_code_reference.local_root_path,
+    )
     run_command_mock.assert_called_once_with(
         [
             "git",
@@ -643,7 +662,7 @@ def test_artifact_manager_get_non_cached_code_for_ambiguous_branch_names(
             "1",
             f"--branch={expected_source_code_reference.branch}",
             expected_source_code_reference.repo_url,
-            expected_source_code_reference.local_root_path,
+            staging_dir,
         ]
     )
 
@@ -745,7 +764,10 @@ def test_source_code_manager_with_mirror_url(
     )  # Called: in get_code (disambiguation), in get_canonical_urls, in get_code (main logic)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    staging_dir = _assert_staging_dir(
+        mock_create_dirs.call_args.args[0], expected_cache_dir
+    )
+    mock_create_dirs.assert_called_once_with(staging_dir)
     output_from_command_mock.assert_called_once_with(
         [
             "git",
@@ -765,7 +787,7 @@ def test_source_code_manager_with_mirror_url(
             "1",
             f"--branch={expected_source_code_reference.branch}",
             "https://github.com/mirror_owner/mirror_repo",
-            expected_cache_dir,
+            staging_dir,
         ]
     )
 
@@ -837,7 +859,10 @@ def test_source_code_manager_with_mirror_ref_mapping(
     )  # Called: in get_code (disambiguation), in get_canonical_urls, in get_code (main logic)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    staging_dir = _assert_staging_dir(
+        mock_create_dirs.call_args.args[0], expected_cache_dir
+    )
+    mock_create_dirs.assert_called_once_with(staging_dir)
     output_from_command_mock.assert_called_once_with(
         [
             "git",
@@ -857,7 +882,7 @@ def test_source_code_manager_with_mirror_ref_mapping(
             "1",
             "--branch=mirror_branch",
             "https://github.com/mirror_owner/mirror_repo",
-            expected_cache_dir,
+            staging_dir,
         ]
     )
 
@@ -942,7 +967,10 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     source_code_list_dir_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    staging_dir = _assert_staging_dir(
+        mock_create_dirs.call_args.args[0], expected_cache_dir
+    )
+    mock_create_dirs.assert_called_once_with(staging_dir)
     output_from_command_mock.assert_called_once_with(
         [
             "git",
@@ -954,7 +982,7 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
     )
     run_command_mock.assert_has_calls(
         [
-            call(["git", "init", "--quiet"], cwd=expected_cache_dir),
+            call(["git", "init", "--quiet"], cwd=staging_dir),
             call(
                 [
                     "git",
@@ -962,7 +990,7 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
                     "remote.origin.url",
                     "https://github.com/mirror_owner/mirror_repo",
                 ],
-                cwd=expected_cache_dir,
+                cwd=staging_dir,
             ),
             call(
                 [
@@ -973,7 +1001,7 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
                     "origin",
                     "refs/tags/v1.0:refs/tags/v1.0",
                 ],
-                cwd=expected_cache_dir,
+                cwd=staging_dir,
             ),
             call(
                 [
@@ -983,7 +1011,7 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
                     "checkout",
                     "FETCH_HEAD",
                 ],
-                cwd=expected_cache_dir,
+                cwd=staging_dir,
             ),
         ]
     )
@@ -1054,7 +1082,10 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     source_code_list_dir_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    staging_dir = _assert_staging_dir(
+        mock_create_dirs.call_args.args[0], expected_cache_dir
+    )
+    mock_create_dirs.assert_called_once_with(staging_dir)
     output_from_command_mock.assert_called_once_with(
         [
             "git",
@@ -1067,7 +1098,7 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
     # The checkout step must not run once the tag fetch has failed.
     run_command_mock.assert_has_calls(
         [
-            call(["git", "init", "--quiet"], cwd=expected_cache_dir),
+            call(["git", "init", "--quiet"], cwd=staging_dir),
             call(
                 [
                     "git",
@@ -1075,7 +1106,7 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
                     "remote.origin.url",
                     "https://github.com/mirror_owner/mirror_repo",
                 ],
-                cwd=expected_cache_dir,
+                cwd=staging_dir,
             ),
             call(
                 [
@@ -1086,7 +1117,7 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
                     "origin",
                     "refs/tags/v1.0:refs/tags/v1.0",
                 ],
-                cwd=expected_cache_dir,
+                cwd=staging_dir,
             ),
         ]
     )
@@ -1164,10 +1195,14 @@ def test_source_code_manager_mirror_tag_forced_retry_after_failed_fetch(
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     source_code_list_dir_mock.assert_has_calls([call("cache_dir"), call("cache_dir")])
     assert source_code_list_dir_mock.call_count == 2
-    mock_create_dirs.assert_has_calls(
-        [call(expected_cache_dir), call(expected_cache_dir)]
-    )
     assert mock_create_dirs.call_count == 2
+    first_staging = _assert_staging_dir(
+        mock_create_dirs.call_args_list[0].args[0], expected_cache_dir
+    )
+    second_staging = _assert_staging_dir(
+        mock_create_dirs.call_args_list[1].args[0], expected_cache_dir
+    )
+    assert first_staging != second_staging
     ls_remote_call = call(
         [
             "git",
@@ -1179,39 +1214,53 @@ def test_source_code_manager_mirror_tag_forced_retry_after_failed_fetch(
     )
     output_from_command_mock.assert_has_calls([ls_remote_call, ls_remote_call])
     assert output_from_command_mock.call_count == 2
-    init = call(["git", "init", "--quiet"], cwd=expected_cache_dir)
-    set_origin = call(
-        [
-            "git",
-            "config",
-            "remote.origin.url",
-            "https://github.com/mirror_owner/mirror_repo",
-        ],
-        cwd=expected_cache_dir,
-    )
-    fetch = call(
-        [
-            "git",
-            "fetch",
-            "--depth",
-            "1",
-            "origin",
-            "refs/tags/v1.0:refs/tags/v1.0",
-        ],
-        cwd=expected_cache_dir,
-    )
-    checkout = call(
-        ["git", "-c", "advice.detachedHead=False", "checkout", "FETCH_HEAD"],
-        cwd=expected_cache_dir,
-    )
     assert run_command_mock.call_args_list == [
-        init,
-        set_origin,
-        fetch,
-        init,
-        set_origin,
-        fetch,
-        checkout,
+        call(["git", "init", "--quiet"], cwd=first_staging),
+        call(
+            [
+                "git",
+                "config",
+                "remote.origin.url",
+                "https://github.com/mirror_owner/mirror_repo",
+            ],
+            cwd=first_staging,
+        ),
+        call(
+            [
+                "git",
+                "fetch",
+                "--depth",
+                "1",
+                "origin",
+                "refs/tags/v1.0:refs/tags/v1.0",
+            ],
+            cwd=first_staging,
+        ),
+        call(["git", "init", "--quiet"], cwd=second_staging),
+        call(
+            [
+                "git",
+                "config",
+                "remote.origin.url",
+                "https://github.com/mirror_owner/mirror_repo",
+            ],
+            cwd=second_staging,
+        ),
+        call(
+            [
+                "git",
+                "fetch",
+                "--depth",
+                "1",
+                "origin",
+                "refs/tags/v1.0:refs/tags/v1.0",
+            ],
+            cwd=second_staging,
+        ),
+        call(
+            ["git", "-c", "advice.detachedHead=False", "checkout", "FETCH_HEAD"],
+            cwd=second_staging,
+        ),
     ]
 
 
@@ -1286,8 +1335,11 @@ def test_source_code_manager_mirror_tag_clone_with_git_env(
         local_root_path=expected_cache_dir,
         local_full_path=f"{expected_cache_dir}/test_dir",
     )
+    staging_dir = _assert_staging_dir(
+        mock_create_dirs.call_args.args[0], expected_cache_dir
+    )
     expected_kwargs = {
-        "cwd": expected_cache_dir,
+        "cwd": staging_dir,
         "env": NONINTERACTIVE_GIT_ENV,
         "timeout": NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
     }
@@ -1488,7 +1540,10 @@ def test_source_code_manager_with_mirror_url_and_ref_mapping_for_the_default_bra
     )  # Called: in get_code (first call), in get_canonical_urls, in get_code (after default branch resolved)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    staging_dir = _assert_staging_dir(
+        mock_create_dirs.call_args.args[0], expected_cache_dir
+    )
+    mock_create_dirs.assert_called_once_with(staging_dir)
     output_from_command_mock.assert_called_once_with(
         [
             "git",
@@ -1509,7 +1564,7 @@ def test_source_code_manager_with_mirror_url_and_ref_mapping_for_the_default_bra
             "1",
             "--branch=development",
             "https://github.com/mirror_owner/mirror_repo",
-            expected_cache_dir,
+            staging_dir,
         ]
     )
 
@@ -1587,7 +1642,10 @@ def test_source_code_manager_with_multiple_mirrors(
     )  # Called: in get_code (disambiguation), in get_canonical_urls, in get_code (main logic)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    staging_dir = _assert_staging_dir(
+        mock_create_dirs.call_args.args[0], expected_cache_dir
+    )
+    mock_create_dirs.assert_called_once_with(staging_dir)
     output_from_command_mock.assert_called_once_with(
         [
             "git",
@@ -1607,7 +1665,7 @@ def test_source_code_manager_with_multiple_mirrors(
             "1",
             "--branch=mirror_branch",
             "https://github.com/mirror_owner/mirror_repo",
-            expected_cache_dir,
+            staging_dir,
         ]
     )
 
@@ -1676,7 +1734,10 @@ def test_source_code_manager_with_no_mirror_match(
     )  # Called: in get_code (disambiguation), in get_canonical_urls, in get_code (main logic)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    staging_dir = _assert_staging_dir(
+        mock_create_dirs.call_args.args[0], expected_cache_dir
+    )
+    mock_create_dirs.assert_called_once_with(staging_dir)
     output_from_command_mock.assert_called_once_with(
         [
             "git",
@@ -1696,7 +1757,7 @@ def test_source_code_manager_with_no_mirror_match(
             "1",
             f"--branch={expected_source_code_reference.branch}",
             expected_source_code_reference.repo_url,
-            expected_cache_dir,
+            staging_dir,
         ]
     )
 
@@ -2348,9 +2409,11 @@ def test_get_code_can_skip_canonical_lookup_for_direct_git_checkout(
         env=NONINTERACTIVE_GIT_ENV,
         timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
     )
-    create_dirs_mock.assert_called_once_with(
-        "cache_dir/20220101_000000Z/test_owner-test_repo/main"
+    staging_dir = _assert_staging_dir(
+        create_dirs_mock.call_args.args[0],
+        "cache_dir/20220101_000000Z/test_owner-test_repo/main",
     )
+    create_dirs_mock.assert_called_once_with(staging_dir)
     run_command_mock.assert_called_once_with(
         [
             "git",
@@ -2361,7 +2424,7 @@ def test_get_code_can_skip_canonical_lookup_for_direct_git_checkout(
             "1",
             "--branch=main",
             "https://github.com/test_owner/test_repo",
-            "cache_dir/20220101_000000Z/test_owner-test_repo/main",
+            staging_dir,
         ],
         env=NONINTERACTIVE_GIT_ENV,
         timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
@@ -3485,3 +3548,320 @@ def test_get_code_fetches_commit_sha_and_rejects_missing_subdirectory(
     commands = [c.args[0] for c in mock_run_command.call_args_list]
     assert ["git", "init", "--quiet"] in commands
     assert ["git", "fetch", "--depth", "1", "origin", sha] in commands
+
+
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+def test_extract_ref_accepts_unadvertised_full_commit_sha(
+    output_from_command_mock: Mock,
+) -> None:
+    from dd_license_attribution.artifact_management.source_code_manager import (
+        extract_ref,
+    )
+
+    sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
+    output_from_command_mock.return_value = ""
+
+    result = extract_ref(f"{sha}/subdir/pkg", "https://github.com/owner/repo")
+
+    assert result == sha
+    output_from_command_mock.assert_called_once_with(
+        [
+            "git",
+            "ls-remote",
+            "--",
+            "https://github.com/owner/repo",
+            f"{sha}/subdir/pkg",
+            f"{sha}/subdir",
+            sha,
+        ]
+    )
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+def test_get_code_failed_clone_does_not_delete_existing_checkout_in_same_second(
+    mock_now: Mock,
+    mock_extract_ref: Mock,
+    tmp_path: Path,
+) -> None:
+    mock_now.return_value = datetime.fromisoformat("2022-01-01T00:00:00+00:00")
+    mock_extract_ref.return_value = "main"
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    existing_checkout = cache_dir / "20220101_000000Z" / "DataDog-repo" / "main"
+    existing_checkout.mkdir(parents=True)
+    sentinel = existing_checkout / "live.txt"
+    sentinel.write_text("in-use", encoding="utf-8")
+
+    source_code_manager = SourceCodeManager(str(cache_dir), Mock(), 86400)
+    with patch(
+        "dd_license_attribution.artifact_management.source_code_manager.run_command",
+        return_value=128,
+    ):
+        result = source_code_manager.get_code(
+            "https://github.com/DataDog/repo/tree/main/sub",
+            force_update=True,
+            skip_canonical_lookup=True,
+        )
+
+    assert result is None
+    assert sentinel.read_text(encoding="utf-8") == "in-use"
+    # Staging directory must have been cleaned up.
+    siblings = list(existing_checkout.parent.iterdir())
+    assert siblings == [existing_checkout]
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+def test_get_code_rejects_unsafe_mapped_source_ref_outside_cache(
+    mock_extract_ref: Mock,
+    tmp_path: Path,
+) -> None:
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    sentinel = outside_dir / "keep.txt"
+    sentinel.write_text("safe", encoding="utf-8")
+
+    # Even if the mirror target ref validates, a malformed source ref containing
+    # traversal segments must be rejected before creating or removing paths.
+    mock_extract_ref.side_effect = lambda ref, url, git_env=None: (
+        "main" if ref == "main" and "mirror.example" in url else ""
+    )
+    mirror = MirrorSpec(
+        original_url="https://github.com/DataDog/repo",
+        mirror_url="https://mirror.example/DataDog/repo",
+        ref_mapping={
+            (RefType.BRANCH, "../../../outside"): (RefType.BRANCH, "main"),
+        },
+    )
+    source_code_manager = SourceCodeManager(str(cache_dir), Mock(), mirrors=[mirror])
+    url = "https://github.com/DataDog/repo/tree/../../../outside/sub"
+
+    assert source_code_manager.get_code(url, skip_canonical_lookup=True) is None
+    assert source_code_manager.has_unresolved_path(url) is True
+    assert sentinel.read_text(encoding="utf-8") == "safe"
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
+@patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
+@patch("dd_license_attribution.artifact_management.source_code_manager.path_exists")
+@patch("dd_license_attribution.artifact_management.source_code_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+@patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+def test_get_code_uses_matched_second_mirror_and_tag_ref_type(
+    mock_now: Mock,
+    mock_am_path_exists: Mock,
+    mock_am_list_dir: Mock,
+    mock_extract_ref: Mock,
+    mock_list_dir: Mock,
+    mock_path_exists: Mock,
+    mock_create_dirs: Mock,
+    mock_run_command: Mock,
+) -> None:
+    mock_now.return_value = datetime.fromisoformat("2022-01-01T00:00:00+00:00")
+    mock_am_path_exists.return_value = True
+    mock_am_list_dir.return_value = []
+    mock_list_dir.return_value = []
+    mock_path_exists.return_value = False
+    mock_run_command.return_value = 0
+
+    # Original and first mirror do not have v1.0; second mirror maps tag v1.0 -> branch release-1.
+    def _fake_extract_ref(
+        ref: str, url: str, git_env: dict[str, str] | None = None
+    ) -> str:
+        if url == "https://mirror2.example/DataDog/repo" and ref == "release-1":
+            return "release-1"
+        return ""
+
+    mock_extract_ref.side_effect = _fake_extract_ref
+    mirrors = [
+        MirrorSpec(
+            original_url="https://github.com/DataDog/repo",
+            mirror_url="https://mirror1.example/DataDog/repo",
+        ),
+        MirrorSpec(
+            original_url="https://github.com/DataDog/repo",
+            mirror_url="https://mirror2.example/DataDog/repo",
+            ref_mapping={
+                (RefType.TAG, "v1.0"): (RefType.BRANCH, "release-1"),
+            },
+        ),
+    ]
+    source_code_manager = SourceCodeManager("cache_dir", Mock(), mirrors=mirrors)
+    url = "https://github.com/DataDog/repo/tree/v1.0/apis"
+
+    code_ref = source_code_manager.get_code(url, skip_canonical_lookup=True)
+
+    assert code_ref == SourceCodeReference(
+        repo_url="https://github.com/DataDog/repo",
+        branch="v1.0",
+        local_root_path="cache_dir/20220101_000000Z/DataDog-repo/v1.0",
+        local_full_path="cache_dir/20220101_000000Z/DataDog-repo/v1.0/apis",
+    )
+    staging_dir = _assert_staging_dir(
+        mock_create_dirs.call_args.args[0],
+        "cache_dir/20220101_000000Z/DataDog-repo/v1.0",
+    )
+    mock_run_command.assert_called_once_with(
+        [
+            "git",
+            "clone",
+            "-c",
+            "advice.detachedHead=False",
+            "--depth",
+            "1",
+            "--branch=release-1",
+            "https://mirror2.example/DataDog/repo",
+            staging_dir,
+        ],
+        env=NONINTERACTIVE_GIT_ENV,
+        timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
+    )
+
+
+def test_is_safe_git_ref_name_rejects_malformed_refs() -> None:
+    from dd_license_attribution.artifact_management.source_code_manager import (
+        _is_safe_git_ref_name,
+    )
+
+    assert _is_safe_git_ref_name("main") is True
+    assert _is_safe_git_ref_name("release/v1.2.3") is True
+    for bad_ref in [
+        "",
+        "@",
+        "/leading",
+        "trailing/",
+        "trailing.",
+        "a..b",
+        "a//b",
+        "a@{0}",
+        "a\\b",
+        "has space",
+        "a~1",
+        "a^2",
+        "a:b",
+        "a?b",
+        "a*b",
+        "a[0]",
+        ".hidden",
+        "dir/.hidden",
+        "branch.lock",
+        "a\x00b",
+    ]:
+        assert _is_safe_git_ref_name(bad_ref) is False, bad_ref
+
+
+def test_publish_staging_checkout_publishes_and_handles_concurrent_and_force_update(
+    tmp_path: Path,
+) -> None:
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    scm = SourceCodeManager(str(cache_dir), Mock(), 86400)
+
+    target = cache_dir / "20220101_000000Z" / "org-repo" / "main"
+    target.parent.mkdir(parents=True)
+
+    # Normal publish: staging directory is moved atomically to target.
+    staging1 = cache_dir / "20220101_000000Z" / "org-repo" / "main.tmp-1"
+    staging1.mkdir()
+    (staging1 / "file.txt").write_text("v1", encoding="utf-8")
+    scm._publish_staging_checkout(str(staging1), str(target), force_update=False)
+    assert not staging1.exists()
+    assert (target / "file.txt").read_text(encoding="utf-8") == "v1"
+
+    # Concurrent publish (force_update=False): existing target wins, staging is removed.
+    staging2 = cache_dir / "20220101_000000Z" / "org-repo" / "main.tmp-2"
+    staging2.mkdir()
+    (staging2 / "file.txt").write_text("v2", encoding="utf-8")
+    scm._publish_staging_checkout(str(staging2), str(target), force_update=False)
+    assert not staging2.exists()
+    assert (target / "file.txt").read_text(encoding="utf-8") == "v1"
+
+    # Forced update (force_update=True): replaces existing target cleanly.
+    staging3 = cache_dir / "20220101_000000Z" / "org-repo" / "main.tmp-3"
+    staging3.mkdir()
+    (staging3 / "file.txt").write_text("v3", encoding="utf-8")
+    scm._publish_staging_checkout(str(staging3), str(target), force_update=True)
+    assert not staging3.exists()
+    assert (target / "file.txt").read_text(encoding="utf-8") == "v3"
+    assert list(target.parent.iterdir()) == [target]
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_has_resolved_path_tracks_successful_ref_lookups(
+    mock_path_exists: Mock,
+    mock_list_dir: Mock,
+    mock_extract_ref: Mock,
+) -> None:
+    mock_path_exists.return_value = True
+    mock_list_dir.return_value = []
+    mock_extract_ref.return_value = "main"
+    scm = SourceCodeManager("cache_dir", Mock())
+    url = "https://github.com/DataDog/repo/tree/main/apis"
+
+    assert scm.has_resolved_path(url) is False
+    with patch.object(
+        scm,
+        "get_canonical_urls",
+        return_value=(
+            "https://github.com/DataDog/repo",
+            "https://api.github.com/repos/DataDog/repo",
+        ),
+    ):
+        assert scm.get_subdirectory_path(url) == "/apis"
+    assert scm.has_resolved_path(url) is True
+
+
+def test_get_code_rejects_unsafe_default_branch_and_outside_cache_path(
+    tmp_path: Path,
+) -> None:
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    scm = SourceCodeManager(str(cache_dir), Mock(), 86400)
+    assert scm._is_within_cache_dir(str(tmp_path / "outside")) is False
+
+    with patch.object(scm, "_discover_default_branch", return_value="../escape"):
+        assert (
+            scm.get_code("https://github.com/DataDog/repo", skip_canonical_lookup=True)
+            is None
+        )
+
+    with (
+        patch.object(scm, "_discover_default_branch", return_value="main"),
+        patch.object(scm, "_is_within_cache_dir", return_value=False),
+    ):
+        assert (
+            scm.get_code("https://github.com/DataDog/repo", skip_canonical_lookup=True)
+            is None
+        )
+
+    # Verify force_update rollback when rename of staging fails.
+    target = cache_dir / "20220101_000000Z" / "org-repo" / "main"
+    target.mkdir(parents=True)
+    (target / "old.txt").write_text("old", encoding="utf-8")
+    staging = cache_dir / "20220101_000000Z" / "org-repo" / "main.tmp-fail"
+    staging.mkdir()
+    real_rename = __import__("os").rename
+    calls = {"n": 0}
+
+    def _flaky_rename(src: str, dst: str) -> None:
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise OSError("rename failed")
+        real_rename(src, dst)
+
+    with patch(
+        "dd_license_attribution.artifact_management.source_code_manager.os.rename",
+        side_effect=_flaky_rename,
+    ):
+        scm._publish_staging_checkout(str(staging), str(target), force_update=True)
+
+    assert not staging.exists()
+    assert (target / "old.txt").read_text(encoding="utf-8") == "old"

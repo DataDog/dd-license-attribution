@@ -164,28 +164,30 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
 
     def _find_cargo_lock_path(
         self, project_path: str, workspace_root: str | None
-    ) -> str | None:
+    ) -> tuple[str | None, bool]:
         direct_candidate = path_join(project_path, "Cargo.lock")
         if path_exists(direct_candidate):
-            return direct_candidate
+            return direct_candidate, False
         if not workspace_root or workspace_root == project_path:
-            return None
+            return None, False
         current = normalize_path(project_path)
         stop_root = normalize_path(workspace_root)
         while current != stop_root:
             parent = normalize_path(path_join(current, ".."))
             if parent == current:
-                return None
+                return None, False
             current = parent
             candidate = path_join(current, "Cargo.lock")
             if path_exists(candidate):
-                return candidate
-        return None
+                return candidate, True
+        return None, False
 
     def _get_locked_crate_versions(
         self, project_path: str, workspace_root: str | None = None
     ) -> dict[str, set[str]]:
-        cargo_lock_path = self._find_cargo_lock_path(project_path, workspace_root)
+        cargo_lock_path, is_ancestor_lock = self._find_cargo_lock_path(
+            project_path, workspace_root
+        )
         if cargo_lock_path is None:
             return {}
         try:
@@ -198,23 +200,128 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
             )
             return {}
 
+        raw_packages = cargo_lock.get("package")
+        if not isinstance(raw_packages, list):
+            return {}
+        packages = [pkg for pkg in raw_packages if isinstance(pkg, dict)]
+
+        selected_packages = self._select_lockfile_packages(
+            packages, project_path, is_ancestor_lock=is_ancestor_lock
+        )
+
         crate_versions: dict[str, set[str]] = {}
-        packages = cargo_lock.get("package")
-        if not isinstance(packages, list):
-            return crate_versions
-        for package in packages:
-            if not isinstance(package, dict):
-                continue
+        non_crates_io_names: set[str] = set()
+        for package in selected_packages:
             name = package.get("name")
             version = package.get("version")
             source = package.get("source")
-            if (
-                isinstance(name, str)
-                and isinstance(version, str)
-                and source == CRATES_IO_REGISTRY_SOURCE
-            ):
+            if not isinstance(name, str) or not isinstance(version, str):
+                continue
+            if source == CRATES_IO_REGISTRY_SOURCE:
                 crate_versions.setdefault(name, set()).add(version)
+            else:
+                non_crates_io_names.add(name)
+        for name in non_crates_io_names:
+            crate_versions.pop(name, None)
         return crate_versions
+
+    def _select_lockfile_packages(
+        self,
+        packages: list[dict[str, object]],
+        project_path: str,
+        is_ancestor_lock: bool,
+    ) -> list[dict[str, object]]:
+        if not is_ancestor_lock:
+            return packages
+
+        root_identity = self._get_project_root_package_identity(project_path)
+        if root_identity is None:
+            return []
+        root_name, root_version = root_identity
+
+        root_indices = [
+            idx
+            for idx, pkg in enumerate(packages)
+            if pkg.get("name") == root_name and pkg.get("source") is None
+        ]
+        if root_version is not None:
+            exact_roots = [
+                idx
+                for idx in root_indices
+                if packages[idx].get("version") == root_version
+            ]
+            if exact_roots:
+                root_indices = exact_roots
+        if not root_indices:
+            return []
+
+        packages_by_name: dict[str, list[int]] = {}
+        for idx, pkg in enumerate(packages):
+            name = pkg.get("name")
+            if isinstance(name, str):
+                packages_by_name.setdefault(name, []).append(idx)
+
+        visited: set[int] = set(root_indices)
+        queue: list[int] = list(root_indices)
+        while queue:
+            current_idx = queue.pop(0)
+            dependencies = packages[current_idx].get("dependencies")
+            if not isinstance(dependencies, list):
+                continue
+            for dep_spec in dependencies:
+                if not isinstance(dep_spec, str):
+                    continue
+                dep_name, dep_version, dep_source = (
+                    self._parse_cargo_lock_dependency_spec(dep_spec)
+                )
+                for candidate_idx in packages_by_name.get(dep_name, []):
+                    if candidate_idx in visited:
+                        continue
+                    candidate = packages[candidate_idx]
+                    if (
+                        dep_version is not None
+                        and candidate.get("version") != dep_version
+                    ):
+                        continue
+                    if dep_source is not None and candidate.get("source") != dep_source:
+                        continue
+                    visited.add(candidate_idx)
+                    queue.append(candidate_idx)
+
+        return [packages[idx] for idx in sorted(visited)]
+
+    def _get_project_root_package_identity(
+        self, project_path: str
+    ) -> tuple[str, str | None] | None:
+        cargo_toml_path = path_join(project_path, "Cargo.toml")
+        if not path_exists(cargo_toml_path):
+            return None
+        try:
+            cargo_toml = tomllib.loads(open_file(cargo_toml_path))
+        except (OSError, tomllib.TOMLDecodeError):
+            return None
+        package = cargo_toml.get("package")
+        if not isinstance(package, dict):
+            return None
+        package_name = package.get("name")
+        if not isinstance(package_name, str):
+            return None
+        package_version = package.get("version")
+        return (
+            package_name,
+            package_version if isinstance(package_version, str) else None,
+        )
+
+    def _parse_cargo_lock_dependency_spec(
+        self, spec: str
+    ) -> tuple[str, str | None, str | None]:
+        parts = spec.strip().split(" ", 2)
+        name = parts[0]
+        version = parts[1] if len(parts) >= 2 else None
+        source: str | None = None
+        if len(parts) == 3 and parts[2].startswith("(") and parts[2].endswith(")"):
+            source = parts[2][1:-1]
+        return name, version, source
 
     def _get_manifest_crate_versions(
         self,
