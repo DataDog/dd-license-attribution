@@ -312,8 +312,12 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
         try:
             # Use npm list to get all dependencies (excluding dev dependencies)
             logger.debug("Running npm list in %s", project_path)
+            args = ["npm", "list", "--json", "--omit=dev", "--all"]
+            if selected_package_name:
+                # Keep shared dependency subtrees expanded under the selected member.
+                args.append("--include-workspace-root=false")
             exit_code, output, error_output = run_command_with_check(
-                ["npm", "list", "--json", "--omit=dev", "--all"],
+                args,
                 cwd=project_path,
             )
             if exit_code != 0:

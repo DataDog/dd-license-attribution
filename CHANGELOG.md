@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 - `--go-single-module` scopes a repository scan to the Go module whose `go.mod` is at the repository root, ignoring nested modules and `go.work` (`GOWORK=off`), so a monorepo's root module report no longer lists the dependencies of every nested module. It also skips the GitHub SBOM strategy for the whole scan, and under `--only-transitive-dependencies` drops the root module's own entry. Default behavior is unchanged.
 
 ### Fixed
-- npm workspace member scans no longer report the selected member as its own dependency when `npm list` wraps it under the workspace root. The member's actual dependencies remain included.
+- npm workspace member scans no longer report the selected member as its own dependency when `npm list` wraps it under the workspace root. Shared transitive dependencies are preserved even when npm configuration includes the workspace root.
 - Default ScanCode license and copyright presets now recognize additional standard umbrella license filename extensions (`COPYING.md`, `COPYING.txt`, `COPYING.rst`, `LICENSE.rst`, `LICENCE.txt`, `LICENCE.rst`), allowing repositories such as `github.com/cyphar/filepath-securejoin` (which declares its license in `COPYING.md`) to be detected locally without merging separate per-license choice files into an incorrect `AND`.
 
 ## [0.10.1] - 2026-11-19

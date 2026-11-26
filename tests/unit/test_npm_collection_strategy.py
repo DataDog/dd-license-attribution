@@ -4339,7 +4339,17 @@ def _assert_npm_project_scanned(
         mock_run_command.call_args_list
         == [
             mock.call(["npm", "install", "--omit=dev", "--ignore-scripts"], cwd=root),
-            mock.call(["npm", "list", "--json", "--omit=dev", "--all"], cwd=root),
+            mock.call(
+                [
+                    "npm",
+                    "list",
+                    "--json",
+                    "--omit=dev",
+                    "--all",
+                    "--include-workspace-root=false",
+                ],
+                cwd=root,
+            ),
         ]
         * passes
     )
@@ -4825,3 +4835,73 @@ def test_npm_get_npm_list_dependencies_workspace_unwrapping_cases(
     )
 
     assert result == expected
+
+
+@pytest.mark.parametrize("selected_version", ["1.0.0", None])
+def test_npm_list_preserves_shared_workspace_subtree(
+    mocker: pytest_mock.MockFixture, selected_version: str | None
+) -> None:
+    source_code_manager = create_source_code_manager_mock()
+    expanded_dependency = {
+        "version": "3.0.1",
+        "dependencies": {"is-number": {"version": "6.0.0"}},
+    }
+    selected_member = {
+        "version": "1.0.0",
+        "resolved": "file:../packages/member",
+        "dependencies": {"is-odd": {"version": "3.0.1"}},
+    }
+    root_included: dict[str, Any] = {
+        "name": "workspace-root",
+        "dependencies": {
+            "is-odd": expanded_dependency,
+            "picocolors": {"version": "1.1.1"},
+            "z-member": selected_member,
+        },
+    }
+    member_only: dict[str, Any] = {
+        "name": "workspace-root",
+        "dependencies": {
+            "z-member": {
+                **selected_member,
+                "dependencies": {"is-odd": expanded_dependency},
+            }
+        },
+    }
+
+    def npm_list(args: list[str], cwd: str | None = None) -> tuple[int, str, str]:
+        # npm expands shared descendants only once when the root is included.
+        data = (
+            member_only if "--include-workspace-root=false" in args else root_included
+        )
+        return 0, json.dumps(data), ""
+
+    run_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "npm_collection_strategy.run_command_with_check",
+        side_effect=npm_list,
+    )
+    strategy = NpmMetadataCollectionStrategy(
+        "package1", source_code_manager, ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES
+    )
+
+    result = strategy._get_npm_list_dependencies(
+        "/workspace/packages/member",
+        selected_package_name="z-member",
+        selected_package_version=selected_version,
+    )
+
+    assert result == {"is-odd": "3.0.1", "is-number": "6.0.0"}
+    run_command.assert_called_once_with(
+        [
+            "npm",
+            "list",
+            "--json",
+            "--omit=dev",
+            "--all",
+            "--include-workspace-root=false",
+        ],
+        cwd="/workspace/packages/member",
+    )
+    source_code_manager.get_canonical_urls.assert_called_once_with("package1")
+    source_code_manager.get_code.assert_not_called()
