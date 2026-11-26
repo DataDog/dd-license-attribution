@@ -289,7 +289,12 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         return all_deps
 
-    def _get_npm_list_dependencies(self, project_path: str) -> dict[str, str]:
+    def _get_npm_list_dependencies(
+        self,
+        project_path: str,
+        selected_package_name: str | None = None,
+        selected_package_version: str | None = None,
+    ) -> dict[str, str]:
         """Get dependencies from an npm project using npm list.
 
         This discovers all packages npm has installed, including those that may
@@ -329,8 +334,37 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
             data = json.loads(output)
 
             # Recursively extract all dependencies from the tree
-            if "dependencies" in data:
-                self._extract_npm_list_deps_recursive(data["dependencies"], all_deps)
+            top_deps = data.get("dependencies")
+            if isinstance(top_deps, dict):
+                # In an npm workspace, running `npm list` in a member directory
+                # wraps the member itself under the workspace root's `dependencies`.
+                # Unwrap it so the member is not emitted as its own dependency.
+                selected_entry = (
+                    top_deps.get(selected_package_name)
+                    if selected_package_name
+                    else None
+                )
+                if (
+                    isinstance(selected_entry, dict)
+                    and data.get("name") != selected_package_name
+                    and (
+                        selected_package_version is None
+                        or selected_entry.get("version") == selected_package_version
+                    )
+                    and (
+                        str(selected_entry.get("resolved", "")).startswith("file:")
+                        or (
+                            selected_package_version is not None
+                            and data.get("name") is not None
+                            and len(top_deps) == 1
+                        )
+                    )
+                ):
+                    workspace_deps = selected_entry.get("dependencies")
+                    if isinstance(workspace_deps, dict):
+                        self._extract_npm_list_deps_recursive(workspace_deps, all_deps)
+                else:
+                    self._extract_npm_list_deps_recursive(top_deps, all_deps)
 
         except json.JSONDecodeError as e:
             logger.error("npm list did not produce valid JSON: %s", e)
@@ -1153,7 +1187,21 @@ class NpmMetadataCollectionStrategy(MetadataCollectionStrategy):
                     return updated_metadata
 
                 # Then use npm list to discover all packages
-                all_deps = self._get_npm_list_dependencies(project_path)
+                selected_package_name = (
+                    package_json_data.get("name")
+                    if isinstance(package_json_data.get("name"), str)
+                    else None
+                )
+                selected_package_version = (
+                    package_json_data.get("version")
+                    if isinstance(package_json_data.get("version"), str)
+                    else None
+                )
+                all_deps = self._get_npm_list_dependencies(
+                    project_path,
+                    selected_package_name=selected_package_name,
+                    selected_package_version=selected_package_version,
+                )
 
             except OSError as e:
                 logger.warning(
