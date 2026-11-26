@@ -1909,3 +1909,66 @@ def test_gopkg_only_root_project_matches_original_seed_after_repo_rename(
         "github.com/old-org/old-repo/tree/main/pkg",
         "github.com/new-org/new-repo/pkg",
     ]
+
+
+def test_gopkg_only_root_project_ignores_nested_module_requiring_older_selected_module(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    import os
+
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/monorepo",
+        "https://api.github.com/repos/org/monorepo",
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/monorepo/tree/main/pkg",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+    )
+    pkg_dir = "cache/org_monorepo/pkg"
+    nested_dir = "cache/org_monorepo/pkg/nested"
+    abs_pkg_dir = os.path.realpath(pkg_dir)
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/monorepo",
+        branch="main",
+        local_root_path="cache/org_monorepo",
+        local_full_path=pkg_dir,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+        return_value=[
+            (pkg_dir, ["nested"], ["go.mod"]),
+            (nested_dir, [], ["go.mod"]),
+        ],
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        return_value="module github.com/org/monorepo/pkg\n",
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=lambda args, cwd=None, env=None: (
+            "ref: refs/heads/main\tHEAD\n"
+            if args[:2] == ["git", "ls-remote"]
+            else (
+                f'{{"ImportPath": "github.com/org/monorepo/pkg", "Module": {{"Path": "github.com/org/monorepo/pkg", "Dir": "{abs_pkg_dir}", "Main": true}}}}'
+                if cwd == pkg_dir
+                else '{"ImportPath": "github.com/org/monorepo/pkg", "Module": {"Path": "github.com/org/monorepo/pkg", "Version": "v0.1.0", "Dir": "/go/pkg/mod/pkg@v0.1.0"}}'
+            )
+        ),
+    )
+    seed = Metadata(
+        name="github.com/org/monorepo/tree/main/pkg",
+        version=None,
+        origin="https://github.com/org/monorepo/tree/main/pkg",
+        local_src_path=None,
+        license=[],
+        copyright=[],
+    )
+
+    result = strategy.augment_metadata([seed])
+
+    selected = next(m for m in result if m.name == "github.com/org/monorepo/pkg")
+    assert selected.local_src_path == abs_pkg_dir
+    assert selected.version != "v0.1.0"

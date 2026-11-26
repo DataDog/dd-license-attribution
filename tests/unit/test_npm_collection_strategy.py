@@ -4752,3 +4752,120 @@ def test_npm_collection_strategy_unwraps_selected_workspace_member_in_transitive
     mock_get.assert_called_once_with(
         "https://registry.npmjs.org/lodash/4.17.21", timeout=5
     )
+
+
+@pytest.mark.parametrize(
+    "npm_list_data, selected_name, selected_version, expected",
+    [
+        # Single-entry workspace wrapper without `resolved: file:` still unwraps
+        # when root name differs and version matches.
+        (
+            {
+                "name": "monorepo-root",
+                "dependencies": {
+                    "@org/ui": {
+                        "version": "1.0.0",
+                        "dependencies": {"chalk": {"version": "5.3.0"}},
+                    }
+                },
+            },
+            "@org/ui",
+            "1.0.0",
+            {"chalk": "5.3.0"},
+        ),
+        # Different version and no file: resolved -> genuine dependency, not unwrapped.
+        (
+            {
+                "name": "monorepo-root",
+                "dependencies": {
+                    "@org/ui": {
+                        "version": "0.9.0",
+                        "dependencies": {"chalk": {"version": "5.3.0"}},
+                    }
+                },
+            },
+            "@org/ui",
+            "1.0.0",
+            {"@org/ui": "0.9.0", "chalk": "5.3.0"},
+        ),
+        # Same root name and no file: resolved -> not a workspace wrapper.
+        (
+            {
+                "name": "@org/ui",
+                "dependencies": {
+                    "@org/ui": {
+                        "version": "1.0.0",
+                        "dependencies": {"chalk": {"version": "5.3.0"}},
+                    }
+                },
+            },
+            "@org/ui",
+            "1.0.0",
+            {"@org/ui": "1.0.0", "chalk": "5.3.0"},
+        ),
+        # Multiple top-level entries without file: resolved -> not unwrapped.
+        (
+            {
+                "name": "monorepo-root",
+                "dependencies": {
+                    "@org/ui": {"version": "1.0.0"},
+                    "lodash": {"version": "4.17.21"},
+                },
+            },
+            "@org/ui",
+            "1.0.0",
+            {"@org/ui": "1.0.0", "lodash": "4.17.21"},
+        ),
+        # file:-resolved workspace member with no nested dependencies returns empty dict.
+        (
+            {
+                "name": "monorepo-root",
+                "dependencies": {
+                    "@org/ui": {
+                        "version": "1.0.0",
+                        "resolved": "file:../../packages/ui",
+                    }
+                },
+            },
+            "@org/ui",
+            "1.0.0",
+            {},
+        ),
+        # Non-dict top-level dependencies returns empty dict.
+        (
+            {"name": "monorepo-root", "dependencies": "invalid"},
+            "@org/ui",
+            "1.0.0",
+            {},
+        ),
+    ],
+)
+def test_npm_get_npm_list_dependencies_workspace_unwrapping_cases(
+    mocker: pytest_mock.MockFixture,
+    npm_list_data: dict[str, Any],
+    selected_name: str | None,
+    selected_version: str | None,
+    expected: dict[str, str],
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/org/monorepo",
+        "https://api.github.com/repos/org/monorepo",
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.npm_collection_strategy.run_command_with_check",
+        return_value=(0, json.dumps(npm_list_data), ""),
+    )
+    strategy = NpmMetadataCollectionStrategy(
+        "https://github.com/org/monorepo/tree/main/packages/ui",
+        source_code_manager_mock,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+    )
+
+    result = strategy._get_npm_list_dependencies(
+        "/project",
+        selected_package_name=selected_name,
+        selected_package_version=selected_version,
+    )
+
+    assert result == expected

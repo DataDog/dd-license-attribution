@@ -2026,3 +2026,182 @@ def test_rust_crates_io_preserves_registry_version_when_same_name_has_non_regist
         _metadata("mixed", None),
     ]
     assert mock_download.call_count == 2
+
+
+@pytest.mark.parametrize(
+    "spec, expected",
+    [
+        ("serde", ("serde", None, None)),
+        ("  serde 1.0.0  ", ("serde", "1.0.0", None)),
+        (
+            "serde 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+            ("serde", "1.0.0", "registry+https://github.com/rust-lang/crates.io-index"),
+        ),
+        (
+            "serde 1.0.0 (git+https://example.com/a b)",
+            ("serde", "1.0.0", "git+https://example.com/a b"),
+        ),
+        ("serde 1.0.0 no-parens", ("serde", "1.0.0", None)),
+        ("serde 1.0.0 (unclosed", ("serde", "1.0.0", None)),
+        ("serde 1.0.0 unopened)", ("serde", "1.0.0", None)),
+    ],
+)
+def test_parse_cargo_lock_dependency_spec_variants(
+    spec: str,
+    expected: tuple[str, str | None, str | None],
+) -> None:
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "app", _source_code_manager(), local_project_path="/project"
+    )
+    assert strategy._parse_cargo_lock_dependency_spec(spec) == expected
+
+
+@pytest.mark.parametrize(
+    "exists, content, expected",
+    [
+        (False, "", None),
+        (True, "not valid toml [[[", None),
+        (True, 'package = "not-a-dict"\n', None),
+        (True, "[package]\nversion = '1.0.0'\n", None),
+        (
+            True,
+            '[package]\nname = "member"\nversion = { workspace = true }\n',
+            ("member", None),
+        ),
+        (
+            True,
+            '[package]\nname = "member"\nversion = "0.2.0"\n',
+            ("member", "0.2.0"),
+        ),
+    ],
+)
+def test_get_project_root_package_identity_variants(
+    mocker: pytest_mock.MockFixture,
+    exists: bool,
+    content: str,
+    expected: tuple[str, str | None] | None,
+) -> None:
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        return_value=exists,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        return_value=content,
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "app", _source_code_manager(), local_project_path="/project"
+    )
+    assert strategy._get_project_root_package_identity("/project") == expected
+
+
+def test_select_lockfile_packages_handles_versions_sources_and_cycles(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        return_value=True,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        return_value='[package]\nname = "member"\nversion = "0.2.0"\n',
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "app", _source_code_manager(), local_project_path="/project"
+    )
+    packages: list[dict[str, object]] = [
+        {"name": "member", "version": "0.1.0", "dependencies": ["wrong-dep"]},
+        {
+            "name": "member",
+            "version": "0.2.0",
+            "dependencies": [
+                123,  # non-str ignored
+                "dep 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
+                "member 0.2.0",  # cycle back to root
+            ],
+        },
+        {
+            "name": "dep",
+            "version": "1.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+            "dependencies": "not-a-list",
+        },
+        {
+            "name": "dep",
+            "version": "2.0.0",
+            "source": "registry+https://github.com/rust-lang/crates.io-index",
+        },
+        {
+            "name": "dep",
+            "version": "1.0.0",
+            "source": "git+https://github.com/org/dep",
+        },
+        {"name": "wrong-dep", "version": "0.1.0"},
+        {"name": 999, "version": "0.1.0"},
+    ]
+
+    selected = strategy._select_lockfile_packages(
+        packages, "/project", is_ancestor_lock=True
+    )
+
+    assert [(p["name"], p["version"], p.get("source")) for p in selected] == [
+        ("member", "0.2.0", None),
+        ("dep", "1.0.0", "registry+https://github.com/rust-lang/crates.io-index"),
+    ]
+
+
+def test_rust_crates_io_skips_ambiguous_same_version_mixed_source_crate(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=lambda path: path in {"/project/Cargo.lock", "/project/Cargo.toml"},
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        side_effect=lambda path: {
+            "/project/Cargo.lock": (
+                '[[package]]\nname = "dup"\nversion = "1.0.0"\n'
+                'source = "registry+https://github.com/rust-lang/crates.io-index"\n\n'
+                '[[package]]\nname = "dup"\nversion = "1.0.0"\n'
+                'source = "git+https://github.com/org/dup#abc"\n'
+            ),
+            "/project/Cargo.toml": '[package]\nname = "app"\nversion = "0.1.0"\n',
+        }[path],
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_bounded",
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "app",
+        source_code_manager,
+        local_project_path="/project",
+    )
+
+    result = strategy.augment_metadata([_metadata("dup", "1.0.0")])
+
+    assert result == [_metadata("dup", "1.0.0")]
+    mock_download.assert_not_called()

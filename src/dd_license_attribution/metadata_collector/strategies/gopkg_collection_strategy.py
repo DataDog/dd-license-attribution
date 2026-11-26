@@ -142,12 +142,12 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         selected_module_dir: str,
         current_module_dir: str,
     ) -> bool:
+        if not module_data.get("Main") and current_module_dir != selected_module_dir:
+            return False
         module_path = module_data["Path"]
         if any(meta.name == module_path for meta in metadata):
             return True
-        if not module_data.get("Main"):
-            return False
-        if current_module_dir != selected_module_dir:
+        if not module_data.get("Main") or current_module_dir != selected_module_dir:
             return False
         module_dir = module_data.get("Dir")
         if (

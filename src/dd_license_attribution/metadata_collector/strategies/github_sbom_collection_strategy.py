@@ -213,7 +213,7 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
             if has_repository_path(
                 package.origin
             ) and not self.source_code_manager.is_default_branch_root(package.origin):
-                logger.info(
+                logger.info(  # pragma: no mutate
                     "Package origin '%s' does not target the default-branch "
                     "repository root, skipping the repository-wide GitHub SBOM.",
                     package.origin,

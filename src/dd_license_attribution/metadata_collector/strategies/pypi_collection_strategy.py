@@ -339,24 +339,31 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         ret = ret.replace("github.com/", "com.github.")
         return ret
 
-    def _resolve_top_package_code_url(self, package_origin: str) -> str:
+    def _resolve_top_package_code_url(
+        self, package_origin: str, is_root_target: bool
+    ) -> str:
         # Pass self.top_package when it carries a ref/path suffix that
         # GitHubSbom stripped from package.origin, while still honoring
-        # --override-spec replacements pointing to another repository.
-        if self.top_package != self.canonical_top_package and package_origin in (
-            self.canonical_top_package,
-            self.original_top_package,
+        # --override-spec replacements pointing to another repository or the
+        # repository root.
+        if package_origin == self.original_top_package:
+            return self.top_package
+        if (
+            self.top_package != self.canonical_top_package
+            and package_origin == self.canonical_top_package
+            and is_root_target
         ):
             return self.top_package
         return package_origin
 
     def _find_top_metadata_path(self, metadata: list[Metadata]) -> str | None:
         candidate_list = [self.top_package, self.original_top_package]
-        if (
+        is_root_target = (
             not has_repository_path(self.original_top_package)
             or self.source_code_manager.get_subdirectory_path(self.original_top_package)
             == ""
-        ):
+        )
+        if is_root_target:
             candidate_list.append(self.canonical_top_package)
         candidate_packages = tuple(candidate_list)
         translated_names = {
@@ -375,7 +382,9 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
                 if package.local_src_path is not None:
                     return package.local_src_path
                 if package.origin is not None:
-                    code_url = self._resolve_top_package_code_url(package.origin)
+                    code_url = self._resolve_top_package_code_url(
+                        package.origin, is_root_target=is_root_target
+                    )
                     pkg_source = self.source_code_manager.get_code(code_url)
                     if pkg_source is not None:
                         package.local_src_path = pkg_source.local_full_path
@@ -383,7 +392,9 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
             if package.origin is not None and any(
                 package.origin.endswith(pkg) for pkg in candidate_packages
             ):
-                code_url = self._resolve_top_package_code_url(package.origin)
+                code_url = self._resolve_top_package_code_url(
+                    package.origin, is_root_target=is_root_target
+                )
                 pkg_source = self.source_code_manager.get_code(code_url)
                 if pkg_source is not None:
                     package.local_src_path = pkg_source.local_full_path
