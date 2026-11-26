@@ -307,21 +307,40 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                 dep_name, dep_version, dep_source = (
                     self._parse_cargo_lock_dependency_spec(dep_spec)
                 )
-                for candidate_idx in packages_by_name.get(dep_name, []):
+                candidate_indices = [
+                    idx
+                    for idx in packages_by_name.get(dep_name, [])
+                    if dep_version is None
+                    or packages[idx].get("version") == dep_version
+                ]
+                if dep_source is None:
+                    path_indices = [
+                        idx
+                        for idx in candidate_indices
+                        if packages[idx].get("source") is None
+                    ]
+                    if path_indices:
+                        candidate_indices = path_indices
+                else:
+                    normalized_source = self._normalize_lockfile_source(dep_source)
+                    candidate_indices = [
+                        idx
+                        for idx in candidate_indices
+                        if self._normalize_lockfile_source(packages[idx].get("source"))
+                        == normalized_source
+                    ]
+                for candidate_idx in candidate_indices:
                     if candidate_idx in visited:
-                        continue
-                    candidate = packages[candidate_idx]
-                    if (
-                        dep_version is not None
-                        and candidate.get("version") != dep_version
-                    ):
-                        continue
-                    if dep_source is not None and candidate.get("source") != dep_source:
                         continue
                     visited.add(candidate_idx)
                     queue.append(candidate_idx)
 
         return [packages[idx] for idx in sorted(visited)]
+
+    def _normalize_lockfile_source(self, source: object) -> object:
+        if isinstance(source, str) and source.startswith("git+"):
+            return source.partition("#")[0]
+        return source
 
     def _get_project_root_package_identity(
         self, project_path: str

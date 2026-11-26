@@ -2205,3 +2205,231 @@ def test_rust_crates_io_skips_ambiguous_same_version_mixed_source_crate(
 
     assert result == [_metadata("dup", "1.0.0")]
     mock_download.assert_not_called()
+
+
+def _assert_ancestor_dependency_enrichment(
+    mocker: pytest_mock.MockFixture,
+    lockfile: str,
+) -> None:
+    member_path = "/cache/org-project/member"
+    top_package = "https://github.com/org/project/tree/main/member"
+    source_code_manager = _source_code_manager()
+    source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/project",
+        branch="main",
+        local_root_path="/cache/org-project",
+        local_full_path=member_path,
+    )
+    prefix = (
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy."
+    )
+    mock_walk = mocker.patch(
+        prefix + "walk_directory",
+        return_value=[(member_path, [], ["Cargo.toml"])],
+    )
+    mock_exists = mocker.patch(
+        prefix + "path_exists",
+        side_effect=lambda path: path
+        in {"/cache/org-project/Cargo.lock", member_path + "/Cargo.toml"},
+    )
+    mock_open = mocker.patch(
+        prefix + "open_file",
+        side_effect={
+            "/cache/org-project/Cargo.lock": lockfile,
+            member_path
+            + "/Cargo.toml": ('[package]\nname = "member"\nversion = "0.1.0"\n'),
+        }.__getitem__,
+    )
+    mock_download = mocker.patch(
+        prefix + "download_bounded",
+        return_value=_crate_response(
+            "leaf", "1.0.0", repository="https://github.com/org/leaf"
+        ),
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(top_package, source_code_manager)
+
+    result = strategy.augment_metadata(
+        [
+            mark_rust_metadata(_metadata("leaf", None, copyright=["Existing authors"])),
+            mark_rust_metadata(_metadata("unrelated-only", None)),
+        ]
+    )
+
+    assert result == [
+        _metadata(
+            "leaf",
+            "1.0.0",
+            origin="https://github.com/org/leaf",
+            license=["MIT OR Apache-2.0"],
+            copyright=["Existing authors"],
+        ),
+        _metadata("unrelated-only", None),
+    ]
+    source_code_manager.get_code.assert_called_once_with(top_package)
+    mock_walk.assert_called_once_with(member_path)
+    mock_exists.assert_has_calls(
+        [
+            call(member_path + "/Cargo.lock"),
+            call("/cache/org-project/Cargo.lock"),
+            call(member_path + "/Cargo.toml"),
+            call(member_path + "/Cargo.toml"),
+        ]
+    )
+    assert mock_exists.call_count == 4
+    mock_open.assert_has_calls(
+        [
+            call("/cache/org-project/Cargo.lock"),
+            call(member_path + "/Cargo.toml"),
+            call(member_path + "/Cargo.toml"),
+        ]
+    )
+    assert mock_open.call_count == 3
+    mock_download.assert_called_once_with(
+        f"{CRATES_IO_API_BASE_URL}/leaf", user_agent=DDLA_USER_AGENT
+    )
+
+
+@pytest.mark.parametrize("git_query", ["", "?branch=release", "?rev=abc123"])
+@pytest.mark.parametrize("edge_fragment", ["", "#abc123"])
+def test_ancestor_git_dependency_enriches_transitive_registry_crate(
+    mocker: pytest_mock.MockFixture,
+    git_query: str,
+    edge_fragment: str,
+) -> None:
+    _assert_ancestor_dependency_enrichment(
+        mocker,
+        f"""
+version = 4
+
+[[package]]
+name = "member"
+version = "0.1.0"
+dependencies = ["shared 1.0.0 (git+https://github.com/org/shared{git_query}{edge_fragment})"]
+
+[[package]]
+name = "shared"
+version = "1.0.0"
+source = "git+https://github.com/org/shared{git_query}#abc123"
+dependencies = ["leaf 1.0.0"]
+
+[[package]]
+name = "shared"
+version = "1.0.0"
+source = "git+https://github.com/org/shared?branch=other#def456"
+dependencies = ["leaf 2.0.0", "unrelated-only"]
+
+[[package]]
+name = "shared"
+version = "1.0.0"
+
+[[package]]
+name = "leaf"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "leaf"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "unrelated-only"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+""",
+    )
+
+
+@pytest.mark.parametrize(
+    "unrelated_source",
+    [
+        "registry+https://github.com/rust-lang/crates.io-index",
+        "git+https://github.com/org/shared#abc123",
+    ],
+)
+def test_ancestor_path_dependency_excludes_same_version_other_sources(
+    mocker: pytest_mock.MockFixture,
+    unrelated_source: str,
+) -> None:
+    _assert_ancestor_dependency_enrichment(
+        mocker,
+        f"""
+version = 4
+
+[[package]]
+name = "member"
+version = "0.1.0"
+dependencies = ["left", "right"]
+
+[[package]]
+name = "left"
+version = "0.1.0"
+dependencies = ["shared 1.0.0"]
+
+[[package]]
+name = "right"
+version = "0.1.0"
+dependencies = ["shared 1.0.0"]
+
+[[package]]
+name = "shared"
+version = "1.0.0"
+dependencies = ["leaf 1.0.0"]
+
+[[package]]
+name = "shared"
+version = "1.0.0"
+source = "{unrelated_source}"
+dependencies = ["leaf 2.0.0", "unrelated-only"]
+
+[[package]]
+name = "leaf"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "leaf"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "unrelated-only"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+""",
+    )
+
+
+@pytest.mark.parametrize("dependency_spec", ["shared", "shared 1.0.0"])
+def test_ancestor_source_less_registry_dependency_still_enriches(
+    mocker: pytest_mock.MockFixture,
+    dependency_spec: str,
+) -> None:
+    _assert_ancestor_dependency_enrichment(
+        mocker,
+        f"""
+version = 4
+
+[[package]]
+name = "member"
+version = "0.1.0"
+dependencies = ["{dependency_spec}"]
+
+[[package]]
+name = "shared"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+dependencies = ["leaf"]
+
+[[package]]
+name = "leaf"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "unrelated-only"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+""",
+    )
