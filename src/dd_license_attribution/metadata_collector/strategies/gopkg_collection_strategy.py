@@ -5,16 +5,20 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
+import ipaddress
 import json
 import logging
 import re
+from html.parser import HTMLParser
 from typing import Any
+from urllib.parse import urlparse
 
 from dd_license_attribution.adaptors.os import (
     open_file,
     output_from_command,
     path_exists,
     path_join,
+    resolve_host_ips,
     walk_directory,
 )
 from dd_license_attribution.artifact_management.go_package_resolver import (
@@ -28,8 +32,154 @@ from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
+from dd_license_attribution.utils.bounded_download import download_bounded
 
 logger = logging.getLogger("dd_license_attribution")
+
+_VANITY_MAX_RESPONSE_BYTES = 64 * 1024
+
+
+class _GoImportMetaParser(HTMLParser):
+    """Extract `<meta name="go-import" content="...">` values from HTML head."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.go_imports: list[str] = []
+        self._in_body = False
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "head":
+            self._in_body = True
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag == "body":
+            self._in_body = True
+            return
+        if self._in_body or tag != "meta":
+            return
+        attr_map = {k: v for k, v in attrs if v is not None}
+        name = attr_map.get("name")
+        if name is not None and name.lower() == "go-import":
+            content = attr_map.get("content")
+            if content:
+                self.go_imports.append(content)
+
+
+def _validate_vanity_url_syntax(url: str) -> str:
+    """Validate vanity URL syntax (HTTPS, public-looking host, no credentials/ports/IPs) and return hostname."""
+    if any(ch.isspace() for ch in url):
+        raise ValueError(f"Disallowed whitespace in vanity URL: {url}")
+    parsed = urlparse(url)
+    hostname = parsed.hostname
+    if (
+        parsed.scheme != "https"
+        or not hostname
+        or "%" in hostname
+        or parsed.username is not None
+    ):
+        raise ValueError(f"Disallowed vanity URL: {url}")
+    if parsed.port is not None:
+        raise ValueError(f"Explicit port disallowed in vanity URL: {url}")
+    normalized_host = hostname.removesuffix(".")
+    labels = normalized_host.split(".")
+    if len(labels) < 2 or not all(labels) or normalized_host.endswith(".localhost"):
+        raise ValueError(f"Disallowed vanity URL: {url}")
+    try:
+        ipaddress.ip_address(normalized_host)
+    except ValueError:
+        pass
+    else:
+        raise ValueError(f"IP literal disallowed in vanity URL: {url}")
+    tld = labels[-1]
+    if not (tld.isascii() and (tld.isalpha() or tld.startswith("xn--"))):
+        raise ValueError(f"Numeric or non-public host disallowed in vanity URL: {url}")
+    return hostname
+
+
+def _is_public_ip(ip: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
+        addr = addr.ipv4_mapped
+    return addr.is_global and not addr.is_multicast
+
+
+def _validate_vanity_url(url: str) -> None:
+    """Ensure a vanity fetch or redirect URL targets a public HTTPS host resolving only to public IPs."""
+    hostname = _validate_vanity_url_syntax(url)
+    resolved_ips = resolve_host_ips(hostname)
+    if not resolved_ips or not all(_is_public_ip(ip) for ip in resolved_ips):
+        raise ValueError(f"Non-public resolved IP disallowed for vanity URL: {url}")
+
+
+def _is_resolvable_vanity_path(module_path: str) -> bool:
+    """Return True if module_path looks like a public remote Go vanity import path."""
+    url = f"https://{module_path}"
+    try:
+        _validate_vanity_url_syntax(url)
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    return not parsed.query and not parsed.fragment
+
+
+def _validate_github_repo_root(repo_root: str) -> str | None:
+    """Validate and normalize a GitHub HTTPS repository root URL from a go-import tag."""
+    try:
+        parsed = urlparse(repo_root)
+    except ValueError:
+        return None
+    if (
+        parsed.scheme != "https"
+        or parsed.hostname != "github.com"
+        or parsed.username is not None
+        or parsed.query
+        or parsed.fragment
+    ):
+        return None
+    try:
+        if parsed.port is not None:
+            return None
+    except ValueError:
+        return None
+    repo_path = parsed.path.strip("/").removesuffix(".git")
+    segments = repo_path.split("/")
+    if len(segments) != 2:
+        return None
+    owner, repo = segments
+    if not repo or any(
+        part.startswith("-") or part in (".", "..") for part in (owner, repo)
+    ):
+        return None
+    return f"https://github.com/{owner}/{repo}"
+
+
+def _extract_github_repo_from_go_import(
+    html: str, module_path: str
+) -> tuple[str, str] | None:
+    """Parse go-import meta tags and return (prefix, github_repo_url) for the longest match."""
+    parser = _GoImportMetaParser()
+    parser.feed(html)
+    best_match: tuple[str, str] | None = None
+    for content in parser.go_imports:
+        tokens = content.split()
+        if len(tokens) != 3:
+            continue
+        import_prefix, vcs, repo_root = tokens
+        if vcs != "git":
+            continue
+        if module_path != import_prefix and not module_path.startswith(
+            import_prefix + "/"
+        ):
+            continue
+        github_url = _validate_github_repo_root(repo_root)
+        if github_url is None:
+            continue
+        if best_match is None or len(import_prefix) > len(best_match[0]):
+            best_match = (import_prefix, github_url)
+    return best_match
 
 
 class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
@@ -49,6 +199,8 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         )
         self.single_module = single_module
         self._head_branch_cache: dict[str, str] = {}
+        self._vanity_import_cache: dict[str, str | None] = {}
+        self._vanity_prefix_cache: dict[str, str | None] = {}
 
         if local_project_path is not None:
             # In go-package mode, top_package is a Go import path, not a URL
@@ -283,8 +435,59 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                 return
         metadata.append(module_metadata)
 
+    def _fetch_go_import_match(self, path: str) -> tuple[str, str] | None:
+        url = f"https://{path}?go-get=1"
+        try:
+            _validate_vanity_url(url)
+            raw_html = download_bounded(
+                url,
+                max_bytes=_VANITY_MAX_RESPONSE_BYTES,
+                redirect_validator=_validate_vanity_url,
+            )
+            html = raw_html.decode(errors="replace")
+        except (OSError, ValueError) as e:
+            logger.debug(
+                "Could not resolve Go vanity import for %s: %s",
+                path,
+                e,
+            )
+            return None
+        return _extract_github_repo_from_go_import(html, path)
+
+    def _resolve_vanity_import(self, module_path: str) -> str | None:
+        """Resolve a non-GitHub Go vanity module path via ?go-get=1 to a GitHub repo URL."""
+        if module_path in self._vanity_import_cache:
+            return self._vanity_import_cache[module_path]
+
+        if not _is_resolvable_vanity_path(module_path):
+            return None
+
+        match = self._fetch_go_import_match(module_path)
+        if match is None:
+            self._vanity_import_cache[module_path] = None
+            return None
+
+        import_prefix, github_url = match
+        if import_prefix != module_path:
+            if import_prefix not in self._vanity_prefix_cache:
+                prefix_match = self._fetch_go_import_match(import_prefix)
+                self._vanity_prefix_cache[import_prefix] = (
+                    prefix_match[1]
+                    if prefix_match is not None and prefix_match[0] == import_prefix
+                    else None
+                )
+            if self._vanity_prefix_cache[import_prefix] != github_url:
+                self._vanity_import_cache[module_path] = None
+                return None
+
+        self._vanity_import_cache[module_path] = github_url
+        return github_url
+
     def _translate_github_path(self, path: str) -> str:
         if not path.startswith("github.com"):
+            resolved = self._resolve_vanity_import(path)
+            if resolved is not None:
+                return resolved
             return f"https://{path}"
         parts = path.split("/", 3)
         if len(parts) > 3:

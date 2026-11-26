@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/).
 
 ### Added
 - `--go-single-module` scopes a repository scan to the Go module whose `go.mod` is at the repository root, ignoring nested modules and `go.work` (`GOWORK=off`), so a monorepo's root module report no longer lists the dependencies of every nested module. It also skips the GitHub SBOM strategy for the whole scan, and under `--only-transitive-dependencies` drops the root module's own entry. Default behavior is unchanged.
+- `GoPkgMetadataCollectionStrategy` now resolves non-GitHub Go vanity import paths (such as `k8s.io/*`, `sigs.k8s.io/*`, `go.opentelemetry.io/*`, `gomodules.xyz/*`, and `google.golang.org/*`) via `?go-get=1` `<meta name="go-import">` tags to their underlying GitHub repository URLs (with bounded 64 KiB HTTPS fetches, validated redirects, strict URL validation, and exact-path caching). This enables ScanCode fallback and GitHub repository metadata enrichment (including copyright attribution) for vanity-domain Go dependencies.
 
 ### Fixed
 - Default ScanCode license and copyright presets now recognize additional standard umbrella license filename extensions (`COPYING.md`, `COPYING.txt`, `COPYING.rst`, `LICENSE.rst`, `LICENCE.txt`, `LICENCE.rst`), allowing repositories such as `github.com/cyphar/filepath-securejoin` (which declares its license in `COPYING.md`) to be detected locally without merging separate per-license choice files into an incorrect `AND`.

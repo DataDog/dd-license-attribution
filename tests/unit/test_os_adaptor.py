@@ -5,6 +5,7 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2026-present Datadog, Inc.
 
+import socket
 import subprocess
 import tarfile
 from collections.abc import Iterator
@@ -15,14 +16,17 @@ import pytest_mock
 import requests
 
 from dd_license_attribution.adaptors.os import (
+    _NO_AUTH,
     absolute_path,
     extract_tar_members,
     get_env_var,
     is_absolute_path,
     normalize_path,
+    resolve_host_ips,
     run_command,
     run_command_with_check,
     stream_url,
+    stream_url_once,
 )
 
 
@@ -226,4 +230,181 @@ def test_run_command_with_check_returns_timeout_details(
         cwd=None,
         env=None,
         timeout=1,
+    )
+
+
+def test_stream_url_once_yields_status_headers_and_chunks_without_redirects(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    response = _mock_response([b"ok"], headers={"Location": "/next"})
+    response.status_code = 301
+    mock_get = mocker.patch(
+        "dd_license_attribution.adaptors.os.requests.get",
+        return_value=response,
+    )
+
+    with stream_url_once(
+        "https://vanity.example/pkg?go-get=1",
+        {"User-Agent": "test"},
+        1024,
+    ) as (status_code, headers, chunks):
+        assert status_code == 301
+        assert headers == {"Location": "/next"}
+        assert list(chunks) == [b"ok"]
+
+    mock_get.assert_called_once_with(
+        "https://vanity.example/pkg?go-get=1",
+        allow_redirects=False,
+        auth=_NO_AUTH,
+        headers={"User-Agent": "test"},
+        stream=True,
+        timeout=30,
+    )
+    response.raise_for_status.assert_called_once_with()
+    response.iter_content.assert_called_once_with(chunk_size=1024)
+    response.close.assert_called_once_with()
+
+
+def test_stream_url_once_wraps_request_errors(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_get = mocker.patch(
+        "dd_license_attribution.adaptors.os.requests.get",
+        side_effect=requests.Timeout("timed out"),
+    )
+
+    with pytest.raises(OSError, match="Failed to download https://example.test/pkg"):
+        with stream_url_once("https://example.test/pkg", {"User-Agent": "test"}, 1024):
+            pass
+
+    mock_get.assert_called_once_with(
+        "https://example.test/pkg",
+        allow_redirects=False,
+        auth=_NO_AUTH,
+        headers={"User-Agent": "test"},
+        stream=True,
+        timeout=30,
+    )
+
+
+def test_stream_url_once_closes_response_when_status_check_fails(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    response = _mock_response([])
+    response.raise_for_status.side_effect = requests.HTTPError("404 not found")
+    mock_get = mocker.patch(
+        "dd_license_attribution.adaptors.os.requests.get",
+        return_value=response,
+    )
+
+    with pytest.raises(OSError, match="Failed to download https://example.test/pkg"):
+        with stream_url_once("https://example.test/pkg", {"User-Agent": "test"}, 1024):
+            pass
+
+    mock_get.assert_called_once_with(
+        "https://example.test/pkg",
+        allow_redirects=False,
+        auth=_NO_AUTH,
+        headers={"User-Agent": "test"},
+        stream=True,
+        timeout=30,
+    )
+    response.raise_for_status.assert_called_once_with()
+    response.iter_content.assert_not_called()
+    response.close.assert_called_once_with()
+
+
+def test_stream_url_once_closes_response_when_body_iteration_fails(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    def failing_chunks() -> Iterator[bytes]:
+        raise requests.ConnectionError("connection lost")
+        yield b"unreachable"
+
+    response = _mock_response([])
+    response.status_code = 200
+    response.iter_content.return_value = failing_chunks()
+    mock_get = mocker.patch(
+        "dd_license_attribution.adaptors.os.requests.get",
+        return_value=response,
+    )
+
+    with pytest.raises(OSError, match="Failed to download https://example.test/pkg"):
+        with stream_url_once(
+            "https://example.test/pkg",
+            {"User-Agent": "test"},
+            1024,
+        ) as (_, _, chunks):
+            b"".join(chunks)
+
+    mock_get.assert_called_once_with(
+        "https://example.test/pkg",
+        allow_redirects=False,
+        auth=_NO_AUTH,
+        headers={"User-Agent": "test"},
+        stream=True,
+        timeout=30,
+    )
+    response.raise_for_status.assert_called_once_with()
+    response.iter_content.assert_called_once_with(chunk_size=1024)
+    response.close.assert_called_once_with()
+
+
+def test_no_auth_suppresses_netrc_credentials_and_preserves_request(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_netrc = mocker.patch(
+        "requests.sessions.get_netrc_auth",
+        return_value=("user", "secret"),
+    )
+    session = requests.Session()
+    req = requests.Request("GET", "https://vanity.example/pkg?go-get=1", auth=_NO_AUTH)
+    prepared = session.prepare_request(req)
+    assert "Authorization" not in prepared.headers
+    assert _NO_AUTH(prepared) is prepared
+    mock_netrc.assert_not_called()
+
+
+def test_resolve_host_ips_returns_sorted_unique_ips(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_getaddrinfo = mocker.patch(
+        "dd_license_attribution.adaptors.os.socket.getaddrinfo",
+        return_value=[
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443)),
+            (
+                socket.AF_INET6,
+                socket.SOCK_STREAM,
+                6,
+                "",
+                ("2606:2800:220:1::1", 443, 0, 0),
+            ),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443)),
+        ],
+    )
+
+    result = resolve_host_ips("vanity.example")
+    assert result == ["2606:2800:220:1::1", "93.184.216.34"]
+    mock_getaddrinfo.assert_called_once_with(
+        "vanity.example",
+        443,
+        type=socket.SOCK_STREAM,
+    )
+
+
+def test_resolve_host_ips_wraps_os_error(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_getaddrinfo = mocker.patch(
+        "dd_license_attribution.adaptors.os.socket.getaddrinfo",
+        side_effect=socket.gaierror("name not known"),
+    )
+
+    with pytest.raises(OSError, match="Failed to resolve host bad.example"):
+        resolve_host_ips("bad.example", port=8443)
+
+    mock_getaddrinfo.assert_called_once_with(
+        "bad.example",
+        8443,
+        type=socket.SOCK_STREAM,
     )

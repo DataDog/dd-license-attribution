@@ -5,8 +5,11 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
+import json
+import logging
 from unittest.mock import call
 
+import pytest
 import pytest_mock
 
 from dd_license_attribution.artifact_management.artifact_manager import (
@@ -1358,6 +1361,728 @@ def test_gopkg_local_project_path_module_graph_empty_output(
             ),
         ]
     )
+
+
+def test_gopkg_resolves_vanity_imports_via_go_get_and_caches_exact_path(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Vanity Go module paths resolve via ?go-get=1 with redirect validation and exact-path caching."""
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/org/app",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/go-resolve/app",
+    )
+    deps_list_json = """
+{
+    "ImportPath": "k8s.io/api/core/v1",
+    "Module": {
+        "Path": "k8s.io/api",
+        "Version": "v0.37.0"
+    }
+}
+{
+    "ImportPath": "go.opentelemetry.io/collector/component",
+    "Module": {
+        "Path": "go.opentelemetry.io/collector/component",
+        "Version": "v1.52.0"
+    }
+}
+{
+    "ImportPath": "go.opentelemetry.io/collector/featuregate",
+    "Module": {
+        "Path": "go.opentelemetry.io/collector/featuregate",
+        "Version": "v1.52.0"
+    }
+}
+{
+    "ImportPath": "sigs.k8s.io/controller-runtime/pkg/client",
+    "Module": {
+        "Path": "sigs.k8s.io/controller-runtime",
+        "Version": "v0.25.2"
+    }
+}"""
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json,
+    )
+    k8s_html = (
+        b"<html><head><!-- \xff -->"
+        b'<meta name="GO-IMPORT" content="k8s.io/api\n  git https://GITHUB.COM/kubernetes/api.git">'
+        b"</head><body>"
+        b'<meta name="go-import" content="k8s.io/api git https://github.com/evil/in-body">'
+        b"</body></html>"
+    )
+    otel_html = (
+        b"<html><head>"
+        b'<meta name="description" content="ignored">'
+        b'<meta name="go-import" content="go.opentelemetry.io git https://github.com/open-telemetry/root">'
+        b'<meta name="go-import" content="go.opentelemetry.io/collector git https://github.com/open-telemetry/opentelemetry-collector">'
+        b'<meta name="go-import" content="go.opentelemetry.io git https://github.com/open-telemetry/shorter-later">'
+        b'<meta name="go-import" content="go.opentelemetry.io/collector git https://github.com/open-telemetry/equal-later">'
+        b"</head></html>"
+    )
+    sigs_html = (
+        b"<html><head>"
+        b'<meta name="go-import" content="only-two tokens">'
+        b'<meta name="go-import" content="sigs.k8s.io/controller-runtime hg https://github.com/kubernetes-sigs/controller-runtime">'
+        b'<meta name="go-import" content="other.example.com/pkg git https://github.com/other/repo">'
+        b'<meta name="go-import" content="sigs.k8s.io/controller-runtime git https://go.googlesource.com/controller-runtime">'
+        b'<meta name="go-import" content="sigs.k8s.io/controller-runtime git https://github.com/kubernetes-sigs/controller-runtime/">'
+        b"</head></html>"
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.resolve_host_ips",
+        return_value=["93.184.216.34"],
+    )
+    mock_download_bounded = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.download_bounded",
+        side_effect=[k8s_html, otel_html, otel_html, otel_html, sigs_html],
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/app",
+            origin="github.com/org/app",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert [(m.name, m.origin) for m in result] == [
+        ("k8s.io/api", "https://github.com/kubernetes/api"),
+        (
+            "go.opentelemetry.io/collector/component",
+            "https://github.com/open-telemetry/opentelemetry-collector",
+        ),
+        (
+            "go.opentelemetry.io/collector/featuregate",
+            "https://github.com/open-telemetry/opentelemetry-collector",
+        ),
+        (
+            "sigs.k8s.io/controller-runtime",
+            "https://github.com/kubernetes-sigs/controller-runtime",
+        ),
+    ]
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="/tmp/go-resolve/app",
+        env={"GOTOOLCHAIN": "auto"},
+    )
+    # Non-exact prefix go.opentelemetry.io/collector is verified once at its authoritative URL
+    assert [c.args for c in mock_download_bounded.call_args_list] == [
+        ("https://k8s.io/api?go-get=1",),
+        ("https://go.opentelemetry.io/collector/component?go-get=1",),
+        ("https://go.opentelemetry.io/collector?go-get=1",),
+        ("https://go.opentelemetry.io/collector/featuregate?go-get=1",),
+        ("https://sigs.k8s.io/controller-runtime?go-get=1",),
+    ]
+    for c in mock_download_bounded.call_args_list:
+        assert c.kwargs["max_bytes"] == 64 * 1024
+        validator = c.kwargs["redirect_validator"]
+        assert callable(validator)
+        # Valid HTTPS redirect passes; SSRF/unsafe redirects raise ValueError
+        validator("https://gomodules.xyz/jsonpatch/v2/?go-get=1")
+        for bad_redirect, expected_msg in [
+            ("http://127.0.0.1:8123/admin/reload", "Disallowed vanity URL"),
+            ("https://169.254.169.254/latest/meta-data", "IP literal disallowed"),
+            ("https://localhost/secret", "Disallowed vanity URL"),
+            ("https://sub.localhost/secret", "Disallowed vanity URL"),
+            ("https://user@example.com/pkg", "Disallowed vanity URL"),
+            ("https://example.com:8443/pkg", "Explicit port disallowed"),
+            ("https://[broken/pkg", "Invalid IPv6 URL"),
+            ("https://example.com/bad url", "Disallowed whitespace"),
+            ("https://%31%32%37.0.0.1/admin/reload", "Disallowed vanity URL"),
+        ]:
+            with pytest.raises(ValueError, match=expected_msg):
+                validator(bad_redirect)
+    mock_source_code_manager.get_code.assert_not_called()
+    mock_source_code_manager.get_canonical_urls.assert_not_called()
+
+
+def test_gopkg_vanity_import_checks_nested_modules_independently_and_handles_redirect_errors(
+    mocker: pytest_mock.MockFixture,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Parent module resolution must not shadow nested modules with distinct repos; redirect/network errors fall back and cache."""
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/org/app",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/go-resolve/app",
+    )
+    deps_list_json = """
+{
+    "ImportPath": "go.example.io/a",
+    "Module": {"Path": "go.example.io/a", "Version": "v1.0.0"}
+}
+{
+    "ImportPath": "go.example.io/a/b",
+    "Module": {"Path": "go.example.io/a/b", "Version": "v1.0.0"}
+}
+{
+    "ImportPath": "go.broken.io/x",
+    "Module": {"Path": "go.broken.io/x", "Version": "v1.0.0"}
+}
+{
+    "ImportPath": "go.ssrf.io/evil",
+    "Module": {"Path": "go.ssrf.io/evil", "Version": "v1.0.0"}
+}"""
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.resolve_host_ips",
+        return_value=["93.184.216.34"],
+    )
+    mock_download_bounded = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.download_bounded",
+        side_effect=[
+            b'<meta name="go-import" content="go.example.io/a git https://github.com/example/root">',
+            b'<meta name="go-import" content="go.example.io/a/b git https://github.com/Xexample/subX">',
+            OSError("timeout"),
+            ValueError("IP literal disallowed in vanity URL"),
+        ],
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/app",
+            origin="github.com/org/app",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    with caplog.at_level(logging.DEBUG, logger="dd_license_attribution"):
+        result = strategy.augment_metadata(initial_metadata)
+        # Re-run to verify exact cache hits on both positive and negative entries
+        result_again = strategy.augment_metadata(result)
+
+    assert [(m.name, m.origin) for m in result_again] == [
+        ("go.example.io/a", "https://github.com/example/root"),
+        ("go.example.io/a/b", "https://github.com/Xexample/subX"),
+        ("go.broken.io/x", "https://go.broken.io/x"),
+        ("go.ssrf.io/evil", "https://go.ssrf.io/evil"),
+    ]
+    assert (
+        "Could not resolve Go vanity import for go.broken.io/x: timeout"
+        in caplog.messages
+    )
+    assert (
+        "Could not resolve Go vanity import for go.ssrf.io/evil: IP literal disallowed in vanity URL"
+        in caplog.messages
+    )
+    assert [c.args for c in mock_download_bounded.call_args_list] == [
+        ("https://go.example.io/a?go-get=1",),
+        ("https://go.example.io/a/b?go-get=1",),
+        ("https://go.broken.io/x?go-get=1",),
+        ("https://go.ssrf.io/evil?go-get=1",),
+    ]
+    expected_go_list_calls = [
+        call(
+            ["go", "list", "-json", "all"],
+            cwd="/tmp/go-resolve/app",
+            env={"GOTOOLCHAIN": "auto"},
+        ),
+        call(
+            ["go", "list", "-json", "all"],
+            cwd="/tmp/go-resolve/app",
+            env={"GOTOOLCHAIN": "auto"},
+        ),
+    ]
+    mock_output_from_command.assert_has_calls(expected_go_list_calls)
+    assert mock_output_from_command.call_args_list == expected_go_list_calls
+    mock_source_code_manager.get_code.assert_not_called()
+    mock_source_code_manager.get_canonical_urls.assert_not_called()
+
+
+def test_gopkg_vanity_import_rejects_unverified_non_exact_prefix_claim(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """A non-exact go-import prefix claim must match the authoritative prefix URL's ?go-get=1 response."""
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/org/app",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/go-resolve/app",
+    )
+    deps_list_json = """
+{
+    "ImportPath": "vanity.example/bob/pkg",
+    "Module": {"Path": "vanity.example/bob/pkg", "Version": "v1.0.0"}
+}
+{
+    "ImportPath": "vanity.example/alice/pkg",
+    "Module": {"Path": "vanity.example/alice/pkg", "Version": "v1.0.0"}
+}
+{
+    "ImportPath": "badhost.example/sub/pkg",
+    "Module": {"Path": "badhost.example/sub/pkg", "Version": "v1.0.0"}
+}
+{
+    "ImportPath": "shorter.example/sub/pkg",
+    "Module": {"Path": "shorter.example/sub/pkg", "Version": "v1.0.0"}
+}"""
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.resolve_host_ips",
+        return_value=["93.184.216.34"],
+    )
+    mock_download_bounded = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.download_bounded",
+        side_effect=[
+            b'<meta name="go-import" content="vanity.example git https://github.com/bob/evil">',
+            b'<meta name="go-import" content="vanity.example git https://github.com/real/repo">',
+            b'<meta name="go-import" content="vanity.example git https://github.com/real/repo">',
+            b'<meta name="go-import" content="badhost.example/sub git https://github.com/org/sub">',
+            OSError("prefix unreachable"),
+            b'<meta name="go-import" content="shorter.example/sub git https://github.com/org/sub">',
+            b'<meta name="go-import" content="shorter.example git https://github.com/org/sub">',
+        ],
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/app",
+            origin="github.com/org/app",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+    # Re-run to verify rejected non-exact prefix claims are negative-cached as None
+    result_again = strategy.augment_metadata(result)
+
+    assert [(m.name, m.origin) for m in result_again] == [
+        ("vanity.example/bob/pkg", "https://vanity.example/bob/pkg"),
+        ("vanity.example/alice/pkg", "https://github.com/real/repo"),
+        ("badhost.example/sub/pkg", "https://badhost.example/sub/pkg"),
+        ("shorter.example/sub/pkg", "https://shorter.example/sub/pkg"),
+    ]
+    assert [c.args for c in mock_download_bounded.call_args_list] == [
+        ("https://vanity.example/bob/pkg?go-get=1",),
+        ("https://vanity.example?go-get=1",),
+        ("https://vanity.example/alice/pkg?go-get=1",),
+        ("https://badhost.example/sub/pkg?go-get=1",),
+        ("https://badhost.example/sub?go-get=1",),
+        ("https://shorter.example/sub/pkg?go-get=1",),
+        ("https://shorter.example/sub?go-get=1",),
+    ]
+    expected_go_list_calls = [
+        call(
+            ["go", "list", "-json", "all"],
+            cwd="/tmp/go-resolve/app",
+            env={"GOTOOLCHAIN": "auto"},
+        ),
+        call(
+            ["go", "list", "-json", "all"],
+            cwd="/tmp/go-resolve/app",
+            env={"GOTOOLCHAIN": "auto"},
+        ),
+    ]
+    mock_output_from_command.assert_has_calls(expected_go_list_calls)
+    assert mock_output_from_command.call_args_list == expected_go_list_calls
+    mock_source_code_manager.get_code.assert_not_called()
+    mock_source_code_manager.get_canonical_urls.assert_not_called()
+
+
+def test_gopkg_vanity_prefix_cache_is_isolated_from_module_cache(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Prefix verification cache and module resolution cache must not interfere in either lookup order."""
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/org/app",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/go-resolve/app",
+    )
+    deps_list_json = """
+{
+    "ImportPath": "shorter.example/sub/pkg",
+    "Module": {"Path": "shorter.example/sub/pkg", "Version": "v1.0.0"}
+}
+{
+    "ImportPath": "shorter.example/sub",
+    "Module": {"Path": "shorter.example/sub", "Version": "v1.0.0"}
+}
+{
+    "ImportPath": "rev.example/sub",
+    "Module": {"Path": "rev.example/sub", "Version": "v1.0.0"}
+}
+{
+    "ImportPath": "rev.example/sub/pkg",
+    "Module": {"Path": "rev.example/sub/pkg", "Version": "v1.0.0"}
+}"""
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.resolve_host_ips",
+        return_value=["93.184.216.34"],
+    )
+    mock_download_bounded = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.download_bounded",
+        side_effect=[
+            # 1. shorter.example/sub/pkg claims shorter.example/sub -> fails prefix check because /sub declares shorter.example
+            b'<meta name="go-import" content="shorter.example/sub git https://github.com/org/sub">',
+            b'<meta name="go-import" content="shorter.example git https://github.com/org/sub">',
+            # 2. shorter.example/sub resolved as its own module -> must still fetch and succeed via shorter.example
+            b'<meta name="go-import" content="shorter.example git https://github.com/org/sub">',
+            b'<meta name="go-import" content="shorter.example git https://github.com/org/sub">',
+            # 3. rev.example/sub resolved first -> succeeds via rev.example
+            b'<meta name="go-import" content="rev.example git https://github.com/org/rev">',
+            b'<meta name="go-import" content="rev.example git https://github.com/org/rev">',
+            # 4. rev.example/sub/pkg claims rev.example/sub -> must still verify /sub (not reuse module cache) and reject
+            b'<meta name="go-import" content="rev.example/sub git https://github.com/org/rev">',
+            b'<meta name="go-import" content="rev.example git https://github.com/org/rev">',
+        ],
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/app",
+            origin="github.com/org/app",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert [(m.name, m.origin) for m in result] == [
+        ("shorter.example/sub/pkg", "https://shorter.example/sub/pkg"),
+        ("shorter.example/sub", "https://github.com/org/sub"),
+        ("rev.example/sub", "https://github.com/org/rev"),
+        ("rev.example/sub/pkg", "https://rev.example/sub/pkg"),
+    ]
+    assert [c.args for c in mock_download_bounded.call_args_list] == [
+        ("https://shorter.example/sub/pkg?go-get=1",),
+        ("https://shorter.example/sub?go-get=1",),
+        ("https://shorter.example/sub?go-get=1",),
+        ("https://shorter.example?go-get=1",),
+        ("https://rev.example/sub?go-get=1",),
+        ("https://rev.example?go-get=1",),
+        ("https://rev.example/sub/pkg?go-get=1",),
+        ("https://rev.example/sub?go-get=1",),
+    ]
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="/tmp/go-resolve/app",
+        env={"GOTOOLCHAIN": "auto"},
+    )
+    mock_source_code_manager.get_code.assert_not_called()
+    mock_source_code_manager.get_canonical_urls.assert_not_called()
+
+
+def test_gopkg_vanity_import_rejects_unsafe_paths_and_malformed_meta_tags(
+    mocker: pytest_mock.MockFixture,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Unsafe/local module paths skip HTTP; non-GitHub, non-git, or malformed go-import tags fall back."""
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/org/app",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/go-resolve/app",
+    )
+    # Unsafe/unresolvable paths must not trigger any HTTP fetch
+    unsafe_paths = [
+        "",
+        "k8s.io/api bad",
+        "/leading-slash",
+        "localhost/pkg",
+        "sub.localhost/pkg",
+        "localhost./pkg",
+        "sub.localhost./pkg",
+        "user@k8s.io/api",
+        "k8s.io/api?x=1",
+        "k8s.io/api#frag",
+        "k8s.io:8080/api",
+        "k8s.io:notaport/api",
+        "127.0.0.1/pkg",
+        "127.1/pkg",
+        "0177.0.0.1/pkg",
+        "0x7f.0x1/pkg",
+        "bad..host/pkg",
+        ".example.com/pkg",
+        "example.com../pkg",
+        "example.рф/pkg",
+        "[::1]/pkg",
+        "[broken/pkg",
+    ]
+    unsafe_deps_json = "\n".join(
+        json.dumps(
+            {"ImportPath": f"pkg/{i}", "Module": {"Path": path, "Version": "v1.0.0"}}
+        )
+        for i, path in enumerate(unsafe_paths)
+    )
+    # Malformed, non-git, non-GitHub, in-body, or unsafe repo_root tags must be rejected
+    bad_meta_html = (
+        b"<html><head>"
+        b'<link name="go-import" content="vanity.example.com/pkg git https://github.com/evil/not-meta">'
+        b'<meta content="vanity.example.com/pkg git https://github.com/evil/no-name">'
+        b'<meta name content="vanity.example.com/pkg git https://github.com/evil/bool-name">'
+        b'<meta name="go-import">'
+        b'<meta name="go-import" content="">'
+        b'<meta name="go-import" content="only-two tokens">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com/org/repo extra">'
+        b'<meta name="go-import" content="vanity.example.com/pkg hg https://github.com/org/repo">'
+        b'<meta name="go-import" content="other.example.com/pkg git https://github.com/org/repo">'
+        b'<meta name="go-import" content="vanity.example.com/pk git https://github.com/evil/partial-prefix">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git http://github.com/org/repo">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https:///org/repo">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://go.googlesource.com/repo">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://user@github.com/org/repo">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com:443/org/repo">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com:bad/org/repo">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com/org/repo?q=1">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com/org/repo#frag">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com/only-owner">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com/org/repo/extra">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com/-flag/repo">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com/org/-flag">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com/./repo">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com/org/.">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com/../repo">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com/org/..">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com/org/.git">'
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://[broken/org/repo">'
+        b"</head><main>"
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com/evil/after-head">'
+        b"</main><body>"
+        b'<meta name="go-import" content="vanity.example.com/pkg git https://github.com/evil/in-body">'
+        b"</body></html>"
+    )
+    vanity_dep_json = json.dumps(
+        {
+            "ImportPath": "vanity.example.com/pkg",
+            "Module": {"Path": "vanity.example.com/pkg", "Version": "v1.0.0"},
+        }
+    )
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=[unsafe_deps_json, vanity_dep_json, vanity_dep_json],
+    )
+    mock_resolve_host_ips = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.resolve_host_ips",
+        return_value=["93.184.216.34"],
+    )
+    mock_download_bounded = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.download_bounded",
+        return_value=bad_meta_html,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/app",
+            origin="github.com/org/app",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+    with caplog.at_level(logging.DEBUG, logger="dd_license_attribution"):
+        unsafe_result = strategy.augment_metadata(initial_metadata)
+    assert [(m.name, m.origin) for m in unsafe_result] == [
+        (path, f"https://{path}") for path in unsafe_paths
+    ]
+    assert caplog.messages == []
+    mock_resolve_host_ips.assert_not_called()
+    mock_download_bounded.assert_not_called()
+
+    # Fetch vanity.example.com/pkg once, reject all malformed tags, and negative-cache it
+    vanity_result = strategy.augment_metadata(list(initial_metadata))
+    vanity_result_cached = strategy.augment_metadata(vanity_result)
+    assert [(m.name, m.origin) for m in vanity_result_cached] == [
+        ("vanity.example.com/pkg", "https://vanity.example.com/pkg")
+    ]
+    assert [c.args for c in mock_download_bounded.call_args_list] == [
+        ("https://vanity.example.com/pkg?go-get=1",)
+    ]
+    assert mock_download_bounded.call_args.kwargs["max_bytes"] == 64 * 1024
+    assert callable(mock_download_bounded.call_args.kwargs["redirect_validator"])
+    expected_go_list_calls = [
+        call(
+            ["go", "list", "-json", "all"],
+            cwd="/tmp/go-resolve/app",
+            env={"GOTOOLCHAIN": "auto"},
+        ),
+        call(
+            ["go", "list", "-json", "all"],
+            cwd="/tmp/go-resolve/app",
+            env={"GOTOOLCHAIN": "auto"},
+        ),
+        call(
+            ["go", "list", "-json", "all"],
+            cwd="/tmp/go-resolve/app",
+            env={"GOTOOLCHAIN": "auto"},
+        ),
+    ]
+    mock_output_from_command.assert_has_calls(expected_go_list_calls)
+    assert mock_output_from_command.call_args_list == expected_go_list_calls
+    mock_source_code_manager.get_code.assert_not_called()
+    mock_source_code_manager.get_canonical_urls.assert_not_called()
+
+
+def test_gopkg_vanity_import_validates_resolved_ips_for_initial_and_redirect_urls(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Initial vanity hosts and redirect targets must resolve exclusively to public non-multicast IPs."""
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/org/app",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/go-resolve/app",
+    )
+    deps_list_json = "\n".join(
+        json.dumps(
+            {
+                "ImportPath": f"{host}/pkg",
+                "Module": {"Path": f"{host}/pkg", "Version": "v1.0.0"},
+            }
+        )
+        for host in [
+            "loopback.example",
+            "private.example",
+            "linklocal.example",
+            "cgnat.example",
+            "multicast.example",
+            "mapped-loopback.example",
+            "mixed.example",
+            "empty.example",
+            "garbage.example",
+            "nxdomain.example",
+            "mapped-public.example",
+            "punycode.xn--p1ai",
+            "bodyonly.example",
+        ]
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json,
+    )
+    ip_map: dict[str, list[str] | Exception] = {
+        "loopback.example": ["127.0.0.1"],
+        "private.example": ["10.0.0.5"],
+        "linklocal.example": ["169.254.169.254"],
+        "cgnat.example": ["100.64.0.1"],
+        "multicast.example": ["224.0.0.1"],
+        "mapped-loopback.example": ["::ffff:127.0.0.1"],
+        "mixed.example": ["93.184.216.34", "192.168.1.1"],
+        "empty.example": [],
+        "garbage.example": ["not-an-ip"],
+        "nxdomain.example": OSError("Failed to resolve host nxdomain.example"),
+        "mapped-public.example": ["::ffff:93.184.216.34"],
+        "punycode.xn--p1ai": ["2606:2800:220:1::1"],
+        "bodyonly.example": ["93.184.216.34"],
+        "redirect-private.example": ["10.1.2.3"],
+        "redirect-public.example": ["93.184.216.34"],
+        "redirect-public.example.": ["93.184.216.34"],
+    }
+
+    def fake_resolve(hostname: str) -> list[str]:
+        entry = ip_map[hostname]
+        if isinstance(entry, Exception):
+            raise entry
+        return entry
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.resolve_host_ips",
+        side_effect=fake_resolve,
+    )
+    captured_validators: list[object] = []
+
+    def fake_download(
+        url: str,
+        *,
+        max_bytes: int,
+        redirect_validator: object = None,
+    ) -> bytes:
+        captured_validators.append(redirect_validator)
+        if url == "https://mapped-public.example/pkg?go-get=1":
+            return b'<meta name="go-import" content="mapped-public.example/pkg git https://github.com/org/mapped">'
+        if url == "https://punycode.xn--p1ai/pkg?go-get=1":
+            return b'<meta name="go-import" content="punycode.xn--p1ai/pkg git https://github.com/org/puny">'
+        # HTML with <body> but no </head> verifies handle_starttag("body") independently of handle_endtag("head")
+        return (
+            b"<html><body>"
+            b'<meta name="go-import" content="bodyonly.example/pkg git https://github.com/evil/body-only">'
+            b"</body></html>"
+        )
+
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.download_bounded",
+        side_effect=fake_download,
+    )
+
+    result = strategy.augment_metadata(
+        [
+            Metadata(
+                name="github.com/org/app",
+                origin="github.com/org/app",
+                local_src_path=None,
+                license=[],
+                version=None,
+                copyright=[],
+            )
+        ]
+    )
+    origins = {m.name: m.origin for m in result}
+    assert origins["mapped-public.example/pkg"] == "https://github.com/org/mapped"
+    assert origins["punycode.xn--p1ai/pkg"] == "https://github.com/org/puny"
+    assert origins["bodyonly.example/pkg"] == "https://bodyonly.example/pkg"
+    for rejected_host in [
+        "loopback.example",
+        "private.example",
+        "linklocal.example",
+        "cgnat.example",
+        "multicast.example",
+        "mapped-loopback.example",
+        "mixed.example",
+        "empty.example",
+        "garbage.example",
+        "nxdomain.example",
+    ]:
+        assert origins[f"{rejected_host}/pkg"] == f"https://{rejected_host}/pkg"
+
+    # Only the 3 hosts resolving to public IPs reached download_bounded
+    assert [c.args for c in mock_download.call_args_list] == [
+        ("https://mapped-public.example/pkg?go-get=1",),
+        ("https://punycode.xn--p1ai/pkg?go-get=1",),
+        ("https://bodyonly.example/pkg?go-get=1",),
+    ]
+    # Verify the redirect validator itself blocks private-IP redirects and numeric aliases
+    validator = captured_validators[0]
+    assert callable(validator)
+    validator("https://redirect-public.example/pkg?go-get=1")
+    validator("https://redirect-public.example./pkg?go-get=1")
+    with pytest.raises(ValueError, match="Non-public resolved IP"):
+        validator("https://redirect-private.example/pkg?go-get=1")
+    with pytest.raises(ValueError, match="Numeric or non-public host"):
+        validator("https://127.1/pkg?go-get=1")
+    with pytest.raises(ValueError, match="Numeric or non-public host"):
+        validator("https://0177.0.0.1/pkg?go-get=1")
 
 
 _SINGLE_MODULE_GO_LIST_OUTPUT = """
