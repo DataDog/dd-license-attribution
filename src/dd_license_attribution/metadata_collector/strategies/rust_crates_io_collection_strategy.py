@@ -66,21 +66,36 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
 
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = metadata.copy()
-        project_paths = self._get_project_paths()
+        project_paths, workspace_root = self._get_project_paths_and_root()
         locked_crate_versions: dict[str, set[str]] = {}
         manifest_crate_versions: dict[str, set[str]] = {}
+        non_crates_io_crates: set[str] = set()
+        non_crates_io_versions: dict[str, set[str]] = {}
+        direct_crates_io_crates: set[str] = set()
         for project_path in project_paths:
             self._merge_crate_versions(
                 locked_crate_versions,
-                self._get_locked_crate_versions(project_path),
+                self._get_locked_crate_versions(
+                    project_path,
+                    workspace_root=workspace_root,
+                    non_crates_io_crates=non_crates_io_crates,
+                    non_crates_io_versions=non_crates_io_versions,
+                ),
             )
             self._merge_crate_versions(
                 manifest_crate_versions,
                 self._get_manifest_crate_versions(
                     project_path,
                     include_package_version=self.local_project_path is not None,
+                    non_crates_io_crates=non_crates_io_crates,
+                    direct_crates_io_crates=direct_crates_io_crates,
                 ),
             )
+        non_crates_io_crates.difference_update(direct_crates_io_crates)
+        for crate_name in direct_crates_io_crates:
+            non_crates_io_versions.pop(crate_name, None)
+        for crate_name in non_crates_io_crates:
+            manifest_crate_versions.pop(crate_name, None)
 
         metadata_cache: dict[tuple[str, str | None, bool], CrateMetadata | None] = {}
         for package in updated_metadata:
@@ -92,11 +107,25 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
             if not self._should_enrich_package(package):
                 continue
 
-            requested_version = self._choose_requested_version(
-                package.version,
-                locked_crate_versions.get(package.name, set()),
-                manifest_crate_versions.get(package.name, set()),
-            )
+            if package.name in non_crates_io_crates:
+                # When a crate name appears from both crates.io and a non-crates.io
+                # source (e.g. git or path), only enrich rows whose exact version
+                # unambiguously matches a crates.io lockfile entry.
+                if (
+                    package.version is None
+                    or package.version
+                    not in locked_crate_versions.get(package.name, set())
+                    or package.version
+                    in non_crates_io_versions.get(package.name, set())
+                ):
+                    continue
+                requested_version: str | None = package.version
+            else:
+                requested_version = self._choose_requested_version(
+                    package.version,
+                    locked_crate_versions.get(package.name, set()),
+                    manifest_crate_versions.get(package.name, set()),
+                )
             if package.version is None:
                 package.version = requested_version
             if requested_version is None:
@@ -139,12 +168,16 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         return bool(package.origin and package.origin != package.name)
 
     def _get_project_paths(self) -> list[str]:
+        project_paths, _ = self._get_project_paths_and_root()
+        return project_paths
+
+    def _get_project_paths_and_root(self) -> tuple[list[str], str | None]:
         if self.local_project_path is not None:
-            return [self.local_project_path]
+            return [self.local_project_path], self.local_project_path
 
         source_code_ref = self.source_code_manager.get_code(self.top_package)
         if source_code_ref is None:
-            return []
+            return [], None
 
         project_paths: list[str] = []
         for root, dirs, files in walk_directory(source_code_ref.local_full_path):
@@ -154,11 +187,39 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
             if "Cargo.toml" in files:
                 project_paths.append(root)
                 dirs[:] = []
-        return project_paths
+        return project_paths, source_code_ref.local_root_path
 
-    def _get_locked_crate_versions(self, project_path: str) -> dict[str, set[str]]:
-        cargo_lock_path = path_join(project_path, "Cargo.lock")
-        if not path_exists(cargo_lock_path):
+    def _find_cargo_lock_path(
+        self, project_path: str, workspace_root: str | None
+    ) -> tuple[str | None, bool]:
+        direct_candidate = path_join(project_path, "Cargo.lock")
+        if path_exists(direct_candidate):
+            return direct_candidate, False
+        if not workspace_root or workspace_root == project_path:
+            return None, False
+        current = normalize_path(project_path)
+        stop_root = normalize_path(workspace_root)
+        while current != stop_root:
+            parent = normalize_path(path_join(current, ".."))
+            if parent == current:
+                return None, False
+            current = parent
+            candidate = path_join(current, "Cargo.lock")
+            if path_exists(candidate):
+                return candidate, True
+        return None, False
+
+    def _get_locked_crate_versions(
+        self,
+        project_path: str,
+        workspace_root: str | None = None,
+        non_crates_io_crates: set[str] | None = None,
+        non_crates_io_versions: dict[str, set[str]] | None = None,
+    ) -> dict[str, set[str]]:
+        cargo_lock_path, is_ancestor_lock = self._find_cargo_lock_path(
+            project_path, workspace_root
+        )
+        if cargo_lock_path is None:
             return {}
         try:
             cargo_lock = tomllib.loads(open_file(cargo_lock_path))
@@ -170,29 +231,138 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
             )
             return {}
 
+        raw_packages = cargo_lock.get("package")
+        if not isinstance(raw_packages, list):
+            return {}
+        packages = [pkg for pkg in raw_packages if isinstance(pkg, dict)]
+
+        selected_packages = self._select_lockfile_packages(
+            packages, project_path, is_ancestor_lock=is_ancestor_lock
+        )
+
         crate_versions: dict[str, set[str]] = {}
-        packages = cargo_lock.get("package")
-        if not isinstance(packages, list):
-            return crate_versions
-        for package in packages:
-            if not isinstance(package, dict):
-                continue
+        non_crates_io_names: set[str] = set()
+        for package in selected_packages:
             name = package.get("name")
             version = package.get("version")
             source = package.get("source")
-            if (
-                isinstance(name, str)
-                and isinstance(version, str)
-                and source == CRATES_IO_REGISTRY_SOURCE
-            ):
+            if not isinstance(name, str) or not isinstance(version, str):
+                continue
+            if source == CRATES_IO_REGISTRY_SOURCE:
                 crate_versions.setdefault(name, set()).add(version)
+            else:
+                non_crates_io_names.add(name)
+                if non_crates_io_versions is not None:
+                    non_crates_io_versions.setdefault(name, set()).add(version)
+        if non_crates_io_crates is not None:
+            non_crates_io_crates.update(non_crates_io_names)
         return crate_versions
+
+    def _select_lockfile_packages(
+        self,
+        packages: list[dict[str, object]],
+        project_path: str,
+        is_ancestor_lock: bool,
+    ) -> list[dict[str, object]]:
+        if not is_ancestor_lock:
+            return packages
+
+        root_identity = self._get_project_root_package_identity(project_path)
+        if root_identity is None:
+            return []
+        root_name, root_version = root_identity
+
+        root_indices = [
+            idx
+            for idx, pkg in enumerate(packages)
+            if pkg.get("name") == root_name and pkg.get("source") is None
+        ]
+        if root_version is not None:
+            exact_roots = [
+                idx
+                for idx in root_indices
+                if packages[idx].get("version") == root_version
+            ]
+            if exact_roots:
+                root_indices = exact_roots
+        if not root_indices:
+            return []
+
+        packages_by_name: dict[str, list[int]] = {}
+        for idx, pkg in enumerate(packages):
+            name = pkg.get("name")
+            if isinstance(name, str):
+                packages_by_name.setdefault(name, []).append(idx)
+
+        visited: set[int] = set(root_indices)
+        queue: list[int] = list(root_indices)
+        while queue:
+            current_idx = queue.pop(0)
+            dependencies = packages[current_idx].get("dependencies")
+            if not isinstance(dependencies, list):
+                continue
+            for dep_spec in dependencies:
+                if not isinstance(dep_spec, str):
+                    continue
+                dep_name, dep_version, dep_source = (
+                    self._parse_cargo_lock_dependency_spec(dep_spec)
+                )
+                for candidate_idx in packages_by_name.get(dep_name, []):
+                    if candidate_idx in visited:
+                        continue
+                    candidate = packages[candidate_idx]
+                    if (
+                        dep_version is not None
+                        and candidate.get("version") != dep_version
+                    ):
+                        continue
+                    if dep_source is not None and candidate.get("source") != dep_source:
+                        continue
+                    visited.add(candidate_idx)
+                    queue.append(candidate_idx)
+
+        return [packages[idx] for idx in sorted(visited)]
+
+    def _get_project_root_package_identity(
+        self, project_path: str
+    ) -> tuple[str, str | None] | None:
+        cargo_toml_path = path_join(project_path, "Cargo.toml")
+        if not path_exists(cargo_toml_path):
+            return None
+        try:
+            cargo_toml = tomllib.loads(open_file(cargo_toml_path))
+        except (OSError, tomllib.TOMLDecodeError):
+            return None
+        package = cargo_toml.get("package")
+        if not isinstance(package, dict):
+            return None
+        package_name = package.get("name")
+        if not isinstance(package_name, str):
+            return None
+        package_version = package.get("version")
+        return (
+            package_name,
+            package_version if isinstance(package_version, str) else None,
+        )
+
+    def _parse_cargo_lock_dependency_spec(
+        self, spec: str
+    ) -> tuple[str, str | None, str | None]:
+        parts = spec.strip().split(" ", 2)
+        name = parts[0]
+        version = parts[1] if len(parts) >= 2 else None
+        source: str | None = None
+        if len(parts) == 3 and parts[2].startswith("(") and parts[2].endswith(")"):
+            source = parts[2][1:-1]
+        return name, version, source
 
     def _get_manifest_crate_versions(
         self,
         project_path: str,
         visited_projects: set[str] | None = None,
         include_package_version: bool = False,
+        non_crates_io_crates: set[str] | None = None,
+        direct_crates_io_crates: set[str] | None = None,
     ) -> dict[str, set[str]]:
         if visited_projects is None:
             visited_projects = set()
@@ -217,9 +387,12 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         dependency_tables = self._get_dependency_tables(cargo_toml)
         crate_versions: dict[str, set[str]] = {}
         if include_package_version:
+            package_crate_version = self._get_package_crate_version(cargo_toml)
+            if direct_crates_io_crates is not None:
+                direct_crates_io_crates.update(package_crate_version.keys())
             self._merge_crate_versions(
                 crate_versions,
-                self._get_package_crate_version(cargo_toml),
+                package_crate_version,
             )
         for dependency_table in dependency_tables:
             for dependency_name, dependency_config in dependency_table.items():
@@ -243,6 +416,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                             self._get_manifest_crate_versions(
                                 path_join(project_path, dependency_path),
                                 visited_projects,
+                                non_crates_io_crates=non_crates_io_crates,
                             ),
                         )
                     if "git" in dependency_config:
@@ -251,6 +425,8 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                     if isinstance(registry, str) and registry != "crates-io":
                         is_crates_io_dependency = False
                     if not is_crates_io_dependency:
+                        if non_crates_io_crates is not None:
+                            non_crates_io_crates.add(crate_name)
                         version = None
                 if version is not None:
                     crate_versions.setdefault(crate_name, set()).add(version)
