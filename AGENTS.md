@@ -53,6 +53,18 @@ Before suggesting any code changes, verify:
 - [ ] Contract tests added for any new external library dependencies
 - [ ] Full end-to-end CLI validation run completed for new user-facing features
 - [ ] All Python files include SPDX-License-Identifier header on first line
+- [ ] Adversarial pre-push review completed on `git diff origin/main...HEAD` (see below)
+
+## 🔍 Adversarial Pre-Push Review
+
+Before pushing a PR, run an independent, adversarial review pass (ideally in a fresh subagent/context) against `git diff origin/main...HEAD` to try to break your own change locally rather than discovering issues in CI or automated PR review:
+
+1. **Trace downstream impact:** Follow modified outputs through the full pipeline (`ThreePhaseMetadataCollector`, `LicenseChecker`, `combine_metadata`, and CSV/Markdown/SPDX writers) for silent semantic changes, ordering dependence, or weakened license/attribution guarantees.
+2. **Check cross-ecosystem blast radius:** Shared code (enrichers, `SourceCodeManager`, writers, utils) serves Go, Python, npm, and Rust — verify ecosystem-specific heuristics cannot misfire on packages from other ecosystems.
+3. **Probe adversarial inputs & boundaries:** Test malformed inputs, casing/encoding/path edge cases, partial or conflicting metadata across phases, and untrusted remote URLs including redirect targets.
+4. **Run local regression gates before pushing:** Run targeted `mutmut` on modified non-excluded functions (see `[tool.mutmut]` in `pyproject.toml`) and, when changing collection/output/deps, check `LICENSE-3rdparty.csv` with `--override-spec .ddla-overrides --no-github-sbom-strategy`.
+
+For every concrete, reproducible correctness or security defect found, add a failing unit test first, fix it, and re-check (stop once no concrete defects remain — do not chase speculative style nits).
 
 ## 🔧 Type Safety Requirements
 
