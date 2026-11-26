@@ -6,6 +6,7 @@
 # Copyright 2024-present Datadog, Inc.
 
 import logging
+import re
 from typing import Any
 
 # Get application-specific logger
@@ -50,6 +51,54 @@ def _split_top_level_and(license_expression_str: str) -> list[str]:
     if parsed is None:
         return []
     return _collect_and_operands(parsed)
+
+
+_GO_MAJOR_VERSION_SUFFIX_RE = re.compile(r"^v([2-9]|[1-9]\d+)$")
+
+
+def _is_go_major_version_module_name(
+    package_name: str | None, version_suffix: str
+) -> bool:
+    """Return True if package_name looks like a Go module path ending with /<version_suffix>."""
+    if not package_name or not package_name.endswith(f"/{version_suffix}"):
+        return False
+    host = package_name.partition("/")[0]
+    return "." in host and not host.startswith("@")
+
+
+def _strip_missing_go_major_version_suffix(
+    package_name: str | None,
+    source_code_reference: SourceCodeReference,
+) -> SourceCodeReference | None:
+    """Strip a trailing Go v2+ semantic import version segment from local_full_path
+    when package_name is a Go module path, the vN/ subdirectory does not exist in
+    the cloned repo, and the parent directory contains a go.mod file.
+    """
+    root = source_code_reference.local_root_path.rstrip("/")
+    full = source_code_reference.local_full_path.rstrip("/")
+    if not full.startswith(root + "/"):
+        return None
+    rel_parts = full[len(root) + 1 :].split("/")
+    version_suffix = rel_parts[-1]
+    if not _GO_MAJOR_VERSION_SUFFIX_RE.match(version_suffix):
+        return None
+    if not _is_go_major_version_module_name(package_name, version_suffix):
+        return None
+    stripped_rel = "/".join(rel_parts[:-1])
+    if stripped_rel:
+        fallback_full_path = f"{root}/{stripped_rel}"
+        if not path_exists(fallback_full_path):
+            return None
+    else:
+        fallback_full_path = source_code_reference.local_root_path
+    if not path_exists(f"{fallback_full_path.rstrip('/')}/go.mod"):
+        return None
+    return SourceCodeReference(
+        repo_url=source_code_reference.repo_url,
+        branch=source_code_reference.branch,
+        local_root_path=source_code_reference.local_root_path,
+        local_full_path=fallback_full_path,
+    )
 
 
 class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
@@ -110,19 +159,23 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     source_code_reference = source_code_reference_or_none
                 # if the repository location was obtained as a inference from the package manager it may be incorrect
                 # We need to check existance of the path and skip with a warning if not found
-                if (
-                    source_code_reference.local_full_path  # it was inference from package manager
-                    and (
-                        not path_exists(source_code_reference.local_full_path)
-                        or not path_exists(source_code_reference.local_root_path)
-                    )
-                ):
-                    logger.warning(
-                        f"{source_code_reference.local_full_path} does not exist, skipping. "
-                        f"This may be due to the package manager not providing the correct source code location on {package.local_src_path}."
-                    )
-                    updated_metadata.append(package)
-                    continue
+                if source_code_reference.local_full_path:
+                    full_exists = path_exists(source_code_reference.local_full_path)
+                    root_exists = path_exists(source_code_reference.local_root_path)
+                    if not full_exists and root_exists:
+                        fallback_ref = _strip_missing_go_major_version_suffix(
+                            package.name, source_code_reference
+                        )
+                        if fallback_ref is not None:
+                            source_code_reference = fallback_ref
+                            full_exists = True
+                    if not full_exists or not root_exists:
+                        logger.warning(
+                            f"{source_code_reference.local_full_path} does not exist, skipping. "
+                            f"This may be due to the package manager not providing the correct source code location on {package.local_src_path}."
+                        )
+                        updated_metadata.append(package)
+                        continue
                 if not package.license:
                     package.license = self._get_license(source_code_reference)
                 if not package.copyright:
