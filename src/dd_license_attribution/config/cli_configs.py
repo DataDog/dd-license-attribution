@@ -22,9 +22,15 @@ default_config = Config(
         "LICENSE.code",
         "LICENSE.txt",
         "LICENSE.md",
+        "LICENSE.rst",
         "COPYING",
+        "COPYING.txt",
+        "COPYING.md",
+        "COPYING.rst",
         "LICENCE",  # I know it is misspelled, but it is common in the wild
         "LICENCE.md",  # I know it is misspelled, but it is common in the wild
+        "LICENCE.txt",
+        "LICENCE.rst",
         "license/LICENSE.txt",
     ],
     preset_copyright_file_locations=[
@@ -42,9 +48,15 @@ default_config = Config(
         "LICENSE.code",
         "LICENSE.txt",
         "LICENSE.md",
+        "LICENSE.rst",
         "COPYING",
+        "COPYING.txt",
+        "COPYING.md",
+        "COPYING.rst",
         "LICENCE",  # I know it is misspelled, but it is common in the wild
         "LICENCE.md",  # I know it is misspelled, but it is common in the wild
+        "LICENCE.txt",
+        "LICENCE.rst",
         "license/LICENSE.txt",
     ],
     preset_cautionary_licenses=[
