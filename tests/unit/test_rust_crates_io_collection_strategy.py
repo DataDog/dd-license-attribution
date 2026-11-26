@@ -1882,3 +1882,75 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
         ),
     ]
     assert mock_download.call_count == 2
+
+
+def test_direct_ecosystem_rust_mode_preserves_root_crate_enrichment_with_lockfile(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=lambda path: path in {"/project/Cargo.lock", "/project/Cargo.toml"},
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        side_effect=lambda path: {
+            "/project/Cargo.lock": (
+                '[[package]]\nname = "serde"\nversion = "1.0.228"\n\n'
+                '[[package]]\nname = "git-dep"\nversion = "0.1.0"\n'
+                'source = "git+https://github.com/org/git-dep#abc"\n'
+            ),
+            "/project/Cargo.toml": (
+                '[package]\nname = "serde"\nversion = "1.0.228"\n'
+                '[dependencies]\ngit-dep = { git = "https://github.com/org/git-dep" }\n'
+            ),
+        }[path],
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_bounded",
+        side_effect=[
+            _crate_response(
+                "serde",
+                "1.0.228",
+                repository="https://github.com/serde-rs/serde",
+            ),
+            b"crate archive",
+        ],
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.read_tar_gz_text_file",
+        return_value='[package]\nname = "serde"\nauthors = ["Serde Developers"]\n',
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "serde",
+        source_code_manager,
+        local_project_path="/project",
+    )
+
+    result = strategy.augment_metadata(
+        [
+            _metadata("serde", "1.0.228"),
+            _metadata("git-dep", "0.1.0", origin="https://github.com/org/git-dep"),
+        ]
+    )
+
+    assert result == [
+        _metadata(
+            "serde",
+            "1.0.228",
+            origin="https://github.com/serde-rs/serde",
+            license=["MIT OR Apache-2.0"],
+            copyright=["Serde Developers"],
+        ),
+        _metadata("git-dep", "0.1.0", origin="https://github.com/org/git-dep"),
+    ]
+    assert mock_download.call_count == 2

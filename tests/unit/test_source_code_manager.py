@@ -372,6 +372,9 @@ def test_source_code_manager_get_cached_code(
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
 @patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
 @patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+@patch.object(
+    SourceCodeManager, "_publish_staging_checkout", lambda self, *args, **kwargs: True
+)
 def test_source_code_manager_get_non_cached_code_because_it_expired(
     get_datetime_now_mock: Mock,
     mock_create_dirs: Mock,
@@ -463,6 +466,9 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
 @patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+@patch.object(
+    SourceCodeManager, "_publish_staging_checkout", lambda self, *args, **kwargs: True
+)
 def test_source_code_manager_get_non_cached_code_because_force_update(
     get_datetime_now_mock: Mock,
     git_url_parse_mock: Mock,
@@ -709,6 +715,9 @@ def test_source_code_manager_fails_init_if_cache_dir_contains_unexpected_files(
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
 @patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+@patch.object(
+    SourceCodeManager, "_publish_staging_checkout", lambda self, *args, **kwargs: True
+)
 def test_source_code_manager_with_mirror_url(
     get_datetime_now_mock: Mock,
     git_url_parse_mock: Mock,
@@ -801,6 +810,9 @@ def test_source_code_manager_with_mirror_url(
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
 @patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+@patch.object(
+    SourceCodeManager, "_publish_staging_checkout", lambda self, *args, **kwargs: True
+)
 def test_source_code_manager_with_mirror_ref_mapping(
     get_datetime_now_mock: Mock,
     git_url_parse_mock: Mock,
@@ -898,6 +910,9 @@ def test_source_code_manager_with_mirror_ref_mapping(
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
 @patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+@patch.object(
+    SourceCodeManager, "_publish_staging_checkout", lambda self, *args, **kwargs: True
+)
 def test_source_code_manager_with_mirror_ref_mapping_to_tag(
     get_datetime_now_mock: Mock,
     git_url_parse_mock: Mock,
@@ -1134,6 +1149,9 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
 @patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+@patch.object(
+    SourceCodeManager, "_publish_staging_checkout", lambda self, *args, **kwargs: True
+)
 def test_source_code_manager_mirror_tag_forced_retry_after_failed_fetch(
     get_datetime_now_mock: Mock,
     git_url_parse_mock: Mock,
@@ -1275,6 +1293,9 @@ def test_source_code_manager_mirror_tag_forced_retry_after_failed_fetch(
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
 @patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+@patch.object(
+    SourceCodeManager, "_publish_staging_checkout", lambda self, *args, **kwargs: True
+)
 def test_source_code_manager_mirror_tag_clone_with_git_env(
     get_datetime_now_mock: Mock,
     git_url_parse_mock: Mock,
@@ -1484,6 +1505,9 @@ def test_source_code_manager_with_unsupported_commit_ref_type(
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
 @patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+@patch.object(
+    SourceCodeManager, "_publish_staging_checkout", lambda self, *args, **kwargs: True
+)
 def test_source_code_manager_with_mirror_url_and_ref_mapping_for_the_default_branch(
     get_datetime_now_mock: Mock,
     git_url_parse_mock: Mock,
@@ -1578,6 +1602,9 @@ def test_source_code_manager_with_mirror_url_and_ref_mapping_for_the_default_bra
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
 @patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+@patch.object(
+    SourceCodeManager, "_publish_staging_checkout", lambda self, *args, **kwargs: True
+)
 def test_source_code_manager_with_multiple_mirrors(
     get_datetime_now_mock: Mock,
     git_url_parse_mock: Mock,
@@ -1679,6 +1706,9 @@ def test_source_code_manager_with_multiple_mirrors(
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
 @patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+@patch.object(
+    SourceCodeManager, "_publish_staging_checkout", lambda self, *args, **kwargs: True
+)
 def test_source_code_manager_with_no_mirror_match(
     get_datetime_now_mock: Mock,
     git_url_parse_mock: Mock,
@@ -2353,6 +2383,9 @@ def test_get_code_returns_none_when_default_branch_cannot_be_discovered(
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.source_code_manager.parse_git_url")
 @patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+@patch.object(
+    SourceCodeManager, "_publish_staging_checkout", lambda self, *args, **kwargs: True
+)
 def test_get_code_can_skip_canonical_lookup_for_direct_git_checkout(
     get_datetime_now_mock: Mock,
     git_url_parse_mock: Mock,
@@ -3519,6 +3552,9 @@ def test_get_code_cached_checkout_rejects_missing_subdirectory(
 @patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
 @patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+@patch.object(
+    SourceCodeManager, "_publish_staging_checkout", lambda self, *args, **kwargs: True
+)
 def test_get_code_fetches_commit_sha_and_rejects_missing_subdirectory(
     mock_am_path_exists: Mock,
     mock_am_list_dir: Mock,
@@ -3653,6 +3689,9 @@ def test_get_code_rejects_unsafe_mapped_source_ref_outside_cache(
 @patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+@patch.object(
+    SourceCodeManager, "_publish_staging_checkout", lambda self, *args, **kwargs: True
+)
 def test_get_code_uses_matched_second_mirror_and_tag_ref_type(
     mock_now: Mock,
     mock_am_path_exists: Mock,
@@ -3873,15 +3912,21 @@ def test_get_code_propagates_staging_publish_failure_without_valid_target(
     mock_now: Mock,
     mock_extract_ref: Mock,
     tmp_path: Path,
+    caplog: LogCaptureFixture,
 ) -> None:
     mock_now.return_value = datetime.fromisoformat("2022-01-01T00:00:00+00:00")
     mock_extract_ref.return_value = "main"
     cache_dir = tmp_path / "cache"
     cache_dir.mkdir()
-    scm = SourceCodeManager(str(cache_dir), Mock(), 86400)
+    mirror = MirrorSpec(
+        original_url="https://github.com/DataDog/repo",
+        mirror_url="https://user:secret-token@mirror.example/DataDog/repo",
+    )
+    scm = SourceCodeManager(str(cache_dir), Mock(), 86400, mirrors=[mirror])
     url = "https://github.com/DataDog/repo/tree/main/apis"
 
     with (
+        caplog.at_level(logging.ERROR, logger="dd_license_attribution"),
         patch(
             "dd_license_attribution.artifact_management.source_code_manager.run_command",
             return_value=0,
@@ -3895,6 +3940,26 @@ def test_get_code_propagates_staging_publish_failure_without_valid_target(
 
     assert scm.has_successful_checkout(url) is False
     assert scm.has_unresolved_path(url) is True
+    assert "https://github.com/DataDog/repo" in caplog.text
+    assert "secret-token" not in caplog.text
+
+    # Missing staging directory must also fail when destination has no .git dir,
+    # and succeed only when destination holds a verified .git checkout.
+    missing_staging = cache_dir / "20220101_000000Z" / "DataDog-repo" / "missing.tmp"
+    target = cache_dir / "20220101_000000Z" / "DataDog-repo" / "main"
+    assert (
+        scm._publish_staging_checkout(
+            str(missing_staging), str(target), force_update=False
+        )
+        is False
+    )
+    (target / ".git").mkdir(parents=True)
+    assert (
+        scm._publish_staging_checkout(
+            str(missing_staging), str(target), force_update=False
+        )
+        is True
+    )
 
 
 @patch(
@@ -3907,6 +3972,9 @@ def test_get_code_propagates_staging_publish_failure_without_valid_target(
 @patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
 @patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
 @patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+@patch.object(
+    SourceCodeManager, "_publish_staging_checkout", lambda self, *args, **kwargs: True
+)
 def test_get_code_preserves_advertised_tag_type_for_mirror_mapping(
     mock_now: Mock,
     mock_am_path_exists: Mock,

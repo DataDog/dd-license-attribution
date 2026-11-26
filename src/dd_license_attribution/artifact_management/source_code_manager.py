@@ -956,11 +956,11 @@ class SourceCodeManager(ArtifactManager):
     ) -> bool:
         """Atomically publish an attempt-owned staging checkout to `target_path`.
 
-        Returns True if `target_path` holds a usable checkout after publication
-        (or if `staging_path` was not materialized on disk in mocked unit tests).
+        Returns True only when `target_path` holds a usable checkout after
+        publication.
         """
         if not os.path.exists(staging_path):
-            return True
+            return is_dir(path_join(target_path, ".git"))
         backup_path = ""
         if force_update and os.path.exists(target_path):
             backup_path = f"{target_path}.old-{os.getpid()}-{uuid.uuid4().hex[:8]}"
@@ -1461,7 +1461,7 @@ class SourceCodeManager(ArtifactManager):
                 self._unresolved_path_urls.add(clean_resource_url)
             logger.error(
                 "Failed to publish checkout for %s at %s",
-                effective_repository_url,
+                repository_url,
                 local_branch_path,
             )
             return None

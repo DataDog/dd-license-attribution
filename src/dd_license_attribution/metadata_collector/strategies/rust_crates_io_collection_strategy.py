@@ -70,6 +70,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         locked_crate_versions: dict[str, set[str]] = {}
         manifest_crate_versions: dict[str, set[str]] = {}
         non_crates_io_crates: set[str] = set()
+        direct_crates_io_crates: set[str] = set()
         for project_path in project_paths:
             self._merge_crate_versions(
                 locked_crate_versions,
@@ -85,8 +86,10 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                     project_path,
                     include_package_version=self.local_project_path is not None,
                     non_crates_io_crates=non_crates_io_crates,
+                    direct_crates_io_crates=direct_crates_io_crates,
                 ),
             )
+        non_crates_io_crates.difference_update(direct_crates_io_crates)
         for crate_name in non_crates_io_crates:
             locked_crate_versions.pop(crate_name, None)
             manifest_crate_versions.pop(crate_name, None)
@@ -341,6 +344,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         visited_projects: set[str] | None = None,
         include_package_version: bool = False,
         non_crates_io_crates: set[str] | None = None,
+        direct_crates_io_crates: set[str] | None = None,
     ) -> dict[str, set[str]]:
         if visited_projects is None:
             visited_projects = set()
@@ -365,9 +369,12 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         dependency_tables = self._get_dependency_tables(cargo_toml)
         crate_versions: dict[str, set[str]] = {}
         if include_package_version:
+            package_crate_version = self._get_package_crate_version(cargo_toml)
+            if direct_crates_io_crates is not None:
+                direct_crates_io_crates.update(package_crate_version.keys())
             self._merge_crate_versions(
                 crate_versions,
-                self._get_package_crate_version(cargo_toml),
+                package_crate_version,
             )
         for dependency_table in dependency_tables:
             for dependency_name, dependency_config in dependency_table.items():
