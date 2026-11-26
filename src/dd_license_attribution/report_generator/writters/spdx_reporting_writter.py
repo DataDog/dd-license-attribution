@@ -13,7 +13,7 @@ from datetime import datetime
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any
 
-from license_expression import ExpressionError, get_spdx_licensing
+from license_expression import OR, ExpressionError, get_spdx_licensing
 from spdx_tools.spdx.model.actor import Actor, ActorType
 from spdx_tools.spdx.model.document import CreationInfo, Document
 from spdx_tools.spdx.model.package import Package
@@ -140,17 +140,25 @@ def _sanitize_spdx_id_fragment(value: str | None) -> str:
     return sanitized
 
 
+def _format_and_operand(license_text: str) -> str:
+    parsed = _spdx_licensing.parse(license_text)
+    if isinstance(parsed, OR):
+        return f"({license_text})"
+    return license_text
+
+
 def _license_expression(licenses: set[str]) -> Any:
     if not licenses:
         return SpdxNoAssertion()
 
-    expression = " AND ".join(sorted(licenses))
+    sorted_licenses = sorted(licenses)
     try:
+        expression = " AND ".join(_format_and_operand(item) for item in sorted_licenses)
         return _spdx_licensing.parse(expression, validate=False)
     except ExpressionError:
         logger.warning(
             "Unable to parse license expression %s for SPDX output; using NOASSERTION.",
-            expression,
+            " AND ".join(sorted_licenses),
         )
         return SpdxNoAssertion()
 
