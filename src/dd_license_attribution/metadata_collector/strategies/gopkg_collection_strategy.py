@@ -52,6 +52,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         self.single_module = single_module
         self._head_branch_cache: dict[str, str] = {}
 
+        self._requested_top_package = top_package
         if local_project_path is not None:
             # In go-package mode, top_package is a Go import path, not a URL
             self.top_package = top_package
@@ -154,10 +155,12 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             and os.path.realpath(module_dir) != selected_module_dir
         ):
             return False
-        top_name = self.top_package.removeprefix("https://").removeprefix("http://")
+        seed_urls = {self.top_package, self._requested_top_package}
+        seed_names = {
+            url.removeprefix("https://").removeprefix("http://") for url in seed_urls
+        }
         return any(
-            meta.origin == self.top_package or meta.name == top_name
-            for meta in metadata
+            meta.origin in seed_urls or meta.name in seed_names for meta in metadata
         )
 
     def _augment_metadata_from_local_path(

@@ -7,6 +7,7 @@
 
 from unittest.mock import call
 
+import pytest
 import pytest_mock
 
 from dd_license_attribution.artifact_management.artifact_manager import (
@@ -1844,4 +1845,67 @@ def test_gopkg_only_root_project_matches_relative_cache_dir_against_absolute_go_
     assert [m.name for m in result] == [
         "github.com/org/monorepo/tree/main/pkg",
         "github.com/org/monorepo/pkg",
+    ]
+
+
+@pytest.mark.parametrize("single_module", [False, True])
+def test_gopkg_only_root_project_matches_original_seed_after_repo_rename(
+    mocker: pytest_mock.MockFixture,
+    single_module: bool,
+) -> None:
+    import os
+
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/new-org/new-repo",
+        "https://api.github.com/repos/new-org/new-repo",
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/old-org/old-repo/tree/main/pkg",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+        single_module=single_module,
+    )
+    pkg_dir = "cache/new-org_new-repo/pkg"
+    abs_pkg_dir = os.path.realpath(pkg_dir)
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/new-org/new-repo",
+        branch="main",
+        local_root_path="cache/new-org_new-repo",
+        local_full_path=pkg_dir,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.path_exists",
+        return_value=True,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+        return_value=[(pkg_dir, [], ["go.mod"])],
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        return_value="module github.com/new-org/new-repo/pkg\n",
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=lambda args, cwd=None, env=None: (
+            "ref: refs/heads/main\tHEAD\n"
+            if args[:2] == ["git", "ls-remote"]
+            else f'{{"ImportPath": "github.com/new-org/new-repo/pkg", "Module": {{"Path": "github.com/new-org/new-repo/pkg", "Dir": "{abs_pkg_dir}", "Main": true}}}}'
+        ),
+    )
+    seed = Metadata(
+        name="github.com/old-org/old-repo/tree/main/pkg",
+        version=None,
+        origin="https://github.com/old-org/old-repo/tree/main/pkg",
+        local_src_path=None,
+        license=[],
+        copyright=[],
+    )
+
+    result = strategy.augment_metadata([seed])
+
+    assert [m.name for m in result] == [
+        "github.com/old-org/old-repo/tree/main/pkg",
+        "github.com/new-org/new-repo/pkg",
     ]

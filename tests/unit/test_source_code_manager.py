@@ -4061,3 +4061,114 @@ def test_unadvertised_full_sha_stays_provisional_until_checkout(
 
     # Format-only SHA resolution is provisional and must not mark the path verified.
     assert scm.has_resolved_path(url) is False
+
+
+def test_get_code_rejects_symlink_escaping_checkout_on_clone_and_cache_hit(
+    tmp_path: Any,
+) -> None:
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    outside_dir = tmp_path / "outside"
+    outside_dir.mkdir()
+    (outside_dir / "go.mod").write_text("module example.com/outside\n")
+
+    def _fake_clone(cmd: list[str], **kwargs: Any) -> int:
+        staging_dir = Path(cmd[-1])
+        (staging_dir / ".git").mkdir(parents=True, exist_ok=True)
+        (staging_dir / "escape").symlink_to(outside_dir)
+        return 0
+
+    with (
+        patch(
+            "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
+            return_value=datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
+        ),
+        patch(
+            "dd_license_attribution.artifact_management.source_code_manager.output_from_command",
+            return_value="72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/main\n",
+        ),
+        patch(
+            "dd_license_attribution.artifact_management.source_code_manager.run_command",
+            side_effect=_fake_clone,
+        ),
+    ):
+        scm = SourceCodeManager(str(cache_dir), Mock())
+        url = "https://github.com/DataDog/repo/tree/main/escape"
+
+        # Fresh clone rejects the symlink pointing outside the checkout.
+        assert scm.get_code(url, skip_canonical_lookup=True) is None
+        assert scm.has_unresolved_path(url) is True
+        assert scm.has_successful_checkout(url) is False
+
+        # Subsequent cache-hit lookup also rejects the escaping symlink.
+        scm2 = SourceCodeManager(str(cache_dir), Mock())
+        assert scm2.get_code(url, skip_canonical_lookup=True) is None
+        assert scm2.has_unresolved_path(url) is True
+        assert scm2.has_successful_checkout(url) is False
+
+
+def test_get_code_isolates_overlapping_ref_cache_keys_and_ignores_non_git_dirs(
+    tmp_path: Any,
+) -> None:
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+
+    # Pre-create a non-checkout directory at .../DataDog-repo/release (no .git).
+    stray_dir = cache_dir / "20220101_000000Z" / "DataDog-repo" / "release"
+    stray_dir.mkdir(parents=True)
+
+    cloned_refs: list[str] = []
+
+    def _fake_run(cmd: list[str], **kwargs: Any) -> int:
+        if cmd[:2] == ["git", "clone"]:
+            staging_dir = Path(cmd[-1])
+            (staging_dir / ".git").mkdir(parents=True, exist_ok=True)
+            cloned_refs.append(cmd[-3])
+            return 0
+        if cmd[:2] == ["git", "init"]:
+            cwd = Path(kwargs["cwd"])
+            (cwd / ".git").mkdir(parents=True, exist_ok=True)
+            return 0
+        if cmd[:2] == ["git", "fetch"]:
+            cloned_refs.append(cmd[-1])
+            return 0
+        return 0
+
+    ls_remote_output = (
+        "1111111111111111111111111111111111111111\trefs/heads/release\n"
+        "2222222222222222222222222222222222222222\trefs/tags/release/v2\n"
+    )
+    with (
+        patch(
+            "dd_license_attribution.artifact_management.artifact_manager.get_datetime_now",
+            return_value=datetime.fromisoformat("2022-01-01T00:00:00+00:00"),
+        ),
+        patch(
+            "dd_license_attribution.artifact_management.source_code_manager.output_from_command",
+            return_value=ls_remote_output,
+        ),
+        patch(
+            "dd_license_attribution.artifact_management.source_code_manager.run_command",
+            side_effect=_fake_run,
+        ),
+    ):
+        scm = SourceCodeManager(str(cache_dir), Mock())
+
+        tag_ref = scm.get_code(
+            "https://github.com/DataDog/repo/tree/release/v2",
+            skip_canonical_lookup=True,
+        )
+        assert tag_ref is not None
+        assert tag_ref.branch == "release/v2"
+        assert tag_ref.local_root_path.endswith("DataDog-repo/release%2Fv2")
+
+        # Scanning branch `release` must not treat the stray non-.git dir as a cache hit.
+        branch_ref = scm.get_code(
+            "https://github.com/DataDog/repo/tree/release",
+            skip_canonical_lookup=True,
+        )
+        assert branch_ref is not None
+        assert branch_ref.branch == "release"
+        assert branch_ref.local_root_path.endswith("DataDog-repo/release")
+        assert branch_ref.local_root_path != tag_ref.local_root_path
+        assert "--branch=release" in cloned_refs

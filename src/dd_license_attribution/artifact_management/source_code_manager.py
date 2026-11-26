@@ -948,6 +948,21 @@ class SourceCodeManager(ArtifactManager):
         except ValueError:
             return False
 
+    @staticmethod
+    def _is_within_checkout_root(checkout_root: str, path: str) -> bool:
+        """Verify that `path` resolves inside `checkout_root` after following symlinks."""
+        resolved_root = os.path.realpath(checkout_root)
+        resolved_path = os.path.realpath(path)
+        try:
+            return os.path.commonpath([resolved_root, resolved_path]) == resolved_root
+        except ValueError:
+            return False
+
+    @staticmethod
+    def _cache_ref_dir_name(ref: str) -> str:
+        """Encode a ref name into a single non-nesting cache directory segment."""
+        return ref.replace("%", "%25").replace("/", "%2F")
+
     def _get_staging_clone_path(self, local_branch_path: str) -> str:
         return f"{local_branch_path}.tmp-{os.getpid()}-{uuid.uuid4().hex[:8]}"
 
@@ -1313,6 +1328,7 @@ class SourceCodeManager(ArtifactManager):
             effective_branch,
         )
 
+        cached_ref_dir = self._cache_ref_dir_name(branch)
         cached_timestamps = list_dir(self.local_cache_dir)
         cached_timestamps.sort(reverse=True)
         if not force_update:
@@ -1326,12 +1342,14 @@ class SourceCodeManager(ArtifactManager):
                 )
                 if (self.setup_time - time_copy).total_seconds() > self.local_cache_ttl:
                     break
-                local_branch_path = (
-                    f"{self.local_cache_dir}/{time_copy_str}/{owner}-{repo}/{branch}"
-                )
+                local_branch_path = f"{self.local_cache_dir}/{time_copy_str}/{owner}-{repo}/{cached_ref_dir}"
                 if not self._is_within_cache_dir(local_branch_path):
                     continue
                 if path_exists(local_branch_path):
+                    if is_dir(local_branch_path) and not is_dir(
+                        path_join(local_branch_path, ".git")
+                    ):
+                        continue
                     logger.debug(
                         "Found cached branch %s for %s/%s at %s",
                         branch,
@@ -1343,11 +1361,16 @@ class SourceCodeManager(ArtifactManager):
                     if (
                         path
                         and is_dir(path_join(local_branch_path, ".git"))
-                        and not is_dir(local_full_path)
+                        and (
+                            not is_dir(local_full_path)
+                            or not self._is_within_checkout_root(
+                                local_branch_path, local_full_path
+                            )
+                        )
                     ):
                         self._unresolved_path_urls.add(clean_resource_url)
                         logger.warning(
-                            "Requested subdirectory '%s' does not exist in %s, skipping.",
+                            "Requested subdirectory '%s' does not exist within %s, skipping.",
                             path,
                             local_branch_path,
                         )
@@ -1362,9 +1385,7 @@ class SourceCodeManager(ArtifactManager):
         # we need to clone into an attempt-owned staging directory and publish
         # to local_branch_path on success so concurrent scans cannot clobber
         # each other's checkouts.
-        local_branch_path = (
-            f"{self.local_cache_dir}/{self.timestamped_dir}/{owner}-{repo}/{branch}"
-        )
+        local_branch_path = f"{self.local_cache_dir}/{self.timestamped_dir}/{owner}-{repo}/{cached_ref_dir}"
         staging_branch_path = self._get_staging_clone_path(local_branch_path)
         if not self._is_within_cache_dir(
             local_branch_path
@@ -1470,11 +1491,14 @@ class SourceCodeManager(ArtifactManager):
         if (
             path
             and is_dir(path_join(local_branch_path, ".git"))
-            and not is_dir(local_full_path)
+            and (
+                not is_dir(local_full_path)
+                or not self._is_within_checkout_root(local_branch_path, local_full_path)
+            )
         ):
             self._unresolved_path_urls.add(clean_resource_url)
             logger.warning(
-                "Requested subdirectory '%s' does not exist in %s, skipping.",
+                "Requested subdirectory '%s' does not exist within %s, skipping.",
                 path,
                 local_branch_path,
             )

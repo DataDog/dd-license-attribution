@@ -1954,3 +1954,75 @@ def test_direct_ecosystem_rust_mode_preserves_root_crate_enrichment_with_lockfil
         _metadata("git-dep", "0.1.0", origin="https://github.com/org/git-dep"),
     ]
     assert mock_download.call_count == 2
+
+
+def test_rust_crates_io_preserves_registry_version_when_same_name_has_non_registry_entry(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=lambda path: path in {"/project/Cargo.lock", "/project/Cargo.toml"},
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        side_effect=lambda path: {
+            "/project/Cargo.lock": (
+                '[[package]]\nname = "mixed"\nversion = "1.0.0"\n'
+                'source = "registry+https://github.com/rust-lang/crates.io-index"\n\n'
+                '[[package]]\nname = "mixed"\nversion = "2.0.0"\n'
+                'source = "git+https://github.com/org/mixed#abc"\n'
+            ),
+            "/project/Cargo.toml": '[package]\nname = "app"\nversion = "0.1.0"\n',
+        }[path],
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_bounded",
+        side_effect=[
+            _crate_response(
+                "mixed",
+                "1.0.0",
+                repository="https://github.com/org/mixed",
+            ),
+            b"crate archive",
+        ],
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.read_tar_gz_text_file",
+        return_value='[package]\nname = "mixed"\nauthors = ["Mixed Authors"]\n',
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "app",
+        source_code_manager,
+        local_project_path="/project",
+    )
+
+    result = strategy.augment_metadata(
+        [
+            _metadata("mixed", "1.0.0"),
+            _metadata("mixed", "2.0.0", origin="https://github.com/org/mixed"),
+            _metadata("mixed", None),
+        ]
+    )
+
+    assert result == [
+        _metadata(
+            "mixed",
+            "1.0.0",
+            origin="https://github.com/org/mixed",
+            license=["MIT OR Apache-2.0"],
+            copyright=["Mixed Authors"],
+        ),
+        _metadata("mixed", "2.0.0", origin="https://github.com/org/mixed"),
+        _metadata("mixed", None),
+    ]
+    assert mock_download.call_count == 2

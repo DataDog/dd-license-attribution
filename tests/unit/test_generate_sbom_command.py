@@ -1415,3 +1415,56 @@ def test_generate_sbom_verifies_provisional_sha_via_get_code_when_no_checkout_ra
     )
     mock_source_code_manager.return_value.get_code.assert_called_once_with(url)
     mock_csv_reporting_writter.return_value.write.assert_not_called()
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
+def test_generate_sbom_verifies_nonempty_subdirectory_via_get_code_when_no_checkout_ran(
+    mock_three_phase_collector: Mock,
+    mock_csv_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    url = "https://github.com/org/repo/tree/main/missing"
+    mock_three_phase_collector.return_value.collect_metadata.return_value = [
+        Metadata(
+            name="github.com/org/repo/tree/main/missing",
+            version=None,
+            origin=url,
+            local_src_path=None,
+            license=["Apache-2.0"],
+            copyright=["Org"],
+        )
+    ]
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    mock_source_code_manager.return_value.has_successful_checkout.return_value = False
+    mock_source_code_manager.return_value.has_unresolved_path.return_value = False
+    # ls-remote confirmed `main`, so has_resolved_path is True, but the
+    # subdirectory itself was never checked out and does not exist.
+    mock_source_code_manager.return_value.has_resolved_path.return_value = True
+    mock_source_code_manager.return_value.get_subdirectory_path.return_value = (
+        "/missing"
+    )
+    mock_source_code_manager.return_value.get_code.return_value = None
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            url,
+            "--no-gh-auth",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 1
+    mock_source_code_manager.return_value.get_code.assert_called_once_with(url)
+    mock_csv_reporting_writter.return_value.write.assert_not_called()

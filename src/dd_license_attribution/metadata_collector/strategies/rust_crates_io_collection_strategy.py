@@ -70,6 +70,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         locked_crate_versions: dict[str, set[str]] = {}
         manifest_crate_versions: dict[str, set[str]] = {}
         non_crates_io_crates: set[str] = set()
+        non_crates_io_versions: dict[str, set[str]] = {}
         direct_crates_io_crates: set[str] = set()
         for project_path in project_paths:
             self._merge_crate_versions(
@@ -78,6 +79,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                     project_path,
                     workspace_root=workspace_root,
                     non_crates_io_crates=non_crates_io_crates,
+                    non_crates_io_versions=non_crates_io_versions,
                 ),
             )
             self._merge_crate_versions(
@@ -90,8 +92,9 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                 ),
             )
         non_crates_io_crates.difference_update(direct_crates_io_crates)
+        for crate_name in direct_crates_io_crates:
+            non_crates_io_versions.pop(crate_name, None)
         for crate_name in non_crates_io_crates:
-            locked_crate_versions.pop(crate_name, None)
             manifest_crate_versions.pop(crate_name, None)
 
         metadata_cache: dict[tuple[str, str | None, bool], CrateMetadata | None] = {}
@@ -104,11 +107,25 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
             if not self._should_enrich_package(package):
                 continue
 
-            requested_version = self._choose_requested_version(
-                package.version,
-                locked_crate_versions.get(package.name, set()),
-                manifest_crate_versions.get(package.name, set()),
-            )
+            if package.name in non_crates_io_crates:
+                # When a crate name appears from both crates.io and a non-crates.io
+                # source (e.g. git or path), only enrich rows whose exact version
+                # unambiguously matches a crates.io lockfile entry.
+                if (
+                    package.version is None
+                    or package.version
+                    not in locked_crate_versions.get(package.name, set())
+                    or package.version
+                    in non_crates_io_versions.get(package.name, set())
+                ):
+                    continue
+                requested_version: str | None = package.version
+            else:
+                requested_version = self._choose_requested_version(
+                    package.version,
+                    locked_crate_versions.get(package.name, set()),
+                    manifest_crate_versions.get(package.name, set()),
+                )
             if package.version is None:
                 package.version = requested_version
             if requested_version is None:
@@ -197,6 +214,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         project_path: str,
         workspace_root: str | None = None,
         non_crates_io_crates: set[str] | None = None,
+        non_crates_io_versions: dict[str, set[str]] | None = None,
     ) -> dict[str, set[str]]:
         cargo_lock_path, is_ancestor_lock = self._find_cargo_lock_path(
             project_path, workspace_root
@@ -234,10 +252,10 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                 crate_versions.setdefault(name, set()).add(version)
             else:
                 non_crates_io_names.add(name)
+                if non_crates_io_versions is not None:
+                    non_crates_io_versions.setdefault(name, set()).add(version)
         if non_crates_io_crates is not None:
             non_crates_io_crates.update(non_crates_io_names)
-        for name in non_crates_io_names:
-            crate_versions.pop(name, None)
         return crate_versions
 
     def _select_lockfile_packages(

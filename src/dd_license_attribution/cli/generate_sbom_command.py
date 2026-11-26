@@ -1106,17 +1106,22 @@ def generate_sbom(
                     source_code_manager.has_unresolved_path(url) for url in target_urls
                 )
                 if not has_checkout and not has_unresolved:
-                    has_resolved = any(
+                    has_resolved_root = any(
                         source_code_manager.has_resolved_path(url)
+                        and source_code_manager.get_subdirectory_path(url) == ""
                         for url in target_urls
                         if has_repository_path(url)
                     )
-                    if not has_resolved:
-                        if source_code_manager.get_subdirectory_path(package) is None:
+                    if not has_resolved_root:
+                        subdirectory = source_code_manager.get_subdirectory_path(
+                            package
+                        )
+                        if subdirectory is None:
                             has_unresolved = True
-                        elif not source_code_manager.has_resolved_path(package):
-                            # Provisional refs (e.g. unadvertised 40-char SHAs)
-                            # require Git confirmation before reporting success.
+                        elif subdirectory or not source_code_manager.has_resolved_path(
+                            package
+                        ):
+                            # Nonempty paths and provisional refs require checkout.
                             if source_code_manager.get_code(package) is None:
                                 has_unresolved = True
                             else:

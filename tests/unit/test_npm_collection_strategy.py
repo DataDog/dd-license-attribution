@@ -4675,3 +4675,80 @@ def test_npm_collection_strategy_subdirectory_does_not_corrupt_parent_root_depen
     assert parent_dep.name == "github.com/org/repo"
     assert parent_dep.version == "2.0.0"
     assert parent_dep.license == ["Apache-2.0"]
+
+
+def test_npm_collection_strategy_unwraps_selected_workspace_member_in_transitive_mode(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_canonical_urls.return_value = (
+        "https://github.com/org/monorepo",
+        "https://api.github.com/repos/org/monorepo",
+    )
+    source_code_manager_mock.get_subdirectory_path.return_value = "/packages/ui"
+    source_code_manager_mock.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/monorepo",
+        branch="main",
+        local_root_path="cache_dir/org_monorepo",
+        local_full_path="cache_dir/org_monorepo/packages/ui",
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.npm_collection_strategy.path_join",
+        side_effect=lambda *args: "/".join(args),
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.npm_collection_strategy.path_exists",
+        side_effect=lambda p: p == "cache_dir/org_monorepo/packages/ui/package.json",
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.npm_collection_strategy.open_file",
+        return_value=json.dumps({"name": "@org/ui", "version": "1.0.0"}),
+    )
+    npm_list_output = json.dumps(
+        {
+            "name": "monorepo-root",
+            "dependencies": {
+                "@org/ui": {
+                    "version": "1.0.0",
+                    "resolved": "file:../../packages/ui",
+                    "dependencies": {
+                        "lodash": {"version": "4.17.21"},
+                    },
+                }
+            },
+        }
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.npm_collection_strategy.run_command_with_check",
+        side_effect=[
+            (0, "", ""),
+            (0, npm_list_output, ""),
+        ],
+    )
+    mock_get = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.npm_collection_strategy.requests.get",
+        return_value=mock.Mock(status_code=200, json=lambda: {"license": "MIT"}),
+    )
+
+    strategy = NpmMetadataCollectionStrategy(
+        "https://github.com/org/monorepo/tree/main/packages/ui",
+        source_code_manager_mock,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+    )
+    result = strategy.augment_metadata(
+        [
+            Metadata(
+                name="github.com/org/monorepo/tree/main/packages/ui",
+                origin="https://github.com/org/monorepo/tree/main/packages/ui",
+                local_src_path=None,
+                license=[],
+                version=None,
+                copyright=[],
+            )
+        ]
+    )
+
+    assert [(m.name, m.version) for m in result] == [("lodash", "4.17.21")]
+    mock_get.assert_called_once_with(
+        "https://registry.npmjs.org/lodash/4.17.21", timeout=5
+    )
