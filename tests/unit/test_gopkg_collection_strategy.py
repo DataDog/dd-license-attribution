@@ -1792,3 +1792,56 @@ def test_gopkg_only_root_project_excludes_nested_and_workspace_main_modules(
         "github.com/org/monorepo/tree/main/pkg",
         "github.com/org/monorepo/pkg",
     ]
+
+
+def test_gopkg_only_root_project_matches_relative_cache_dir_against_absolute_go_dir(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    import os
+
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/monorepo",
+        "https://api.github.com/repos/org/monorepo",
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/monorepo/tree/main/pkg",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+        single_module=True,
+    )
+    relative_pkg_dir = "relative_cache/org_monorepo/pkg"
+    abs_pkg_dir = os.path.realpath(relative_pkg_dir)
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/monorepo",
+        branch="main",
+        local_root_path="relative_cache/org_monorepo",
+        local_full_path=relative_pkg_dir,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.path_exists",
+        return_value=True,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=lambda args, cwd=None, env=None: (
+            "ref: refs/heads/main\tHEAD\n"
+            if args[:2] == ["git", "ls-remote"]
+            else f'{{"ImportPath": "github.com/org/monorepo/pkg", "Module": {{"Path": "github.com/org/monorepo/pkg", "Dir": "{abs_pkg_dir}", "Main": true}}}}'
+        ),
+    )
+    seed = Metadata(
+        name="github.com/org/monorepo/tree/main/pkg",
+        version=None,
+        origin="https://github.com/org/monorepo/tree/main/pkg",
+        local_src_path=None,
+        license=[],
+        copyright=[],
+    )
+
+    result = strategy.augment_metadata([seed])
+
+    assert [m.name for m in result] == [
+        "github.com/org/monorepo/tree/main/pkg",
+        "github.com/org/monorepo/pkg",
+    ]

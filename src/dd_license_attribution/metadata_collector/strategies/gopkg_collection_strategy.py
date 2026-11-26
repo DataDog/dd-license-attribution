@@ -7,11 +7,11 @@
 
 import json
 import logging
+import os
 import re
 from typing import Any
 
 from dd_license_attribution.adaptors.os import (
-    normalize_path,
     open_file,
     output_from_command,
     path_exists,
@@ -78,15 +78,15 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         # A repository-level go.work would pull sibling modules outside the
         # requested subdirectory into the build list; consumers of a published
         # module never see it, so ignore it when scoped to a subdirectory.
-        selected_module_dir = normalize_path(source_code_ref.local_full_path)
-        disable_workspace = selected_module_dir != normalize_path(
+        selected_module_dir = os.path.realpath(source_code_ref.local_full_path)
+        disable_workspace = selected_module_dir != os.path.realpath(
             source_code_ref.local_root_path
         )
         for root, _, files in walk_directory(source_code_ref.local_full_path):
             if "go.mod" in files:
                 if self._is_example_package(root):
                     continue
-                current_module_dir = normalize_path(root)
+                current_module_dir = os.path.realpath(root)
                 module_data_list = self._run_go_list_modules(
                     root, disable_workspace=disable_workspace
                 )
@@ -118,7 +118,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                 module_dir,
             )
             return metadata
-        selected_module_dir = normalize_path(module_dir)
+        selected_module_dir = os.path.realpath(module_dir)
         for module_data in self._run_go_list_modules(
             module_dir, disable_workspace=True
         ):
@@ -149,7 +149,10 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         if current_module_dir != selected_module_dir:
             return False
         module_dir = module_data.get("Dir")
-        if module_dir is not None and normalize_path(module_dir) != selected_module_dir:
+        if (
+            module_dir is not None
+            and os.path.realpath(module_dir) != selected_module_dir
+        ):
             return False
         top_name = self.top_package.removeprefix("https://").removeprefix("http://")
         return any(

@@ -69,11 +69,14 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         project_paths, workspace_root = self._get_project_paths_and_root()
         locked_crate_versions: dict[str, set[str]] = {}
         manifest_crate_versions: dict[str, set[str]] = {}
+        non_crates_io_crates: set[str] = set()
         for project_path in project_paths:
             self._merge_crate_versions(
                 locked_crate_versions,
                 self._get_locked_crate_versions(
-                    project_path, workspace_root=workspace_root
+                    project_path,
+                    workspace_root=workspace_root,
+                    non_crates_io_crates=non_crates_io_crates,
                 ),
             )
             self._merge_crate_versions(
@@ -81,8 +84,12 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                 self._get_manifest_crate_versions(
                     project_path,
                     include_package_version=self.local_project_path is not None,
+                    non_crates_io_crates=non_crates_io_crates,
                 ),
             )
+        for crate_name in non_crates_io_crates:
+            locked_crate_versions.pop(crate_name, None)
+            manifest_crate_versions.pop(crate_name, None)
 
         metadata_cache: dict[tuple[str, str | None, bool], CrateMetadata | None] = {}
         for package in updated_metadata:
@@ -183,7 +190,10 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         return None, False
 
     def _get_locked_crate_versions(
-        self, project_path: str, workspace_root: str | None = None
+        self,
+        project_path: str,
+        workspace_root: str | None = None,
+        non_crates_io_crates: set[str] | None = None,
     ) -> dict[str, set[str]]:
         cargo_lock_path, is_ancestor_lock = self._find_cargo_lock_path(
             project_path, workspace_root
@@ -221,6 +231,8 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                 crate_versions.setdefault(name, set()).add(version)
             else:
                 non_crates_io_names.add(name)
+        if non_crates_io_crates is not None:
+            non_crates_io_crates.update(non_crates_io_names)
         for name in non_crates_io_names:
             crate_versions.pop(name, None)
         return crate_versions
@@ -328,6 +340,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         project_path: str,
         visited_projects: set[str] | None = None,
         include_package_version: bool = False,
+        non_crates_io_crates: set[str] | None = None,
     ) -> dict[str, set[str]]:
         if visited_projects is None:
             visited_projects = set()
@@ -378,6 +391,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                             self._get_manifest_crate_versions(
                                 path_join(project_path, dependency_path),
                                 visited_projects,
+                                non_crates_io_crates=non_crates_io_crates,
                             ),
                         )
                     if "git" in dependency_config:
@@ -386,6 +400,8 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
                     if isinstance(registry, str) and registry != "crates-io":
                         is_crates_io_dependency = False
                     if not is_crates_io_dependency:
+                        if non_crates_io_crates is not None:
+                            non_crates_io_crates.add(crate_name)
                         version = None
                 if version is not None:
                     crate_versions.setdefault(crate_name, set()).add(version)

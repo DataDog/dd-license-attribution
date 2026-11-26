@@ -331,18 +331,45 @@ def github_api_get_with_retry(
     return (status, result, attempt)
 
 
-def _ls_remote_matches_ref(ls_output: str, ref_guess: str) -> bool:
-    """Check whether `git ls-remote` output contains an exact branch/tag named ref_guess."""
-    expected_refs = (
-        f"refs/heads/{ref_guess}",
-        f"refs/tags/{ref_guess}",
-        f"refs/tags/{ref_guess}^{{}}",
-    )
+class RefType(Enum):
+    BRANCH = "branch"
+    TAG = "tag"
+    COMMIT = "commit"
+
+
+class _ExtractedRef(str):
+    """String subclass returned by `extract_ref` carrying ref type and verification state."""
+
+    ref_type: RefType
+    verified: bool
+
+    def __new__(
+        cls,
+        value: str,
+        ref_type: RefType = RefType.BRANCH,
+        verified: bool = True,
+    ) -> "_ExtractedRef":
+        obj = super().__new__(cls, value)
+        obj.ref_type = ref_type
+        obj.verified = verified
+        return obj
+
+
+def _ls_remote_match_ref_type(ls_output: str, ref_guess: str) -> RefType | None:
+    """Return the advertised RefType if `git ls-remote` contains an exact branch/tag named ref_guess."""
+    branch_ref = f"refs/heads/{ref_guess}"
+    tag_refs = (f"refs/tags/{ref_guess}", f"refs/tags/{ref_guess}^{{}}")
+    matched_tag = False
     for line in ls_output.splitlines():
         parts = line.split("\t", 1)
-        if len(parts) == 2 and parts[1].strip() in expected_refs:
-            return True
-    return False
+        if len(parts) != 2:
+            continue
+        ref_name = parts[1].strip()
+        if ref_name == branch_ref:
+            return RefType.BRANCH
+        if ref_name in tag_refs:
+            matched_tag = True
+    return RefType.TAG if matched_tag else None
 
 
 def _ls_remote_matches_sha(ls_output: str, sha_guess: str) -> bool:
@@ -389,19 +416,21 @@ def extract_ref(ref: str, url: str, git_env: dict[str, str] | None = None) -> st
     )
     # Probe longest prefix first so slash branches (e.g. "release/v2") win over "release".
     for ref_guess in candidate_refs:
-        if _ls_remote_matches_ref(ls_output, ref_guess):
+        matched_type = _ls_remote_match_ref_type(ls_output, ref_guess)
+        if matched_type is not None:
             logger.debug("Found valid ref: %s", ref_guess)
-            return ref_guess
+            return _ExtractedRef(ref_guess, ref_type=matched_type, verified=True)
     # May be a commit hash: reachable historical commits may not be advertised
-    # by `git ls-remote`, so accept full 40-char SHAs and let fetch validate.
+    # by `git ls-remote`, so accept full 40-char SHAs provisionally and let
+    # Git fetch confirm commit existence.
     ref_guess = split_ref[0]
     if _COMMIT_SHA_PATTERN.fullmatch(ref_guess):
-        logger.debug("Found valid full commit SHA ref: %s", ref_guess)
-        return ref_guess
+        logger.debug("Found provisional full commit SHA ref: %s", ref_guess)
+        return _ExtractedRef(ref_guess, ref_type=RefType.COMMIT, verified=False)
     ls_output = _output_from_git_command(["git", "ls-remote", "--", url], git_env)
     if _ls_remote_matches_sha(ls_output, ref_guess):
         logger.debug("Found valid ref from hash: %s", ref_guess)
-        return ref_guess
+        return _ExtractedRef(ref_guess, ref_type=RefType.COMMIT, verified=True)
     return ""
 
 
@@ -477,12 +506,6 @@ def keep_tree_path(canonical_url: str, original_url: str) -> str:
     return canonical_url
 
 
-class RefType(Enum):
-    BRANCH = "branch"
-    TAG = "tag"
-    COMMIT = "commit"
-
-
 @dataclass
 class MirrorSpec:
     """Specification for a mirror repository.
@@ -519,6 +542,7 @@ class _ResolvedRef:
     ref_name: str
     ref_type: RefType = RefType.BRANCH
     mirror_spec: MirrorSpec | None = None
+    verified: bool = True
 
 
 class SourceCodeManager(ArtifactManager):
@@ -536,6 +560,7 @@ class SourceCodeManager(ArtifactManager):
         self._repository_info_cache: dict[str, tuple[int, dict[str, Any] | None]] = {}
         self._subdirectory_path_cache: dict[str, str | None] = {}
         self._resolved_ref_cache: dict[str, tuple[str, str | None] | None] = {}
+        self._verified_path_urls: set[str] = set()
         self._successful_checkout_urls: set[str] = set()
         self._unresolved_path_urls: set[str] = set()
         logger.info(
@@ -928,10 +953,14 @@ class SourceCodeManager(ArtifactManager):
 
     def _publish_staging_checkout(
         self, staging_path: str, target_path: str, force_update: bool
-    ) -> None:
-        """Atomically publish an attempt-owned staging checkout to `target_path`."""
+    ) -> bool:
+        """Atomically publish an attempt-owned staging checkout to `target_path`.
+
+        Returns True if `target_path` holds a usable checkout after publication
+        (or if `staging_path` was not materialized on disk in mocked unit tests).
+        """
         if not os.path.exists(staging_path):
-            return
+            return True
         backup_path = ""
         if force_update and os.path.exists(target_path):
             backup_path = f"{target_path}.old-{os.getpid()}-{uuid.uuid4().hex[:8]}"
@@ -945,10 +974,16 @@ class SourceCodeManager(ArtifactManager):
             if self._is_within_cache_dir(staging_path):
                 shutil.rmtree(staging_path, ignore_errors=True)
             if backup_path and os.path.exists(backup_path):
-                os.rename(backup_path, target_path)
+                try:
+                    os.rename(backup_path, target_path)
+                except OSError:
+                    pass
+                return False
+            return is_dir(path_join(target_path, ".git"))
         else:
             if backup_path and self._is_within_cache_dir(backup_path):
                 shutil.rmtree(backup_path, ignore_errors=True)
+            return True
 
     def _extract_ref_with_mirror_fallback(
         self,
@@ -958,7 +993,11 @@ class SourceCodeManager(ArtifactManager):
     ) -> _ResolvedRef | None:
         validated_ref = extract_ref(ref, repository_url, git_env=git_env)
         if validated_ref != "" and _is_safe_git_ref_name(validated_ref):
-            return _ResolvedRef(ref_name=validated_ref)
+            return _ResolvedRef(
+                ref_name=str(validated_ref),
+                ref_type=getattr(validated_ref, "ref_type", RefType.BRANCH),
+                verified=getattr(validated_ref, "verified", True),
+            )
         split_ref = [segment for segment in ref.split("/") if segment]
         candidate_refs = ["/".join(split_ref[:i]) for i in range(len(split_ref), 0, -1)]
         for mirror_map in self.mirrors:
@@ -967,9 +1006,10 @@ class SourceCodeManager(ArtifactManager):
             validated_ref = extract_ref(ref, mirror_map.mirror_url, git_env=git_env)
             if validated_ref != "" and _is_safe_git_ref_name(validated_ref):
                 return _ResolvedRef(
-                    ref_name=validated_ref,
-                    ref_type=RefType.BRANCH,
+                    ref_name=str(validated_ref),
+                    ref_type=getattr(validated_ref, "ref_type", RefType.BRANCH),
                     mirror_spec=mirror_map,
+                    verified=getattr(validated_ref, "verified", True),
                 )
             if mirror_map.ref_mapping:
                 for ref_guess in candidate_refs:
@@ -980,16 +1020,15 @@ class SourceCodeManager(ArtifactManager):
                         if mapped is None:
                             continue
                         _, target_ref = mapped
-                        if (
-                            extract_ref(
-                                target_ref, mirror_map.mirror_url, git_env=git_env
-                            )
-                            == target_ref
-                        ):
+                        target_match = extract_ref(
+                            target_ref, mirror_map.mirror_url, git_env=git_env
+                        )
+                        if target_match == target_ref:
                             return _ResolvedRef(
                                 ref_name=ref_guess,
                                 ref_type=ref_type,
                                 mirror_spec=mirror_map,
+                                verified=getattr(target_match, "verified", True),
                             )
         return None
 
@@ -998,11 +1037,11 @@ class SourceCodeManager(ArtifactManager):
         return _strip_url_query_and_fragment(url) in self._successful_checkout_urls
 
     def has_resolved_path(self, url: str) -> bool:
-        """Whether a `/tree/` or `/blob/` lookup for `url` succeeded."""
+        """Whether a `/tree/` or `/blob/` lookup for `url` was verified to exist."""
         clean_url = _strip_url_query_and_fragment(url)
         return (
             clean_url in self._successful_checkout_urls
-            or self._resolved_ref_cache.get(clean_url) is not None
+            or clean_url in self._verified_path_urls
         )
 
     def has_unresolved_path(self, url: str) -> bool:
@@ -1028,7 +1067,7 @@ class SourceCodeManager(ArtifactManager):
             self._unresolved_path_urls.add(clean_url)
             return None
         try:
-            branch, path, _, _ = self._resolve_ref_and_path(
+            branch, path, _, _, verified = self._resolve_ref_and_path(
                 parsed_url, repository_url, NONINTERACTIVE_GIT_ENV
             )
         except OSError as e:
@@ -1043,6 +1082,8 @@ class SourceCodeManager(ArtifactManager):
             return None
         resolved = (branch, path)
         self._resolved_ref_cache[clean_url] = resolved
+        if verified:
+            self._verified_path_urls.add(clean_url)
         return resolved
 
     def get_subdirectory_path(self, url: str) -> str | None:
@@ -1101,8 +1142,8 @@ class SourceCodeManager(ArtifactManager):
         original_parsed_url: Any,
         repository_url: str,
         git_env: dict[str, str] | None,
-    ) -> tuple[str, str | None, RefType, MirrorSpec | None]:
-        """Split a parsed GitHub URL into its ref, sanitized subdirectory, ref type, and matched mirror.
+    ) -> tuple[str, str | None, RefType, MirrorSpec | None, bool]:
+        """Split a parsed GitHub URL into its ref, sanitized subdirectory, ref type, matched mirror, and verification state.
 
         Returns `(branch, None, ...)` if the path contains a `..` traversal segment
         or if a `/tree/` or `/blob/` URL's ref cannot be resolved.
@@ -1110,6 +1151,7 @@ class SourceCodeManager(ArtifactManager):
         branch = "default_branch"
         resolved_ref_type = RefType.BRANCH
         matched_mirror: MirrorSpec | None = None
+        verified = True
         if original_parsed_url.branch:
             # branches are guessed from url, and may fail to be correct specially on tags and branches with slashes
             resolved_ref = self._extract_ref_with_mirror_fallback(
@@ -1119,9 +1161,10 @@ class SourceCodeManager(ArtifactManager):
                 branch = resolved_ref.ref_name
                 resolved_ref_type = resolved_ref.ref_type
                 matched_mirror = resolved_ref.mirror_spec
+                verified = resolved_ref.verified
         if original_parsed_url.path_raw.startswith("/tree/"):
             if branch == "default_branch":
-                return branch, None, resolved_ref_type, matched_mirror
+                return branch, None, resolved_ref_type, matched_mirror, False
             segments = [
                 segment
                 for segment in original_parsed_url.path_raw.removeprefix(
@@ -1131,13 +1174,14 @@ class SourceCodeManager(ArtifactManager):
             ]
             branch_parts = branch.split("/")
             if segments[: len(branch_parts)] != branch_parts:
-                return branch, None, resolved_ref_type, matched_mirror
+                return branch, None, resolved_ref_type, matched_mirror, False
             raw_path = "/".join(segments[len(branch_parts) :])
             return (
                 branch,
                 _sanitize_repo_subpath(raw_path),
                 resolved_ref_type,
                 matched_mirror,
+                verified,
             )
         if original_parsed_url.path_raw.startswith("/blob/"):
             blob_segments = [
@@ -1152,21 +1196,23 @@ class SourceCodeManager(ArtifactManager):
                 blob_dir, repository_url, git_env=git_env
             )
             if resolved_ref is None:
-                return branch, None, resolved_ref_type, matched_mirror
+                return branch, None, resolved_ref_type, matched_mirror, False
             branch = resolved_ref.ref_name
             resolved_ref_type = resolved_ref.ref_type
             matched_mirror = resolved_ref.mirror_spec
+            verified = resolved_ref.verified
             branch_parts = branch.split("/")
             if blob_segments[: len(branch_parts)] != branch_parts:
-                return branch, None, resolved_ref_type, matched_mirror
+                return branch, None, resolved_ref_type, matched_mirror, False
             raw_path = "/".join(blob_segments[len(branch_parts) :])
             return (
                 branch,
                 _sanitize_repo_subpath(raw_path),
                 resolved_ref_type,
                 matched_mirror,
+                verified,
             )
-        return branch, "", resolved_ref_type, matched_mirror
+        return branch, "", resolved_ref_type, matched_mirror, verified
 
     def get_code(
         self,
@@ -1218,7 +1264,7 @@ class SourceCodeManager(ArtifactManager):
             repo,
         )
         try:
-            branch, path, resolved_ref_type, matched_mirror = (
+            branch, path, resolved_ref_type, matched_mirror, _ = (
                 self._resolve_ref_and_path(original_parsed_url, repository_url, git_env)
             )
         except OSError as e:
@@ -1408,9 +1454,17 @@ class SourceCodeManager(ArtifactManager):
             )
             return None
 
-        self._publish_staging_checkout(
+        if not self._publish_staging_checkout(
             staging_branch_path, local_branch_path, force_update=force_update
-        )
+        ):
+            if is_repo_path:
+                self._unresolved_path_urls.add(clean_resource_url)
+            logger.error(
+                "Failed to publish checkout for %s at %s",
+                effective_repository_url,
+                local_branch_path,
+            )
+            return None
 
         local_full_path = f"{local_branch_path}{path}"
         if (

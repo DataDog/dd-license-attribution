@@ -1111,11 +1111,16 @@ def generate_sbom(
                         for url in target_urls
                         if has_repository_path(url)
                     )
-                    if (
-                        not has_resolved
-                        and source_code_manager.get_subdirectory_path(package) is None
-                    ):
-                        has_unresolved = True
+                    if not has_resolved:
+                        if source_code_manager.get_subdirectory_path(package) is None:
+                            has_unresolved = True
+                        elif not source_code_manager.has_resolved_path(package):
+                            # Provisional refs (e.g. unadvertised 40-char SHAs)
+                            # require Git confirmation before reporting success.
+                            if source_code_manager.get_code(package) is None:
+                                has_unresolved = True
+                            else:
+                                has_checkout = True
                 if has_unresolved and not has_checkout:
                     logger.error(
                         "Could not resolve requested repository ref/path for '%s'. "

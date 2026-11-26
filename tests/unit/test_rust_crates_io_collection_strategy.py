@@ -1749,3 +1749,136 @@ def test_ancestor_cargo_lock_handles_missing_or_unusable_member_manifest(
     assert strategy.augment_metadata(
         [mark_rust_metadata(_metadata("serde", None))]
     ) == [_metadata("serde", None)]
+
+
+def test_merging_multiple_workspace_members_preserves_non_crates_io_source(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    source_code_manager = _source_code_manager()
+    source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/project",
+        branch="main",
+        local_root_path="/cache/org-project",
+        local_full_path="/cache/org-project/crates",
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.walk_directory",
+        return_value=[
+            ("/cache/org-project/crates/member-a", [], ["Cargo.toml"]),
+            ("/cache/org-project/crates/member-b", [], ["Cargo.toml"]),
+        ],
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_join",
+        side_effect=lambda *parts: "/".join(parts),
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.path_exists",
+        side_effect=lambda path: path
+        in {
+            "/cache/org-project/Cargo.lock",
+            "/cache/org-project/crates/member-a/Cargo.toml",
+            "/cache/org-project/crates/member-b/Cargo.toml",
+        },
+    )
+    workspace_lock = """
+version = 4
+
+[[package]]
+name = "member-a"
+version = "0.1.0"
+dependencies = [
+    "shared-crate 0.2.0 (git+https://github.com/org/shared-crate#abc123)",
+]
+
+[[package]]
+name = "member-b"
+version = "0.1.0"
+dependencies = [
+    "shared-crate 1.5.0 (registry+https://github.com/rust-lang/crates.io-index)",
+    "serde 1.0.228 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "shared-crate"
+version = "0.2.0"
+source = "git+https://github.com/org/shared-crate#abc123"
+
+[[package]]
+name = "shared-crate"
+version = "1.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "serde"
+version = "1.0.228"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+"""
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.open_file",
+        side_effect=lambda path: {
+            "/cache/org-project/Cargo.lock": workspace_lock,
+            "/cache/org-project/crates/member-a/Cargo.toml": (
+                '[package]\nname = "member-a"\nversion = "0.1.0"\n'
+                '[dependencies]\nshared-crate = { git = "https://github.com/org/shared-crate" }\n'
+            ),
+            "/cache/org-project/crates/member-b/Cargo.toml": (
+                '[package]\nname = "member-b"\nversion = "0.1.0"\n'
+                '[dependencies]\nshared-crate = "=1.5.0"\nserde = "1.0"\n'
+            ),
+        }[path],
+    )
+    mock_download = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.download_bounded",
+        side_effect=[
+            _crate_response(
+                "serde",
+                "1.0.228",
+                repository="https://github.com/serde-rs/serde",
+            ),
+            b"crate archive",
+        ],
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy.read_tar_gz_text_file",
+        return_value='[package]\nname = "serde"\nauthors = ["Serde Developers"]\n',
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "https://github.com/org/project/tree/main/crates",
+        source_code_manager,
+    )
+
+    result = strategy.augment_metadata(
+        [
+            mark_rust_metadata(_metadata("serde", None)),
+            mark_rust_metadata(
+                _metadata(
+                    "shared-crate",
+                    None,
+                    origin="https://github.com/org/shared-crate",
+                )
+            ),
+        ]
+    )
+
+    assert result == [
+        _metadata(
+            "serde",
+            "1.0.228",
+            origin="https://github.com/serde-rs/serde",
+            license=["MIT OR Apache-2.0"],
+            copyright=["Serde Developers"],
+        ),
+        _metadata(
+            "shared-crate",
+            None,
+            origin="https://github.com/org/shared-crate",
+        ),
+    ]
+    assert mock_download.call_count == 2

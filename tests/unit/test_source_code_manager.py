@@ -3865,3 +3865,131 @@ def test_get_code_rejects_unsafe_default_branch_and_outside_cache_path(
 
     assert not staging.exists()
     assert (target / "old.txt").read_text(encoding="utf-8") == "old"
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.extract_ref")
+@patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+def test_get_code_propagates_staging_publish_failure_without_valid_target(
+    mock_now: Mock,
+    mock_extract_ref: Mock,
+    tmp_path: Path,
+) -> None:
+    mock_now.return_value = datetime.fromisoformat("2022-01-01T00:00:00+00:00")
+    mock_extract_ref.return_value = "main"
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    scm = SourceCodeManager(str(cache_dir), Mock(), 86400)
+    url = "https://github.com/DataDog/repo/tree/main/apis"
+
+    with (
+        patch(
+            "dd_license_attribution.artifact_management.source_code_manager.run_command",
+            return_value=0,
+        ),
+        patch(
+            "dd_license_attribution.artifact_management.source_code_manager.os.rename",
+            side_effect=OSError("rename failed"),
+        ),
+    ):
+        assert scm.get_code(url, skip_canonical_lookup=True) is None
+
+    assert scm.has_successful_checkout(url) is False
+    assert scm.has_unresolved_path(url) is True
+
+
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+@patch("dd_license_attribution.artifact_management.source_code_manager.run_command")
+@patch("dd_license_attribution.artifact_management.source_code_manager.create_dirs")
+@patch("dd_license_attribution.artifact_management.source_code_manager.path_exists")
+@patch("dd_license_attribution.artifact_management.source_code_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+@patch("dd_license_attribution.artifact_management.artifact_manager.get_datetime_now")
+def test_get_code_preserves_advertised_tag_type_for_mirror_mapping(
+    mock_now: Mock,
+    mock_am_path_exists: Mock,
+    mock_am_list_dir: Mock,
+    mock_list_dir: Mock,
+    mock_path_exists: Mock,
+    mock_create_dirs: Mock,
+    mock_run_command: Mock,
+    mock_output_from_command: Mock,
+) -> None:
+    mock_now.return_value = datetime.fromisoformat("2022-01-01T00:00:00+00:00")
+    mock_am_path_exists.return_value = True
+    mock_am_list_dir.return_value = []
+    mock_list_dir.return_value = []
+    mock_path_exists.return_value = False
+    mock_run_command.return_value = 0
+    # Original repository advertises v1.0 as a tag.
+    mock_output_from_command.return_value = (
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/tags/v1.0\n"
+    )
+    mirror = MirrorSpec(
+        original_url="https://github.com/DataDog/repo",
+        mirror_url="https://mirror.example/DataDog/repo",
+        ref_mapping={(RefType.TAG, "v1.0"): (RefType.BRANCH, "release-1")},
+    )
+    scm = SourceCodeManager("cache_dir", Mock(), mirrors=[mirror])
+    url = "https://github.com/DataDog/repo/tree/v1.0/apis"
+
+    code_ref = scm.get_code(url, skip_canonical_lookup=True)
+
+    assert code_ref == SourceCodeReference(
+        repo_url="https://github.com/DataDog/repo",
+        branch="v1.0",
+        local_root_path="cache_dir/20220101_000000Z/DataDog-repo/v1.0",
+        local_full_path="cache_dir/20220101_000000Z/DataDog-repo/v1.0/apis",
+    )
+    staging_dir = _assert_staging_dir(
+        mock_create_dirs.call_args.args[0],
+        "cache_dir/20220101_000000Z/DataDog-repo/v1.0",
+    )
+    mock_run_command.assert_called_once_with(
+        [
+            "git",
+            "clone",
+            "-c",
+            "advice.detachedHead=False",
+            "--depth",
+            "1",
+            "--branch=release-1",
+            "https://mirror.example/DataDog/repo",
+            staging_dir,
+        ],
+        env=NONINTERACTIVE_GIT_ENV,
+        timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
+    )
+
+
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+@patch("dd_license_attribution.artifact_management.artifact_manager.list_dir")
+@patch("dd_license_attribution.artifact_management.artifact_manager.path_exists")
+def test_unadvertised_full_sha_stays_provisional_until_checkout(
+    mock_path_exists: Mock,
+    mock_list_dir: Mock,
+    mock_output_from_command: Mock,
+) -> None:
+    mock_path_exists.return_value = True
+    mock_list_dir.return_value = []
+    mock_output_from_command.return_value = ""
+    scm = SourceCodeManager("cache_dir", Mock())
+    sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
+    url = f"https://github.com/DataDog/repo/tree/{sha}/apis"
+
+    with patch.object(
+        scm,
+        "get_canonical_urls",
+        return_value=(
+            "https://github.com/DataDog/repo",
+            "https://api.github.com/repos/DataDog/repo",
+        ),
+    ):
+        assert scm.get_subdirectory_path(url) == "/apis"
+
+    # Format-only SHA resolution is provisional and must not mark the path verified.
+    assert scm.has_resolved_path(url) is False
