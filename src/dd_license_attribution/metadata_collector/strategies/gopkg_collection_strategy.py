@@ -72,19 +72,24 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             return self._augment_metadata_from_single_module(
                 metadata, source_code_ref.local_full_path
             )
+        discovered_modules: list[dict[str, Any]] = []
         for root, _, files in walk_directory(source_code_ref.local_full_path):
             if "go.mod" in files:
                 if self._is_example_package(root):
                     continue
                 module_data_list = self._run_go_list_modules(root)
-                for module_data in module_data_list:
-                    module_path = module_data["Path"]
-
-                    if self.only_root_project:
-                        if not any(meta.name == module_path for meta in metadata):
-                            continue
-
-                    self._upsert_metadata(metadata, module_data)
+                if self.only_root_project:
+                    module_data_list = [
+                        module_data
+                        for module_data in module_data_list
+                        if any(
+                            meta.name is not None
+                            and meta.name.lower() == module_data["Path"].lower()
+                            for meta in metadata
+                        )
+                    ]
+                discovered_modules.extend(module_data_list)
+        self._upsert_module_list(metadata, discovered_modules)
 
         return metadata
 
@@ -102,16 +107,21 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                 module_dir,
             )
             return metadata
+        module_data_list: list[dict[str, Any]] = []
         for module_data in self._run_go_list_modules(
             module_dir, disable_workspace=True
         ):
             if self.only_transitive_dependencies and module_data.get("Main"):
                 continue
-            if self.only_root_project and not any(
-                meta.name == module_data["Path"] for meta in metadata
-            ):
-                continue
-            self._upsert_metadata(metadata, module_data)
+            if self.only_root_project:
+                module_path_lower = module_data["Path"].lower()
+                if not module_data.get("Main") or not any(
+                    meta.name is not None and meta.name.lower() == module_path_lower
+                    for meta in metadata
+                ):
+                    continue
+            module_data_list.append(module_data)
+        self._upsert_module_list(metadata, module_data_list)
         return metadata
 
     def _augment_metadata_from_local_path(
@@ -159,6 +169,7 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         if not module_data_list:
             return metadata
 
+        module_data_list_filtered: list[dict[str, Any]] = []
         for module_data in module_data_list:
             module_path = module_data["Path"]
 
@@ -173,17 +184,20 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                 # The prefix check must not cross major-version boundaries: for a
                 # seed like "github.com/org/lib/v2/foo", "github.com/org/lib" is
                 # a different module and must NOT match even though it is a prefix.
+                module_path_lower = module_path.lower()
                 if not any(
-                    name == module_path
+                    name.lower() == module_path_lower
                     or (
-                        name.startswith(module_path + "/")
+                        name.lower().startswith(module_path_lower + "/")
                         and not re.match(r"v\d+(/|$)", name[len(module_path) + 1 :])
                     )
                     for name in root_package_names
                 ):
                     continue
 
-            self._upsert_metadata(metadata, module_data)
+            module_data_list_filtered.append(module_data)
+
+        self._upsert_module_list(metadata, module_data_list_filtered)
 
         return metadata
 
@@ -255,8 +269,21 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         return list(seen_modules.values())
 
+    def _upsert_module_list(
+        self, metadata: list[Metadata], module_data_list: list[dict[str, Any]]
+    ) -> None:
+        """Upsert a batch of Go modules, reserving exact matches before consuming aliases."""
+        reserved_exact_names = {module_data["Path"] for module_data in module_data_list}
+        for module_data in module_data_list:
+            self._upsert_metadata(
+                metadata, module_data, reserved_exact_names=reserved_exact_names
+            )
+
     def _upsert_metadata(
-        self, metadata: list[Metadata], module_data: dict[str, Any]
+        self,
+        metadata: list[Metadata],
+        module_data: dict[str, Any],
+        reserved_exact_names: set[str],
     ) -> None:
         """Add or update a metadata entry from a go list module dict."""
         module_path = module_data["Path"]
@@ -272,13 +299,33 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         )
 
         for i, meta in enumerate(metadata):
-            if meta.name == module_metadata.name:
+            if meta.name == module_path:
                 metadata[i].origin = module_metadata.origin
                 metadata[i].local_src_path = module_metadata.local_src_path
                 metadata[i].version = (
-                    module_metadata.version
-                    if module_metadata.version is not None
-                    else metadata[i].version
+                    version if version is not None else metadata[i].version
+                )
+                return
+
+        module_path_lower = module_path.lower()
+        for i, meta in enumerate(metadata):
+            if (
+                meta.name is not None
+                and meta.name not in reserved_exact_names
+                and meta.name.lower() == module_path_lower
+            ):
+                if (
+                    meta.version is not None
+                    and version is not None
+                    and meta.version != version
+                ):
+                    metadata[i].license = []
+                    metadata[i].copyright = []
+                metadata[i].name = module_path
+                metadata[i].origin = module_metadata.origin
+                metadata[i].local_src_path = module_metadata.local_src_path
+                metadata[i].version = (
+                    version if version is not None else metadata[i].version
                 )
                 return
         metadata.append(module_metadata)

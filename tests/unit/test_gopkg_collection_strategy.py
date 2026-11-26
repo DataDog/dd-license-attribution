@@ -140,8 +140,8 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
 
     mock_output_from_command.side_effect = [
         deps_list_json_1,
-        branch_detection_output,
         deps_list_json_3,
+        branch_detection_output,
     ]
 
     mock_open_file = mocker.patch(
@@ -227,6 +227,11 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
                 env={"GOTOOLCHAIN": "auto"},
             ),
             mocker.call(
+                ["go", "list", "-json", "all"],
+                cwd="org_package1/package3",
+                env={"GOTOOLCHAIN": "auto"},
+            ),
+            mocker.call(
                 [
                     "git",
                     "ls-remote",
@@ -234,11 +239,6 @@ def test_gopkg_collection_strategy_adds_gopkg_metadata_to_list_of_dependencies(
                     "https://github.com/org/package1",
                     "HEAD",
                 ]
-            ),
-            mocker.call(
-                ["go", "list", "-json", "all"],
-                cwd="org_package1/package3",
-                env={"GOTOOLCHAIN": "auto"},
             ),
         ]
     )
@@ -324,8 +324,8 @@ require github.com/org/package1 v1.0
         "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
         side_effect=[
             deps_list_json_top,
-            branch_detection_output,
             deps_list_json_src,
+            branch_detection_output,
         ],
     )
 
@@ -391,6 +391,11 @@ require github.com/org/package1 v1.0
                 env={"GOTOOLCHAIN": "auto"},
             ),
             mocker.call(
+                ["go", "list", "-json", "all"],
+                cwd="org_package1/src",
+                env={"GOTOOLCHAIN": "auto"},
+            ),
+            mocker.call(
                 [
                     "git",
                     "ls-remote",
@@ -398,11 +403,6 @@ require github.com/org/package1 v1.0
                     "https://github.com/org/package1",
                     "HEAD",
                 ]
-            ),
-            mocker.call(
-                ["go", "list", "-json", "all"],
-                cwd="org_package1/src",
-                env={"GOTOOLCHAIN": "auto"},
             ),
         ]
     )
@@ -1360,6 +1360,287 @@ def test_gopkg_local_project_path_module_graph_empty_output(
     )
 
 
+def test_gopkg_collection_strategy_merges_case_insensitive_sbom_entries(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Lowercase and mixed-case SBOM entries must merge with canonical go list paths."""
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/DataDog/my-repo",
+        None,
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/DataDog/my-repo",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+    )
+
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/DataDog/my-repo",
+        branch="main",
+        local_root_path="cache_dir/DataDog_my-repo",
+        local_full_path="cache_dir/DataDog_my-repo",
+    )
+    mock_walk_directory = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+        return_value=[("my-repo", [], ["go.mod"])],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        return_value="module github.com/DataDog/my-repo",
+    )
+
+    deps_list_json = """
+{
+    "ImportPath": "github.com/DataDog/dd-trace-go/v2/ddtrace",
+    "Module": {
+        "Path": "github.com/DataDog/dd-trace-go/v2",
+        "Version": "v2.8.2",
+        "Dir": "/go/pkg/mod/github.com/!data!dog/dd-trace-go/v2@v2.8.2"
+    }
+}
+{
+    "ImportPath": "github.com/DataDog/datadog-go/statsd",
+    "Module": {
+        "Path": "github.com/DataDog/datadog-go",
+        "Version": "v4.8.3",
+        "Dir": "/go/pkg/mod/github.com/!data!dog/datadog-go@v4.8.3"
+    }
+}"""
+
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=[deps_list_json, "ref: refs/heads/main\tHEAD"],
+    )
+
+    initial_metadata = [
+        Metadata(
+            name=None,
+            origin="https://example.com/nameless",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+        Metadata(
+            name="github.com/datadog/dd-trace-go/v2",
+            origin="https://github.com/datadog/dd-trace-go/v2",
+            local_src_path=None,
+            license=["Apache-2.0"],
+            version="v2.8.2",
+            copyright=["Datadog, Inc."],
+        ),
+        Metadata(
+            name="github.com/DATADOG/datadog-go",
+            origin="https://github.com/DATADOG/datadog-go",
+            local_src_path=None,
+            license=["MIT"],
+            version="v4.8.3",
+            copyright=["Datadog, Inc."],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert len(result) == 3
+    merged_trace = result[1]
+    assert merged_trace.name == "github.com/DataDog/dd-trace-go/v2"
+    assert merged_trace.origin == "https://github.com/DataDog/dd-trace-go/tree/main/v2"
+    assert (
+        merged_trace.local_src_path
+        == "/go/pkg/mod/github.com/!data!dog/dd-trace-go/v2@v2.8.2"
+    )
+    assert merged_trace.version == "v2.8.2"
+    assert merged_trace.license == ["Apache-2.0"]
+    assert merged_trace.copyright == ["Datadog, Inc."]
+
+    merged_statsd = result[2]
+    assert merged_statsd.name == "github.com/DataDog/datadog-go"
+    assert merged_statsd.origin == "https://github.com/DataDog/datadog-go"
+    assert (
+        merged_statsd.local_src_path
+        == "/go/pkg/mod/github.com/!data!dog/datadog-go@v4.8.3"
+    )
+    assert merged_statsd.version == "v4.8.3"
+    assert merged_statsd.license == ["MIT"]
+    assert merged_statsd.copyright == ["Datadog, Inc."]
+
+    mock_source_code_manager.get_canonical_urls.assert_called_once_with(
+        "https://github.com/DataDog/my-repo"
+    )
+    mock_source_code_manager.get_code.assert_called_once_with(
+        "https://github.com/DataDog/my-repo"
+    )
+    mock_walk_directory.assert_called_once_with("cache_dir/DataDog_my-repo")
+    mock_open_file.assert_called_once_with("my-repo/go.mod")
+    mock_output_from_command.assert_has_calls(
+        [
+            call(
+                ["go", "list", "-json", "all"],
+                cwd="my-repo",
+                env={"GOTOOLCHAIN": "auto"},
+            ),
+            call(
+                [
+                    "git",
+                    "ls-remote",
+                    "--symref",
+                    "https://github.com/DataDog/dd-trace-go",
+                    "HEAD",
+                ]
+            ),
+        ]
+    )
+
+
+def test_gopkg_only_root_project_matches_case_insensitively(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """ONLY_ROOT_PROJECT matches root metadata regardless of module path casing."""
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/DataDog/my-repo",
+        None,
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/DataDog/my-repo",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+    )
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/DataDog/my-repo",
+        branch="main",
+        local_root_path="cache_dir/DataDog_my-repo",
+        local_full_path="cache_dir/DataDog_my-repo",
+    )
+    mock_walk_directory = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+        return_value=[("my-repo", [], ["go.mod"])],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        return_value="module github.com/DataDog/my-repo",
+    )
+    deps_list_json = """
+{
+    "ImportPath": "github.com/other/dep",
+    "Module": {
+        "Path": "github.com/other/dep",
+        "Version": "v0.1.0",
+        "Dir": "/cache/other/dep"
+    }
+}
+{
+    "ImportPath": "github.com/DataDog/my-repo",
+    "Module": {
+        "Path": "github.com/DataDog/my-repo",
+        "Version": "v1.0.0",
+        "Dir": "/cache/DataDog/my-repo"
+    }
+}"""
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json,
+    )
+
+    initial_metadata = [
+        Metadata(
+            name=None,
+            origin="https://example.com/nameless",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+        Metadata(
+            name="github.com/Datadog/my-repo",
+            origin="https://github.com/Datadog/my-repo",
+            local_src_path=None,
+            license=["Apache-2.0"],
+            version=None,
+            copyright=["Datadog, Inc."],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert len(result) == 2
+    assert result[1].name == "github.com/DataDog/my-repo"
+    assert result[1].origin == "https://github.com/DataDog/my-repo"
+    assert result[1].local_src_path == "/cache/DataDog/my-repo"
+    assert result[1].version == "v1.0.0"
+    mock_source_code_manager.get_canonical_urls.assert_called_once_with(
+        "https://github.com/DataDog/my-repo"
+    )
+    mock_source_code_manager.get_code.assert_called_once_with(
+        "https://github.com/DataDog/my-repo"
+    )
+    mock_walk_directory.assert_called_once_with("cache_dir/DataDog_my-repo")
+    mock_open_file.assert_called_once_with("my-repo/go.mod")
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="my-repo",
+        env={"GOTOOLCHAIN": "auto"},
+    )
+
+
+def test_gopkg_local_project_path_only_root_project_matches_case_insensitively(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Local-project ONLY_ROOT_PROJECT matches mixed-case module paths case-insensitively."""
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/Datadog/my-lib/subpkg@v1.2.0",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+        local_project_path="/tmp/go-resolve/my-lib",
+    )
+    deps_list_json = """
+{
+    "ImportPath": "github.com/other/dep",
+    "Module": {
+        "Path": "github.com/other/dep",
+        "Version": "v0.1.0",
+        "Dir": "/go/pkg/mod/github.com/other/dep@v0.1.0"
+    }
+}
+{
+    "ImportPath": "github.com/DataDog/my-lib/subpkg",
+    "Module": {
+        "Path": "github.com/DataDog/my-lib",
+        "Version": "v1.2.0",
+        "Dir": "/go/pkg/mod/github.com/!data!dog/my-lib@v1.2.0"
+    }
+}"""
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json,
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/Datadog/my-lib/subpkg@v1.2.0",
+            origin="github.com/Datadog/my-lib/subpkg@v1.2.0",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert len(result) == 1
+    assert result[0].name == "github.com/DataDog/my-lib"
+    assert result[0].version == "v1.2.0"
+    mock_source_code_manager.get_canonical_urls.assert_not_called()
+    mock_source_code_manager.get_code.assert_not_called()
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="/tmp/go-resolve/my-lib",
+        env={"GOTOOLCHAIN": "auto"},
+    )
+
+
 _SINGLE_MODULE_GO_LIST_OUTPUT = """
 {
     "ImportPath": "github.com/org/package1/v2",
@@ -1500,10 +1781,14 @@ def test_gopkg_single_module_only_root_project_updates_known_entries_only(
     )
     mock_output_from_command = mocker.patch(
         "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
-        return_value=_SINGLE_MODULE_GO_LIST_OUTPUT,
+        side_effect=[
+            _SINGLE_MODULE_GO_LIST_OUTPUT,
+            "ref: refs/heads/main\tHEAD\n72a11341aa684010caf1ca5dee779f0e7e84dfe9\tHEAD\n",
+            _SINGLE_MODULE_GO_LIST_OUTPUT,
+        ],
     )
     root = Metadata(
-        name="github.com/org/package4",
+        name="github.com/org/package1/v2",
         origin=None,
         local_src_path=None,
         license=[],
@@ -1515,19 +1800,46 @@ def test_gopkg_single_module_only_root_project_updates_known_entries_only(
 
     assert result == [
         Metadata(
-            name="github.com/org/package4",
-            origin="https://github.com/org/package4",
-            local_src_path="/tmp/go/pkg/mod/github.com/org/package4@v1.2.3",
+            name="github.com/org/package1/v2",
+            origin="https://github.com/org/package1/tree/main/v2",
+            local_src_path="cache_dir/org_package1",
             license=[],
-            version="v1.2.3",
+            version=None,
             copyright=[],
         )
     ]
-    mock_output_from_command.assert_called_once_with(
-        ["go", "list", "-json", "all"],
-        cwd="cache_dir/org_package1",
-        env={"GOTOOLCHAIN": "auto", "GOWORK": "off"},
+
+    # A Main module that does not match any known metadata entry is not added.
+    unrelated = Metadata(
+        name="github.com/org/unrelated",
+        origin=None,
+        local_src_path=None,
+        license=[],
+        version=None,
+        copyright=[],
     )
+    assert strategy.augment_metadata([unrelated]) == [unrelated]
+    assert mock_output_from_command.call_args_list == [
+        call(
+            ["go", "list", "-json", "all"],
+            cwd="cache_dir/org_package1",
+            env={"GOTOOLCHAIN": "auto", "GOWORK": "off"},
+        ),
+        call(
+            [
+                "git",
+                "ls-remote",
+                "--symref",
+                "https://github.com/org/package1",
+                "HEAD",
+            ]
+        ),
+        call(
+            ["go", "list", "-json", "all"],
+            cwd="cache_dir/org_package1",
+            env={"GOTOOLCHAIN": "auto", "GOWORK": "off"},
+        ),
+    ]
 
 
 def test_gopkg_single_module_without_root_go_mod_skips_collection(
@@ -1565,4 +1877,668 @@ def test_gopkg_single_module_without_root_go_mod_skips_collection(
     mock_logger.warning.assert_called_once_with(
         "Single Go module mode: no go.mod in %s, skipping Go module collection.",
         "cache_dir/org_package1",
+    )
+
+
+def test_gopkg_local_project_path_only_root_project_preserves_uppercase_subpackage(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Uppercase subpackage dirs like V2 must not be mistaken for a lowercase /v2 module boundary."""
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "example.com/lib/V2/client",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+        local_project_path="/tmp/go-resolve/lib",
+    )
+    deps_list_json = """
+{
+    "ImportPath": "example.com/lib/V2/client",
+    "Module": {
+        "Path": "example.com/lib",
+        "Version": "v1.4.0",
+        "Dir": "/go/pkg/mod/example.com/lib@v1.4.0"
+    }
+}"""
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json,
+    )
+    initial_metadata = [
+        Metadata(
+            name="example.com/lib/V2/client",
+            origin="example.com/lib/V2/client",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert len(result) == 1
+    assert result[0].name == "example.com/lib"
+    assert result[0].version == "v1.4.0"
+    mock_source_code_manager.get_code.assert_not_called()
+    mock_source_code_manager.get_canonical_urls.assert_not_called()
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="/tmp/go-resolve/lib",
+        env={"GOTOOLCHAIN": "auto"},
+    )
+
+
+def test_gopkg_keeps_distinct_go_modules_differing_only_by_case(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Separate go.mod files reporting example.com/Foo and example.com/foo keep distinct entries."""
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/mono",
+        None,
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/mono",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+    )
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/mono",
+        branch="main",
+        local_root_path="cache_dir/org_mono",
+        local_full_path="cache_dir/org_mono",
+    )
+    mock_walk_directory = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+        return_value=[("mono/a", [], ["go.mod"]), ("mono/b", [], ["go.mod"])],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        side_effect=["module example.com/a", "module example.com/b"],
+    )
+    go_list_a = """
+{
+    "ImportPath": "example.com/Foo",
+    "Module": {
+        "Path": "example.com/Foo",
+        "Version": "v1.0.0",
+        "Dir": "/go/pkg/mod/example.com/!foo@v1.0.0"
+    }
+}"""
+    go_list_b = """
+{
+    "ImportPath": "example.com/foo",
+    "Module": {
+        "Path": "example.com/foo",
+        "Version": "v2.0.0",
+        "Dir": "/go/pkg/mod/example.com/foo@v2.0.0"
+    }
+}"""
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=[go_list_a, go_list_b],
+    )
+
+    result = strategy.augment_metadata([])
+
+    assert [(m.name, m.version, m.local_src_path) for m in result] == [
+        ("example.com/Foo", "v1.0.0", "/go/pkg/mod/example.com/!foo@v1.0.0"),
+        ("example.com/foo", "v2.0.0", "/go/pkg/mod/example.com/foo@v2.0.0"),
+    ]
+    mock_source_code_manager.get_canonical_urls.assert_called_once_with(
+        "https://github.com/org/mono"
+    )
+    mock_source_code_manager.get_code.assert_called_once_with(
+        "https://github.com/org/mono"
+    )
+    mock_walk_directory.assert_called_once_with("cache_dir/org_mono")
+    mock_open_file.assert_has_calls([call("mono/a/go.mod"), call("mono/b/go.mod")])
+    mock_output_from_command.assert_has_calls(
+        [
+            call(
+                ["go", "list", "-json", "all"],
+                cwd="mono/a",
+                env={"GOTOOLCHAIN": "auto"},
+            ),
+            call(
+                ["go", "list", "-json", "all"],
+                cwd="mono/b",
+                env={"GOTOOLCHAIN": "auto"},
+            ),
+        ]
+    )
+
+
+def test_gopkg_clears_stale_attribution_when_case_insensitive_match_differs_on_version(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """When a case-insensitive SBOM alias has a different version than go list, clear stale license/copyright."""
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/org/app",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/go-resolve/app",
+    )
+    deps_list_json = """
+{
+    "ImportPath": "github.com/DataDog/lib",
+    "Module": {
+        "Path": "github.com/DataDog/lib",
+        "Version": "v1.2.0",
+        "Dir": "/go/pkg/mod/github.com/!data!dog/lib@v1.2.0"
+    }
+}
+{
+    "ImportPath": "github.com/DataDog/same",
+    "Module": {
+        "Path": "github.com/DataDog/same",
+        "Version": "v2.0.0",
+        "Dir": "/go/pkg/mod/github.com/!data!dog/same@v2.0.0"
+    }
+}"""
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json,
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/app",
+            origin="github.com/org/app",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+        Metadata(
+            name="github.com/datadog/lib",
+            origin="https://github.com/datadog/lib",
+            local_src_path=None,
+            license=["MIT"],
+            version="v1.1.0",
+            copyright=["Old Holder"],
+        ),
+        Metadata(
+            name="github.com/datadog/same",
+            origin="https://github.com/datadog/same",
+            local_src_path=None,
+            license=["Apache-2.0"],
+            version="v2.0.0",
+            copyright=["Datadog, Inc."],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert len(result) == 2
+    assert result[0].name == "github.com/DataDog/lib"
+    assert result[0].version == "v1.2.0"
+    assert result[0].license == []
+    assert result[0].copyright == []
+    assert result[1].name == "github.com/DataDog/same"
+    assert result[1].version == "v2.0.0"
+    assert result[1].license == ["Apache-2.0"]
+    assert result[1].copyright == ["Datadog, Inc."]
+    mock_source_code_manager.get_code.assert_not_called()
+    mock_source_code_manager.get_canonical_urls.assert_not_called()
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="/tmp/go-resolve/app",
+        env={"GOTOOLCHAIN": "auto"},
+    )
+
+
+def test_gopkg_single_module_only_root_project_matches_main_case_insensitively_and_excludes_case_only_dep(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Single-module ONLY_ROOT_PROJECT matches the Main module case-insensitively and excludes case-only deps."""
+    strategy, _ = _single_module_strategy(mocker, ProjectScope.ONLY_ROOT_PROJECT)
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.path_exists",
+        return_value=True,
+    )
+    single_module_with_case_dep = """
+{
+    "ImportPath": "github.com/org/repo/client",
+    "Module": {
+        "Path": "github.com/org/repo",
+        "Version": "v1.0.0",
+        "Dir": "/tmp/go/pkg/mod/github.com/org/repo@v1.0.0"
+    }
+}
+{
+    "ImportPath": "github.com/org/Repo",
+    "Module": {
+        "Path": "github.com/org/Repo",
+        "Main": true,
+        "Dir": "cache_dir/org_package1"
+    }
+}"""
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=single_module_with_case_dep,
+    )
+    nameless = Metadata(
+        name=None,
+        origin="https://example.com/nameless",
+        local_src_path=None,
+        license=[],
+        version=None,
+        copyright=[],
+    )
+    root = Metadata(
+        name="github.com/org/repo",
+        origin="https://github.com/org/repo",
+        local_src_path=None,
+        license=["Apache-2.0"],
+        version=None,
+        copyright=["Org, Inc."],
+    )
+
+    result = strategy.augment_metadata([nameless, root])
+
+    assert result == [
+        nameless,
+        Metadata(
+            name="github.com/org/Repo",
+            origin="https://github.com/org/Repo",
+            local_src_path="cache_dir/org_package1",
+            license=["Apache-2.0"],
+            version=None,
+            copyright=["Org, Inc."],
+        ),
+    ]
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="cache_dir/org_package1",
+        env={"GOTOOLCHAIN": "auto", "GOWORK": "off"},
+    )
+
+
+def test_gopkg_preserves_existing_version_when_go_list_omits_version(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """When go list omits Version (e.g. main module), both exact and case-insensitive matches preserve existing version."""
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/org/app",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/go-resolve/app",
+    )
+    deps_list_json = """
+{
+    "ImportPath": "github.com/DataDog/exact-mod",
+    "Module": {
+        "Path": "github.com/DataDog/exact-mod",
+        "Main": true,
+        "Dir": "/cache/exact-mod"
+    }
+}
+{
+    "ImportPath": "github.com/DataDog/alias-mod",
+    "Module": {
+        "Path": "github.com/DataDog/alias-mod",
+        "Main": true,
+        "Dir": "/cache/alias-mod"
+    }
+}"""
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json,
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/app",
+            origin="github.com/org/app",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+        Metadata(
+            name="github.com/DataDog/exact-mod",
+            origin="https://github.com/DataDog/exact-mod",
+            local_src_path=None,
+            license=["Apache-2.0"],
+            version="v1.0.0",
+            copyright=["Datadog, Inc."],
+        ),
+        Metadata(
+            name="github.com/datadog/alias-mod",
+            origin="https://github.com/datadog/alias-mod",
+            local_src_path=None,
+            license=["MIT"],
+            version="v2.1.0",
+            copyright=["Datadog, Inc."],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert len(result) == 2
+    assert result[0] == Metadata(
+        name="github.com/DataDog/exact-mod",
+        origin="https://github.com/DataDog/exact-mod",
+        local_src_path="/cache/exact-mod",
+        license=["Apache-2.0"],
+        version="v1.0.0",
+        copyright=["Datadog, Inc."],
+    )
+    assert result[1] == Metadata(
+        name="github.com/DataDog/alias-mod",
+        origin="https://github.com/DataDog/alias-mod",
+        local_src_path="/cache/alias-mod",
+        license=["MIT"],
+        version="v2.1.0",
+        copyright=["Datadog, Inc."],
+    )
+    mock_source_code_manager.get_code.assert_not_called()
+    mock_source_code_manager.get_canonical_urls.assert_not_called()
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="/tmp/go-resolve/app",
+        env={"GOTOOLCHAIN": "auto"},
+    )
+
+
+def test_gopkg_keeps_distinct_go_modules_after_exact_and_case_insensitive_matches(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """Modules matched via exact or case-insensitive SBOM merge are marked Go-discovered and not overwritten by case variants."""
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/mono",
+        None,
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/mono",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+    )
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/mono",
+        branch="main",
+        local_root_path="cache_dir/org_mono",
+        local_full_path="cache_dir/org_mono",
+    )
+    mock_walk_directory = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+        return_value=[("mono/a", [], ["go.mod"]), ("mono/b", [], ["go.mod"])],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        side_effect=["module example.com/a", "module example.com/b"],
+    )
+    go_list_a = """
+{
+    "ImportPath": "example.com/foo",
+    "Module": {
+        "Path": "example.com/foo",
+        "Version": "v1.0.0",
+        "Dir": "/go/pkg/mod/example.com/foo@v1.0.0"
+    }
+}
+{
+    "ImportPath": "example.com/Bar",
+    "Module": {
+        "Path": "example.com/Bar",
+        "Version": "v1.1.0",
+        "Dir": "/go/pkg/mod/example.com/!bar@v1.1.0"
+    }
+}"""
+    go_list_b = """
+{
+    "ImportPath": "example.com/Foo",
+    "Module": {
+        "Path": "example.com/Foo",
+        "Version": "v2.0.0",
+        "Dir": "/go/pkg/mod/example.com/!foo@v2.0.0"
+    }
+}
+{
+    "ImportPath": "example.com/bar",
+    "Module": {
+        "Path": "example.com/bar",
+        "Version": "v2.1.0",
+        "Dir": "/go/pkg/mod/example.com/bar@v2.1.0"
+    }
+}"""
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=[go_list_a, go_list_b],
+    )
+    initial_metadata = [
+        Metadata(
+            name="example.com/foo",
+            origin="https://example.com/foo",
+            local_src_path=None,
+            license=["MIT"],
+            version="v1.0.0",
+            copyright=["Foo Inc."],
+        ),
+        Metadata(
+            name="example.com/BAR",
+            origin="https://example.com/BAR",
+            local_src_path=None,
+            license=["Apache-2.0"],
+            version="v1.1.0",
+            copyright=["Bar Inc."],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    assert [(m.name, m.version, m.local_src_path, m.license) for m in result] == [
+        ("example.com/foo", "v1.0.0", "/go/pkg/mod/example.com/foo@v1.0.0", ["MIT"]),
+        (
+            "example.com/Bar",
+            "v1.1.0",
+            "/go/pkg/mod/example.com/!bar@v1.1.0",
+            ["Apache-2.0"],
+        ),
+        ("example.com/Foo", "v2.0.0", "/go/pkg/mod/example.com/!foo@v2.0.0", []),
+        ("example.com/bar", "v2.1.0", "/go/pkg/mod/example.com/bar@v2.1.0", []),
+    ]
+    mock_source_code_manager.get_canonical_urls.assert_called_once_with(
+        "https://github.com/org/mono"
+    )
+    mock_source_code_manager.get_code.assert_called_once_with(
+        "https://github.com/org/mono"
+    )
+    mock_walk_directory.assert_called_once_with("cache_dir/org_mono")
+    mock_open_file.assert_has_calls([call("mono/a/go.mod"), call("mono/b/go.mod")])
+    mock_output_from_command.assert_has_calls(
+        [
+            call(
+                ["go", "list", "-json", "all"],
+                cwd="mono/a",
+                env={"GOTOOLCHAIN": "auto"},
+            ),
+            call(
+                ["go", "list", "-json", "all"],
+                cwd="mono/b",
+                env={"GOTOOLCHAIN": "auto"},
+            ),
+        ]
+    )
+
+
+def test_gopkg_reserves_exact_matches_before_consuming_case_insensitive_aliases(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """When go list reports example.com/Foo before example.com/foo and SBOM already has example.com/foo,
+    example.com/Foo must not steal example.com/foo's SBOM license and copyright."""
+    mock_source_code_manager = mocker.Mock()
+    strategy = GoPkgMetadataCollectionStrategy(
+        "github.com/org/app",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+        local_project_path="/tmp/go-resolve/app",
+    )
+    deps_list_json = """
+{
+    "ImportPath": "example.com/Foo",
+    "Module": {
+        "Path": "example.com/Foo",
+        "Version": "v1.0.0",
+        "Dir": "/go/pkg/mod/example.com/!foo@v1.0.0"
+    }
+}
+{
+    "ImportPath": "example.com/foo",
+    "Module": {
+        "Path": "example.com/foo",
+        "Version": "v1.0.0",
+        "Dir": "/go/pkg/mod/example.com/foo@v1.0.0"
+    }
+}"""
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value=deps_list_json,
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/app",
+            origin="github.com/org/app",
+            local_src_path=None,
+            license=[],
+            version=None,
+            copyright=[],
+        ),
+        Metadata(
+            name="example.com/foo",
+            origin="https://example.com/foo",
+            local_src_path=None,
+            license=["MIT"],
+            version="v1.0.0",
+            copyright=["Foo Lower Authors"],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    by_name = {m.name: m for m in result}
+    assert len(result) == 2
+    assert by_name["example.com/foo"].license == ["MIT"]
+    assert by_name["example.com/foo"].copyright == ["Foo Lower Authors"]
+    assert (
+        by_name["example.com/foo"].local_src_path
+        == "/go/pkg/mod/example.com/foo@v1.0.0"
+    )
+    assert by_name["example.com/Foo"].license == []
+    assert by_name["example.com/Foo"].copyright == []
+    assert (
+        by_name["example.com/Foo"].local_src_path
+        == "/go/pkg/mod/example.com/!foo@v1.0.0"
+    )
+    mock_source_code_manager.get_code.assert_not_called()
+    mock_source_code_manager.get_canonical_urls.assert_not_called()
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="/tmp/go-resolve/app",
+        env={"GOTOOLCHAIN": "auto"},
+    )
+
+
+def test_gopkg_reserves_exact_matches_across_multiple_go_mod_files(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    """When one go.mod lists example.com/Foo and a later go.mod lists example.com/foo while SBOM has example.com/foo,
+    example.com/Foo must not consume example.com/foo's SBOM attribution."""
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/mono",
+        None,
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/mono",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+    )
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/mono",
+        branch="main",
+        local_root_path="cache_dir/org_mono",
+        local_full_path="cache_dir/org_mono",
+    )
+    mock_walk_directory = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+        return_value=[("mono/a", [], ["go.mod"]), ("mono/b", [], ["go.mod"])],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        side_effect=["module example.com/a", "module example.com/b"],
+    )
+    go_list_a = """
+{
+    "ImportPath": "example.com/Foo",
+    "Module": {
+        "Path": "example.com/Foo",
+        "Version": "v1.0.0",
+        "Dir": "/go/pkg/mod/example.com/!foo@v1.0.0"
+    }
+}"""
+    go_list_b = """
+{
+    "ImportPath": "example.com/foo",
+    "Module": {
+        "Path": "example.com/foo",
+        "Version": "v1.0.0",
+        "Dir": "/go/pkg/mod/example.com/foo@v1.0.0"
+    }
+}"""
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=[go_list_a, go_list_b],
+    )
+    initial_metadata = [
+        Metadata(
+            name="example.com/foo",
+            origin="https://example.com/foo",
+            local_src_path=None,
+            license=["MIT"],
+            version="v1.0.0",
+            copyright=["Foo Lower Authors"],
+        ),
+    ]
+
+    result = strategy.augment_metadata(initial_metadata)
+
+    by_name = {m.name: m for m in result}
+    assert len(result) == 2
+    assert by_name["example.com/foo"].license == ["MIT"]
+    assert by_name["example.com/foo"].copyright == ["Foo Lower Authors"]
+    assert (
+        by_name["example.com/foo"].local_src_path
+        == "/go/pkg/mod/example.com/foo@v1.0.0"
+    )
+    assert by_name["example.com/Foo"].license == []
+    assert by_name["example.com/Foo"].copyright == []
+    assert (
+        by_name["example.com/Foo"].local_src_path
+        == "/go/pkg/mod/example.com/!foo@v1.0.0"
+    )
+    mock_source_code_manager.get_canonical_urls.assert_called_once_with(
+        "https://github.com/org/mono"
+    )
+    mock_source_code_manager.get_code.assert_called_once_with(
+        "https://github.com/org/mono"
+    )
+    mock_walk_directory.assert_called_once_with("cache_dir/org_mono")
+    mock_open_file.assert_has_calls([call("mono/a/go.mod"), call("mono/b/go.mod")])
+    mock_output_from_command.assert_has_calls(
+        [
+            call(
+                ["go", "list", "-json", "all"],
+                cwd="mono/a",
+                env={"GOTOOLCHAIN": "auto"},
+            ),
+            call(
+                ["go", "list", "-json", "all"],
+                cwd="mono/b",
+                env={"GOTOOLCHAIN": "auto"},
+            ),
+        ]
     )
