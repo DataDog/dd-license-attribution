@@ -77,18 +77,12 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             if "go.mod" in files:
                 if self._is_example_package(root):
                     continue
-                module_data_list = self._run_go_list_modules(root)
-                if self.only_root_project:
-                    module_data_list = [
-                        module_data
-                        for module_data in module_data_list
-                        if any(
-                            meta.name is not None
-                            and meta.name.lower() == module_data["Path"].lower()
-                            for meta in metadata
-                        )
-                    ]
-                discovered_modules.extend(module_data_list)
+                discovered_modules.extend(self._run_go_list_modules(root))
+        if self.only_root_project:
+            root_names = {meta.name for meta in metadata if meta.name is not None}
+            discovered_modules = self._filter_exact_then_case_insensitive_modules(
+                discovered_modules, root_names
+            )
         self._upsert_module_list(metadata, discovered_modules)
 
         return metadata
@@ -169,37 +163,85 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         if not module_data_list:
             return metadata
 
-        module_data_list_filtered: list[dict[str, Any]] = []
-        for module_data in module_data_list:
-            module_path = module_data["Path"]
-
-            # Filter out the synthetic module (Main module)
-            if module_path == SYNTHETIC_MODULE_NAME:
-                continue
-
-            if self.only_root_project:
-                # Include the module if it is an exact match OR if the requested
-                # spec is a subpackage path within the module (e.g. the seed name
-                # "github.com/foo/bar/assert" maps to module "github.com/foo/bar").
-                # The prefix check must not cross major-version boundaries: for a
-                # seed like "github.com/org/lib/v2/foo", "github.com/org/lib" is
-                # a different module and must NOT match even though it is a prefix.
-                module_path_lower = module_path.lower()
-                if not any(
-                    name.lower() == module_path_lower
-                    or (
-                        name.lower().startswith(module_path_lower + "/")
-                        and not re.match(r"v\d+(/|$)", name[len(module_path) + 1 :])
-                    )
-                    for name in root_package_names
-                ):
-                    continue
-
-            module_data_list_filtered.append(module_data)
+        candidate_modules = [
+            module_data
+            for module_data in module_data_list
+            if module_data["Path"] != SYNTHETIC_MODULE_NAME
+        ]
+        if self.only_root_project:
+            module_data_list_filtered = self._filter_local_root_modules(
+                candidate_modules, root_package_names
+            )
+        else:
+            module_data_list_filtered = candidate_modules
 
         self._upsert_module_list(metadata, module_data_list_filtered)
 
         return metadata
+
+    @staticmethod
+    def _filter_exact_then_case_insensitive_modules(
+        candidate_modules: list[dict[str, Any]],
+        target_names: set[str],
+    ) -> list[dict[str, Any]]:
+        """Select modules matching target_names, preferring exact case over case-insensitive fallback."""
+        discovered_paths = {module_data["Path"] for module_data in candidate_modules}
+        matched_paths: set[str] = set()
+        for name in target_names:
+            if name in discovered_paths:
+                matched_paths.add(name)
+            else:
+                name_lower = name.lower()
+                matched_paths.update(
+                    path for path in discovered_paths if path.lower() == name_lower
+                )
+        return [
+            module_data
+            for module_data in candidate_modules
+            if module_data["Path"] in matched_paths
+        ]
+
+    @staticmethod
+    def _module_matches_package_name(
+        module_path: str, package_name: str, *, case_sensitive: bool = False
+    ) -> bool:
+        """Return whether module_path owns package_name (exact or subpackage, not crossing /vN)."""
+        compared_module = module_path if case_sensitive else module_path.lower()
+        compared_name = package_name if case_sensitive else package_name.lower()
+        return compared_name == compared_module or (
+            compared_name.startswith(compared_module + "/")
+            and not re.match(r"v\d+(/|$)", package_name[len(module_path) + 1 :])
+        )
+
+    @classmethod
+    def _filter_local_root_modules(
+        cls,
+        candidate_modules: list[dict[str, Any]],
+        root_package_names: set[str],
+    ) -> list[dict[str, Any]]:
+        """Select modules owning root_package_names, preferring case-sensitive matches."""
+        matched_paths: set[str] = set()
+        for name in root_package_names:
+            exact_matches = {
+                module_data["Path"]
+                for module_data in candidate_modules
+                if cls._module_matches_package_name(
+                    module_data["Path"], name, case_sensitive=True
+                )
+            }
+            if exact_matches:
+                matched_paths.update(exact_matches)
+            else:
+                matched_paths.update(
+                    module_data["Path"]
+                    for module_data in candidate_modules
+                    if cls._module_matches_package_name(module_data["Path"], name)
+                )
+        return [
+            module_data
+            for module_data in candidate_modules
+            if module_data["Path"] in matched_paths
+        ]
 
     def _run_go_list_modules(
         self, project_path: str, disable_workspace: bool = False
