@@ -810,6 +810,9 @@ def test_mapped_target_namespace_selects_a_healthy_later_mirror(
 def test_provisional_sha_fetch_failure_tries_later_mirrors(
     git_mocks: dict[str, Mock], second_type: RefType
 ) -> None:
+    initial_stage = STAGE[:-32] + "b" * 32
+    retry_stage = STAGE[:-32] + "c" * 32
+    git_mocks["unique"].side_effect = [Mock(hex=letter * 32) for letter in "abcd"]
     first = "https://mirror.example/missing-commit"
     healthy = "https://mirror.example/healthy"
     mapping: dict[tuple[RefType, str], tuple[RefType, str]] | None = (
@@ -851,25 +854,31 @@ def test_provisional_sha_fetch_failure_tries_later_mirrors(
     git_mocks["run"].assert_has_calls(
         [
             call(
-                ["git", "config", "remote.origin.url", first], cwd=STAGE, **GIT_KWARGS
+                ["git", "config", "remote.origin.url", first],
+                cwd=initial_stage,
+                **GIT_KWARGS,
             ),
             call(
                 ["git", "fetch", "--force", "--depth", "1", "origin", SHA],
-                cwd=STAGE,
+                cwd=initial_stage,
                 **GIT_KWARGS,
             ),
-            call(["git", "init", "--quiet"], cwd=STAGE, **GIT_KWARGS),
+            call(["git", "init", "--quiet"], cwd=retry_stage, **GIT_KWARGS),
             call(
-                ["git", "config", "remote.origin.url", healthy], cwd=STAGE, **GIT_KWARGS
+                ["git", "config", "remote.origin.url", healthy],
+                cwd=retry_stage,
+                **GIT_KWARGS,
             ),
             call(
                 ["git", "fetch", "--force", "--depth", "1", "origin", refspec],
-                cwd=STAGE,
+                cwd=retry_stage,
                 **GIT_KWARGS,
             ),
         ]
     )
-    git_mocks["mkdir"].assert_called_once_with(STAGE)
+    assert git_mocks["mkdir"].call_args_list == [call(initial_stage), call(retry_stage)]
+    git_mocks["remove"].assert_called_once_with(initial_stage)
+    git_mocks["rename"].assert_called_once_with(retry_stage, GENERATION)
     git_mocks["cache_dirs"].assert_called_once_with("cache")
 
 
@@ -982,7 +991,9 @@ def test_cached_sha_mapping_requires_matching_provenance(
         assert git_mocks["run"].call_args_list == [
             call(["git", "init", "--quiet"], cwd=STAGE, **GIT_KWARGS)
         ] * (1 if first_mapped else 2)
-        git_mocks["remove"].assert_called_once_with(STAGE)
+        assert git_mocks["remove"].call_args_list == [call(STAGE)] * (
+            1 if first_mapped else 2
+        )
     git_mocks["rename"].assert_not_called()
 
 

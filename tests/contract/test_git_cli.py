@@ -5,6 +5,7 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2026-present Datadog, Inc.
 
+import json
 import os
 import shutil
 import subprocess
@@ -13,7 +14,11 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from dd_license_attribution.adaptors.os import output_from_command, rename_path
+from dd_license_attribution.adaptors.os import (
+    output_from_command,
+    rename_path,
+    run_command,
+)
 from dd_license_attribution.artifact_management.source_code_manager import (
     MirrorSpec,
     RefType,
@@ -385,9 +390,10 @@ def test_commit_fetch_continues_to_a_healthy_mirror(
     )
 
 
+@pytest.mark.parametrize("failure_kind", ["filter-error", "timeout"])
 @pytest.mark.parametrize("target_type", [RefType.BRANCH, RefType.TAG])
 def test_sha_checkout_retry_does_not_publish_partial_checkout_files(
-    tmp_path: Path, target_type: RefType
+    tmp_path: Path, target_type: RefType, failure_kind: str
 ) -> None:
     first = tmp_path / "broken-filter"
     healthy = tmp_path / "healthy"
@@ -437,12 +443,33 @@ def test_sha_checkout_retry_does_not_publish_partial_checkout_files(
         "GIT_CONFIG_KEY_0": "filter.broken.required",
         "GIT_CONFIG_VALUE_0": "true",
         "GIT_CONFIG_KEY_1": "filter.broken.smudge",
-        "GIT_CONFIG_VALUE_1": "false",
+        "GIT_CONFIG_VALUE_1": "sleep 3" if failure_kind == "timeout" else "false",
         "GIT_CONFIG_KEY_2": "init.defaultBranch",
         "GIT_CONFIG_VALUE_2": "main",
     }
+    commands: list[tuple[list[str], str | None, int]] = []
+    limit = 1 if failure_kind == "timeout" else 30
+
+    def execute(
+        args: list[str],
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        timeout: int | None = None,
+    ) -> int:
+        code = run_command(args, cwd=cwd, env=env, timeout=timeout)
+        commands.append((args, cwd, code))
+        return code
+
     with (
-        patch.dict(os.environ, filter_env),
+        patch.dict(os.environ, {**_ISOLATED_GIT_ENV, **filter_env}),
+        patch(
+            "dd_license_attribution.artifact_management.source_code_manager.NONINTERACTIVE_GIT_TIMEOUT_SECONDS",
+            limit,
+        ),
+        patch(
+            "dd_license_attribution.artifact_management.source_code_manager.run_command",
+            side_effect=execute,
+        ) as executed,
         patch(
             "dd_license_attribution.artifact_management.source_code_manager.output_from_command",
             side_effect=lookup,
@@ -451,7 +478,27 @@ def test_sha_checkout_retry_does_not_publish_partial_checkout_files(
         result = scm.get_code(url + "/tree/" + requested, skip_canonical_lookup=True)
         advertised.assert_called()
     assert result is not None
+    attempts = [(cwd, code) for args, cwd, code in commands if "checkout" in args]
+    assert len(attempts) == 2
+    assert attempts[0][0] != attempts[1][0]
+    assert attempts[0][1] == 124 if failure_kind == "timeout" else attempts[0][1] != 0
+    assert attempts[1][1] == 0
+    for cwd, _ in attempts:
+        executed.assert_any_call(
+            [
+                "git",
+                "-c",
+                "advice.detachedHead=False",
+                "checkout",
+                "--force",
+                "FETCH_HEAD",
+            ],
+            cwd=cwd,
+            env={"GIT_TERMINAL_PROMPT": "0"},
+            timeout=limit,
+        )
     root = Path(result.local_root_path)
+    assert not (root / ".git/index.lock").exists()
     assert _git(["rev-parse", "HEAD"], root) == expected
     assert (root / "ok").read_text() == "healthy checkout"
     assert not (root / "a_extra").exists()
@@ -508,3 +555,73 @@ def test_at_sign_ref_is_retrievable(tmp_path: Path, ref_type: RefType) -> None:
         )
     assert result is not None
     assert _git(["rev-parse", "HEAD"], Path(result.local_root_path)) == commit
+
+
+@pytest.mark.parametrize("first_target_exists", [False, True])
+@pytest.mark.parametrize("suffix", ["", "/pkg"])
+def test_explicit_commit_mapping_wins_over_sha_named_mirror_branch(
+    tmp_path: Path, first_target_exists: bool, suffix: str
+) -> None:
+    requested = "1" * 40
+    url = "https://github.com/example/repo"
+    mirrors: list[Path] = []
+    commits: list[str] = []
+    for name, tagged in [("first", first_target_exists), ("healthy", True)]:
+        origin = tmp_path / name
+        origin.mkdir()
+        _git(["init", "--quiet", "--initial-branch=main"], origin)
+        (origin / "pkg").mkdir()
+        (origin / "pkg/marker").write_text(name + " mapped tag")
+        _git(["add", "."], origin)
+        _git(["commit", "--quiet", "-m", "mapped tag"], origin)
+        commits.append(_git(["rev-parse", "HEAD"], origin))
+        if tagged:
+            _git(["tag", "v1"], origin)
+        (origin / "pkg/marker").write_text("conflicting branch")
+        _git(["add", "."], origin)
+        _git(["commit", "--quiet", "-m", "conflicting branch"], origin)
+        _git(["branch", requested], origin)
+        mirrors.append(origin)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    mapping = {(RefType.COMMIT, requested): (RefType.TAG, "v1")}
+    scm = SourceCodeManager(
+        str(cache),
+        Mock(),
+        mirrors=[MirrorSpec(url, p.as_uri(), mapping) for p in mirrors],
+    )
+
+    def lookup(
+        args: list[str],
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        timeout: int | None = None,
+    ) -> str:
+        if args[:2] == ["git", "ls-remote"] and args[3] == url:
+            raise OSError("source lookup unavailable")
+        return output_from_command(args, cwd=cwd, env=env, timeout=timeout)
+
+    with (
+        patch.dict(os.environ, _ISOLATED_GIT_ENV),
+        patch(
+            "dd_license_attribution.artifact_management.source_code_manager.output_from_command",
+            side_effect=lookup,
+        ) as advertised,
+    ):
+        result = scm.get_code(
+            url + "/tree/" + requested + suffix, skip_canonical_lookup=True
+        )
+        advertised.assert_any_call(
+            ["git", "ls-remote", "--", mirrors[0].as_uri(), "refs/tags/v1"],
+            env={"GIT_TERMINAL_PROMPT": "0"},
+            timeout=30,
+        )
+    assert result is not None
+    chosen = 0 if first_target_exists else 1
+    root = Path(result.local_root_path)
+    assert _git(["rev-parse", "HEAD"], root) == commits[chosen]
+    assert _git(["remote", "get-url", "origin"], root) == mirrors[chosen].as_uri()
+    assert result.local_full_path == str(root) + suffix
+    assert json.loads(
+        _git(["config", "--local", "--get", "ddla.resolved-ref"], root)
+    ) == [requested, mirrors[chosen].as_uri(), "tag", "v1", commits[chosen]]

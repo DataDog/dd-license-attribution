@@ -1048,7 +1048,12 @@ class SourceCodeManager(ArtifactManager):
                     continue
                 has_mapping = False
                 if mirror_map.ref_mapping:
-                    for ref_type in (RefType.BRANCH, RefType.TAG):
+                    for ref_type in (RefType.COMMIT, RefType.BRANCH, RefType.TAG):
+                        if (
+                            ref_type == RefType.COMMIT
+                            and not _COMMIT_SHA_PATTERN.fullmatch(ref_guess)
+                        ):
+                            continue
                         mapped = mirror_map.ref_mapping.get((ref_type, ref_guess))
                         if mapped is None:
                             continue
@@ -1059,6 +1064,7 @@ class SourceCodeManager(ArtifactManager):
                                 ref_name=ref_guess,
                                 ref_type=ref_type,
                                 mirror_spec=mirror_map,
+                                verified=ref_type != RefType.COMMIT,
                             )
                 if has_mapping:
                     break
@@ -1463,11 +1469,21 @@ class SourceCodeManager(ArtifactManager):
             local_branch_path,
         )
         clone_result = 1
-        for (
+        for attempt, (
             effective_repository_url,
             effective_ref_type,
             effective_branch,
-        ) in candidates:
+        ) in enumerate(candidates):
+            if attempt:
+                if not self._is_within_cache_dir(staging_branch_path):
+                    return None
+                remove_tree(staging_branch_path)
+                staging_branch_path = self._get_staging_clone_path(
+                    repository_cache_path
+                )
+                if not self._is_within_cache_dir(staging_branch_path):
+                    return None
+                create_dirs(staging_branch_path)
             if self._checkout_ref(
                 effective_repository_url,
                 effective_ref_type,
