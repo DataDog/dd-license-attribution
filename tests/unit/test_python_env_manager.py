@@ -139,7 +139,7 @@ def test_python_env_creation_depends_on_the_project_dependency_sources(
     get_datetime_now_mock.assert_called_once()
     artifact_path_exists_mock.assert_called_once_with("cache_dir")
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
-    venv_path = "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+    venv_path = "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
     if buildable:
         # Only projects with a build manifest (pyproject.toml/setup.py) can
         # be installed with `pip install .`
@@ -251,7 +251,7 @@ def test_python_env_is_returned_if_python_project_detected_and_cached(
     env_path = python_env_manager.get_environment(resource_path)
     assert (
         env_path
-        == "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+        == "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
     )
     get_datetime_now_mock.assert_called_once()
     artifact_path_exists_mock.assert_called_once_with("cache_dir")
@@ -260,10 +260,10 @@ def test_python_env_is_returned_if_python_project_detected_and_cached(
     python_env_path_exists_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
             ),
         ]
     )
@@ -271,7 +271,7 @@ def test_python_env_is_returned_if_python_project_detected_and_cached(
         [
             call("pylock.toml"),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
             ),
         ]
     )
@@ -335,7 +335,7 @@ def test_python_env_is_created_if_python_project_detected_and_force_update(
     env_path = python_env_manager.get_environment(resource_path, force_update=True)
     assert (
         env_path
-        == "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+        == "cache_dir/20220101_100000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
     )
     get_datetime_now_mock.assert_called_once()
     artifact_path_exists_mock.assert_called_once_with("cache_dir")
@@ -344,10 +344,10 @@ def test_python_env_is_created_if_python_project_detected_and_force_update(
     python_env_path_exists_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
             ),
             call(
-                "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+                "cache_dir/20220101_100000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
             ),
         ]
     )
@@ -357,7 +357,7 @@ def test_python_env_is_created_if_python_project_detected_and_force_update(
         [
             call(
                 [
-                    "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_100000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "freeze",
@@ -366,7 +366,7 @@ def test_python_env_is_created_if_python_project_detected_and_force_update(
             ),
             call(
                 [
-                    "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/pip",
+                    "cache_dir/20220101_100000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/pip",
                     "list",
                     "--format=json",
                 ]
@@ -376,11 +376,11 @@ def test_python_env_is_created_if_python_project_detected_and_force_update(
     python_env_write_file_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps",
+                "cache_dir/20220101_100000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps",
                 LOCK_DEPS,
             ),
             call(
-                "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced",
+                "cache_dir/20220101_100000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced",
                 LOCK_MARKER,
             ),
         ]
@@ -393,12 +393,12 @@ def test_python_env_is_created_if_python_project_detected_and_force_update(
                     "python",
                     "-m",
                     "venv",
-                    "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv",
+                    "cache_dir/20220101_100000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv",
                 ]
             ),
             mocker.call(
                 [
-                    "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_100000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -408,7 +408,7 @@ def test_python_env_is_created_if_python_project_detected_and_force_update(
             ),
             mocker.call(
                 [
-                    "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_100000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -437,7 +437,7 @@ def test_get_dependencies_gets_full_list(mocker: MockFixture) -> None:
         return_value=False,
     )
 
-    venv_path = "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+    venv_path = "cache_dir/20220101_100000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
     dependencies = PythonEnvManager.get_dependencies(venv_path)
     assert dependencies == [
         ("pytest", "8.3.4"),
@@ -447,13 +447,13 @@ def test_get_dependencies_gets_full_list(mocker: MockFixture) -> None:
 
     output_from_command_mock.assert_called_once_with(
         [
-            "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/pip",
+            "cache_dir/20220101_100000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/pip",
             "list",
             "--format=json",
         ]
     )
     path_exists_mock.assert_called_once_with(
-        "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps"
+        "cache_dir/20220101_100000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps"
     )
 
 
@@ -500,7 +500,7 @@ def test_fail_to_create_pyenv_throws(mocker: MockFixture) -> None:
             "python",
             "-m",
             "venv",
-            "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv",
+            "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv",
         ]
     )
 
@@ -553,12 +553,12 @@ def test_fail_to_install_dependencies_in_pyenv_throws(mocker: MockFixture) -> No
                     "python",
                     "-m",
                     "venv",
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv",
                 ]
             ),
             mocker.call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -630,7 +630,7 @@ def test_python_env_prunes_stale_packages_before_lockfile_install(
 
     assert (
         env_path
-        == "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+        == "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
     )
     get_datetime_now_mock.assert_called_once()
     artifact_path_exists_mock.assert_called_once_with("cache_dir")
@@ -639,10 +639,10 @@ def test_python_env_prunes_stale_packages_before_lockfile_install(
     path_exists_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
             ),
         ]
     )
@@ -652,7 +652,7 @@ def test_python_env_prunes_stale_packages_before_lockfile_install(
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "freeze",
@@ -661,7 +661,7 @@ def test_python_env_prunes_stale_packages_before_lockfile_install(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/pip",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/pip",
                     "list",
                     "--format=json",
                 ]
@@ -674,7 +674,7 @@ def test_python_env_prunes_stale_packages_before_lockfile_install(
             # setuptools are pruned first - pip itself is kept
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "uninstall",
@@ -687,7 +687,7 @@ def test_python_env_prunes_stale_packages_before_lockfile_install(
             # ...then a PEP 751 capable pip is ensured before the lock install
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -697,7 +697,7 @@ def test_python_env_prunes_stale_packages_before_lockfile_install(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -711,11 +711,11 @@ def test_python_env_prunes_stale_packages_before_lockfile_install(
     write_file_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps",
                 LOCK_DEPS,
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced",
                 LOCK_MARKER,
             ),
         ]
@@ -790,17 +790,17 @@ def test_python_env_falls_back_to_unpinned_install_when_lockfile_install_fails(
     path_exists_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps"
             ),
         ]
     )
     open_file_mock.assert_called_once_with("pylock.toml")
     output_mock.assert_called_once_with(
         [
-            "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+            "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
             "-m",
             "pip",
             "freeze",
@@ -812,7 +812,7 @@ def test_python_env_falls_back_to_unpinned_install_when_lockfile_install_fails(
             # A PEP 751 capable pip is ensured before the lock install
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -822,7 +822,7 @@ def test_python_env_falls_back_to_unpinned_install_when_lockfile_install_fails(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -834,7 +834,7 @@ def test_python_env_falls_back_to_unpinned_install_when_lockfile_install_fails(
             # The failed lockfile install falls back to an unpinned install
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -911,7 +911,7 @@ def test_python_env_resyncs_when_marker_file_is_unreadable(
 
     assert (
         env_path
-        == "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+        == "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
     )
     get_datetime_now_mock.assert_called_once()
     artifact_path_exists_mock.assert_called_once_with("cache_dir")
@@ -925,7 +925,7 @@ def test_python_env_resyncs_when_marker_file_is_unreadable(
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -935,7 +935,7 @@ def test_python_env_resyncs_when_marker_file_is_unreadable(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -949,11 +949,11 @@ def test_python_env_resyncs_when_marker_file_is_unreadable(
     write_file_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps",
                 LOCK_DEPS,
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced",
                 LOCK_MARKER,
             ),
         ]
@@ -962,7 +962,7 @@ def test_python_env_resyncs_when_marker_file_is_unreadable(
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "freeze",
@@ -971,7 +971,7 @@ def test_python_env_resyncs_when_marker_file_is_unreadable(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/pip",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/pip",
                     "list",
                     "--format=json",
                 ]
@@ -981,13 +981,13 @@ def test_python_env_resyncs_when_marker_file_is_unreadable(
     path_exists_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps"
             ),
         ]
     )
@@ -1051,7 +1051,7 @@ def test_python_env_recreates_virtualenv_when_prune_fails(
 
     assert (
         env_path
-        == "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+        == "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
     )
     get_datetime_now_mock.assert_called_once()
     artifact_path_exists_mock.assert_called_once_with("cache_dir")
@@ -1063,7 +1063,7 @@ def test_python_env_recreates_virtualenv_when_prune_fails(
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "freeze",
@@ -1072,7 +1072,7 @@ def test_python_env_recreates_virtualenv_when_prune_fails(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/pip",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/pip",
                     "list",
                     "--format=json",
                 ]
@@ -1084,7 +1084,7 @@ def test_python_env_recreates_virtualenv_when_prune_fails(
             # The prune of the stale package fails...
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "uninstall",
@@ -1099,14 +1099,14 @@ def test_python_env_recreates_virtualenv_when_prune_fails(
                     "-m",
                     "venv",
                     "--clear",
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv",
                 ]
             ),
             # ...the recreated (bundled) pip is upgraded to a PEP 751
             # capable version...
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -1117,7 +1117,7 @@ def test_python_env_recreates_virtualenv_when_prune_fails(
             # ...and the lockfile install starts from the clean environment
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -1133,11 +1133,11 @@ def test_python_env_recreates_virtualenv_when_prune_fails(
     write_file_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps",
                 LOCK_DEPS,
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced",
                 LOCK_MARKER,
             ),
         ]
@@ -1145,17 +1145,17 @@ def test_python_env_recreates_virtualenv_when_prune_fails(
     path_exists_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
             ),
         ]
     )
     logger_mock.warning.assert_called_once_with(
         "Failed to prune existing packages from %s; recreating the "
         "virtualenv so the next install starts from a clean environment",
-        "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv",
+        "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv",
     )
 
 
@@ -1230,7 +1230,7 @@ def test_python_env_lock_only_project_returns_none_when_lock_install_fails(
     open_file_mock.assert_called_once_with("pylock.toml")
     output_mock.assert_called_once_with(
         [
-            "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+            "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
             "-m",
             "pip",
             "freeze",
@@ -1240,10 +1240,10 @@ def test_python_env_lock_only_project_returns_none_when_lock_install_fails(
     path_exists_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps"
             ),
         ]
     )
@@ -1254,12 +1254,12 @@ def test_python_env_lock_only_project_returns_none_when_lock_install_fails(
                     "python",
                     "-m",
                     "venv",
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv",
                 ]
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -1269,7 +1269,7 @@ def test_python_env_lock_only_project_returns_none_when_lock_install_fails(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -1366,7 +1366,7 @@ def test_python_env_resyncs_env_marked_by_older_sync_format(
 
     assert (
         env_path
-        == "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+        == "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
     )
     get_datetime_now_mock.assert_called_once()
     artifact_path_exists_mock.assert_called_once_with("cache_dir")
@@ -1380,7 +1380,7 @@ def test_python_env_resyncs_env_marked_by_older_sync_format(
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "freeze",
@@ -1389,7 +1389,7 @@ def test_python_env_resyncs_env_marked_by_older_sync_format(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/pip",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/pip",
                     "list",
                     "--format=json",
                 ]
@@ -1401,7 +1401,7 @@ def test_python_env_resyncs_env_marked_by_older_sync_format(
             # The stale setuptools left by the older sync is pruned
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "uninstall",
@@ -1411,7 +1411,7 @@ def test_python_env_resyncs_env_marked_by_older_sync_format(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -1421,7 +1421,7 @@ def test_python_env_resyncs_env_marked_by_older_sync_format(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -1436,11 +1436,11 @@ def test_python_env_resyncs_env_marked_by_older_sync_format(
     write_file_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps",
                 LOCK_DEPS,
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced",
                 LOCK_MARKER,
             ),
         ]
@@ -1448,13 +1448,13 @@ def test_python_env_resyncs_env_marked_by_older_sync_format(
     path_exists_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps"
             ),
         ]
     )
@@ -1480,7 +1480,7 @@ def test_get_dependencies_enumerates_from_the_lockfile_for_synced_envs(
         "dd_license_attribution.artifact_management.python_env_manager.open_file",
         return_value='[["requests", "2.32.5"], ["pip", "25.3"]]',
     )
-    venv_path = "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+    venv_path = "cache_dir/20220101_100000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
 
     dependencies = PythonEnvManager.get_dependencies(venv_path)
 
@@ -1488,10 +1488,10 @@ def test_get_dependencies_enumerates_from_the_lockfile_for_synced_envs(
     # absent because the enumeration comes from the lockfile deps file
     assert dependencies == [("requests", "2.32.5"), ("pip", "25.3")]
     path_exists_mock.assert_called_once_with(
-        "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps"
+        "cache_dir/20220101_100000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps"
     )
     open_file_mock.assert_called_once_with(
-        "cache_dir/20220101_100000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps"
+        "cache_dir/20220101_100000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps"
     )
     output_from_command_mock.assert_not_called()
 
@@ -1571,18 +1571,18 @@ def test_synced_environment_writes_the_deps_enumeration(mocker: MockFixture) -> 
         [
             call("pylock.toml"),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps"
             ),
         ]
     )
     write_file_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps",
                 LOCK_DEPS,
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced",
                 LOCK_MARKER,
             ),
         ]
@@ -1591,7 +1591,7 @@ def test_synced_environment_writes_the_deps_enumeration(mocker: MockFixture) -> 
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "freeze",
@@ -1600,7 +1600,7 @@ def test_synced_environment_writes_the_deps_enumeration(mocker: MockFixture) -> 
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/pip",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/pip",
                     "list",
                     "--format=json",
                 ]
@@ -1612,7 +1612,7 @@ def test_synced_environment_writes_the_deps_enumeration(mocker: MockFixture) -> 
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -1622,7 +1622,7 @@ def test_synced_environment_writes_the_deps_enumeration(mocker: MockFixture) -> 
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -1636,10 +1636,10 @@ def test_synced_environment_writes_the_deps_enumeration(mocker: MockFixture) -> 
     path_exists_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps"
             ),
         ]
     )
@@ -1720,7 +1720,7 @@ def test_failed_resync_invalidates_the_stale_deps_sidecar(mocker: MockFixture) -
     dependencies = PythonEnvManager.get_dependencies(env_path)
     assert dependencies == [("fresh-pkg", "2.0.0")]
     remove_file_mock.assert_called_once_with(
-        "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps"
+        "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps"
     )
     # No marker or deps file is written by the failed sync
     write_file_mock.assert_not_called()
@@ -1743,13 +1743,13 @@ def test_failed_resync_invalidates_the_stale_deps_sidecar(mocker: MockFixture) -
     path_exists_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps"
             ),
         ]
     )
@@ -1757,7 +1757,7 @@ def test_failed_resync_invalidates_the_stale_deps_sidecar(mocker: MockFixture) -
         [
             call("pylock.toml"),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
             ),
         ]
     )
@@ -1765,7 +1765,7 @@ def test_failed_resync_invalidates_the_stale_deps_sidecar(mocker: MockFixture) -
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -1775,7 +1775,7 @@ def test_failed_resync_invalidates_the_stale_deps_sidecar(mocker: MockFixture) -
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -1786,7 +1786,7 @@ def test_failed_resync_invalidates_the_stale_deps_sidecar(mocker: MockFixture) -
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -1799,7 +1799,7 @@ def test_failed_resync_invalidates_the_stale_deps_sidecar(mocker: MockFixture) -
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "freeze",
@@ -1808,7 +1808,7 @@ def test_failed_resync_invalidates_the_stale_deps_sidecar(mocker: MockFixture) -
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/pip",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/pip",
                     "list",
                     "--format=json",
                 ]
@@ -1885,11 +1885,11 @@ def test_sidecar_matches_lock_names_across_separator_styles(
     write_file_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps",
                 '[["typing_extensions", "4.1.0"]]',
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced",
                 f"v3:{hashlib.sha256(lock_content.encode('utf-8')).hexdigest()}",
             ),
         ]
@@ -1899,7 +1899,7 @@ def test_sidecar_matches_lock_names_across_separator_styles(
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -1909,7 +1909,7 @@ def test_sidecar_matches_lock_names_across_separator_styles(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -1924,7 +1924,7 @@ def test_sidecar_matches_lock_names_across_separator_styles(
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "freeze",
@@ -1933,7 +1933,7 @@ def test_sidecar_matches_lock_names_across_separator_styles(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/pip",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/pip",
                     "list",
                     "--format=json",
                 ]
@@ -1945,7 +1945,7 @@ def test_sidecar_matches_lock_names_across_separator_styles(
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     python_env_list_dir_mock.assert_has_calls([call(resource_path), call("cache_dir")])
     path_exists_mock.assert_called_once_with(
-        "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+        "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
     )
 
 
@@ -2016,7 +2016,7 @@ def test_malformed_lockfile_prunes_previously_synced_env(mocker: MockFixture) ->
     # fallback installs from the project manifest
     output_mock.assert_called_once_with(
         [
-            "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+            "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
             "-m",
             "pip",
             "freeze",
@@ -2027,7 +2027,7 @@ def test_malformed_lockfile_prunes_previously_synced_env(mocker: MockFixture) ->
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "uninstall",
@@ -2037,7 +2037,7 @@ def test_malformed_lockfile_prunes_previously_synced_env(mocker: MockFixture) ->
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -2047,7 +2047,7 @@ def test_malformed_lockfile_prunes_previously_synced_env(mocker: MockFixture) ->
         ]
     )
     remove_file_mock.assert_called_once_with(
-        "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps"
+        "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps"
     )
     write_file_mock.assert_not_called()
     logger_mock.warning.assert_has_calls(
@@ -2064,7 +2064,7 @@ def test_malformed_lockfile_prunes_previously_synced_env(mocker: MockFixture) ->
         [
             call("pylock.toml"),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
             ),
         ]
     )
@@ -2076,13 +2076,13 @@ def test_malformed_lockfile_prunes_previously_synced_env(mocker: MockFixture) ->
     path_exists_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps"
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps"
             ),
         ]
     )
@@ -2137,11 +2137,11 @@ def test_uncleanable_environment_raises(mocker: MockFixture) -> None:
         manager.get_environment(resource_path)
     assert (
         str(e.value)
-        == "Failed to clean or recreate the Python virtualenv at cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv"
+        == "Failed to clean or recreate the Python virtualenv at cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv"
     )
     output_mock.assert_called_once_with(
         [
-            "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+            "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
             "-m",
             "pip",
             "freeze",
@@ -2152,7 +2152,7 @@ def test_uncleanable_environment_raises(mocker: MockFixture) -> None:
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "uninstall",
@@ -2166,7 +2166,7 @@ def test_uncleanable_environment_raises(mocker: MockFixture) -> None:
                     "-m",
                     "venv",
                     "--clear",
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv",
                 ]
             ),
         ]
@@ -2177,7 +2177,7 @@ def test_uncleanable_environment_raises(mocker: MockFixture) -> None:
             mocker.call(
                 "Failed to prune existing packages from %s; recreating the "
                 "virtualenv so the next install starts from a clean environment",
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv",
             )
         ]
     )
@@ -2186,7 +2186,7 @@ def test_uncleanable_environment_raises(mocker: MockFixture) -> None:
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     python_env_list_dir_mock.assert_has_calls([call(resource_path), call("cache_dir")])
     path_exists_mock.assert_called_once_with(
-        "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+        "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
     )
     open_file_mock.assert_called_once_with("pylock.toml")
 
@@ -2260,11 +2260,11 @@ def test_marker_gated_pip_entry_stays_excluded_from_the_sidecar(
     write_file_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps",
                 "[]",
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced",
                 f"v3:{hashlib.sha256(lock_content.encode('utf-8')).hexdigest()}",
             ),
         ]
@@ -2276,13 +2276,13 @@ def test_marker_gated_pip_entry_stays_excluded_from_the_sidecar(
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     python_env_list_dir_mock.assert_has_calls([call(resource_path), call("cache_dir")])
     path_exists_mock.assert_called_once_with(
-        "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+        "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
     )
     run_command_mock.assert_has_calls(
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -2292,7 +2292,7 @@ def test_marker_gated_pip_entry_stays_excluded_from_the_sidecar(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -2307,7 +2307,7 @@ def test_marker_gated_pip_entry_stays_excluded_from_the_sidecar(
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "freeze",
@@ -2316,14 +2316,14 @@ def test_marker_gated_pip_entry_stays_excluded_from_the_sidecar(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-c",
                     MARKER_ENVIRONMENT_SNIPPET,
                 ]
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/pip",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/pip",
                     "list",
                     "--format=json",
                 ]
@@ -2400,11 +2400,11 @@ def test_marker_gated_pip_with_matching_version_stays_excluded(
     write_file_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps",
                 "[]",
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced",
                 f"v3:{hashlib.sha256(lock_content.encode('utf-8')).hexdigest()}",
             ),
         ]
@@ -2416,13 +2416,13 @@ def test_marker_gated_pip_with_matching_version_stays_excluded(
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     python_env_list_dir_mock.assert_has_calls([call(resource_path), call("cache_dir")])
     path_exists_mock.assert_called_once_with(
-        "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+        "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
     )
     run_command_mock.assert_has_calls(
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -2432,7 +2432,7 @@ def test_marker_gated_pip_with_matching_version_stays_excluded(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -2447,7 +2447,7 @@ def test_marker_gated_pip_with_matching_version_stays_excluded(
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "freeze",
@@ -2456,14 +2456,14 @@ def test_marker_gated_pip_with_matching_version_stays_excluded(
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-c",
                     MARKER_ENVIRONMENT_SNIPPET,
                 ]
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/pip",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/pip",
                     "list",
                     "--format=json",
                 ]
@@ -2534,11 +2534,11 @@ def test_declared_pip_is_kept_in_the_sidecar(mocker: MockFixture) -> None:
     write_file_mock.assert_has_calls(
         [
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-deps",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-deps",
                 '[["requests", "2.32.5"], ["pip", "25.3"]]',
             ),
             call(
-                "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced",
+                "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced",
                 f"v3:{hashlib.sha256(lock_content.encode('utf-8')).hexdigest()}",
             ),
         ]
@@ -2550,13 +2550,13 @@ def test_declared_pip_is_kept_in_the_sidecar(mocker: MockFixture) -> None:
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     python_env_list_dir_mock.assert_has_calls([call(resource_path), call("cache_dir")])
     path_exists_mock.assert_called_once_with(
-        "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/.ddla-pylock-synced"
+        "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/.ddla-pylock-synced"
     )
     output_mock.assert_has_calls(
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "freeze",
@@ -2565,7 +2565,7 @@ def test_declared_pip_is_kept_in_the_sidecar(mocker: MockFixture) -> None:
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/pip",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/pip",
                     "list",
                     "--format=json",
                 ]
@@ -2576,7 +2576,7 @@ def test_declared_pip_is_kept_in_the_sidecar(mocker: MockFixture) -> None:
         [
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",
@@ -2586,7 +2586,7 @@ def test_declared_pip_is_kept_in_the_sidecar(mocker: MockFixture) -> None:
             ),
             call(
                 [
-                    "cache_dir/20220101_000000Z/cache_dir_20210901_000000Z_python_project_virtualenv/bin/python",
+                    "cache_dir/20220101_000000Z/.python-env-v2/046a24f8199381cd50e7b9c44ad8907c44511354223cdefc2f5d26b46222ac03_virtualenv/bin/python",
                     "-m",
                     "pip",
                     "install",

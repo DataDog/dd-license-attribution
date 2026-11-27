@@ -141,7 +141,7 @@ class PythonEnvManager(ArtifactManager):
                 resource_path,
             )
             return None
-        normalized_rsc_path = resource_path.replace("/", "_")
+        normalized_rsc_path = f".python-env-v2/{hashlib.sha256(resource_path.encode('utf-8')).hexdigest()}"
         cached_env = self._get_cached(normalized_rsc_path)
         if cached_env is None or force_update:
             cached_env = self._create_python_env(resource_path, normalized_rsc_path)
