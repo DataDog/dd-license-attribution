@@ -19,6 +19,7 @@ from dd_license_attribution.config.cli_configs import default_config
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy import (
     ScanCodeToolkitMetadataCollectionStrategy,
+    _parse_go_mod_module,
     _strip_missing_go_major_version_suffix,
 )
 
@@ -1696,6 +1697,14 @@ def test_scancode_toolkit_falls_back_when_go_major_version_dir_is_absent(
             True,
         ],
     )
+    open_file_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.open_file",
+        side_effect=[
+            "module github.com/containerd/typeurl/v2\n\ngo 1.21\n",
+            '// header comment\nmodule "github.com/go-playground/validator/v10" // inline\n',
+            "  module github.com/org/mono/pkg/subpkg/v3\n",
+        ],
+    )
     scancode_api_mock = mocker.patch("scancode.api")
     scancode_api_mock.get_licenses.return_value = {
         "detected_license_expression_spdx": "Apache-2.0"
@@ -1778,6 +1787,13 @@ def test_scancode_toolkit_falls_back_when_go_major_version_dir_is_absent(
             call("cache/org-mono/main/pkg/subpkg/go.mod"),
         ]
     )
+    open_file_mock.assert_has_calls(
+        [
+            call("cache/containerd-typeurl/main/go.mod"),
+            call("cache/go-playground-validator/master/go.mod"),
+            call("cache/org-mono/main/pkg/subpkg/go.mod"),
+        ]
+    )
     listdir_mock.assert_has_calls(
         [
             call("cache/containerd-typeurl/main"),
@@ -1842,6 +1858,9 @@ def test_scancode_toolkit_skips_missing_non_siv_non_go_or_missing_parent_paths(
             True,
             False,  # Go-like name but fallback dir has no go.mod
         ],
+    )
+    open_file_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.open_file",
     )
     scancode_api_mock = mocker.patch("scancode.api")
     source_code_manager_mock = mocker.Mock()
@@ -1939,6 +1958,7 @@ def test_scancode_toolkit_skips_missing_non_siv_non_go_or_missing_parent_paths(
     assert len(skip_warnings) == 9
     scancode_api_mock.get_licenses.assert_not_called()
     scancode_api_mock.get_copyrights.assert_not_called()
+    open_file_mock.assert_not_called()
     assert path_exists_mock.call_args_list == [
         call("cache/org-repo/main/v1"),
         call("cache/org-repo/main"),
@@ -1975,6 +1995,13 @@ def test_strip_missing_go_major_version_suffix_trailing_slashes_and_field_forwar
         "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
         return_value=True,
     )
+    open_file_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.open_file",
+        side_effect=[
+            "module github.com/org/repo/v2\n",
+            "module github.com/org/mono/pkg/v4\n",
+        ],
+    )
 
     # Trailing slashes on both local_root_path and local_full_path, plus a root ending in 'X'
     root_with_slash = SourceCodeReference(
@@ -2010,6 +2037,10 @@ def test_strip_missing_go_major_version_suffix_trailing_slashes_and_field_forwar
     assert path_exists_mock.call_args_list == [
         call("/cache/org-repo/branchX/go.mod"),
         call("/cache/org-mono/branchX/pkg"),
+        call("/cache/org-mono/branchX/pkg/go.mod"),
+    ]
+    assert open_file_mock.call_args_list == [
+        call("/cache/org-repo/branchX/go.mod"),
         call("/cache/org-mono/branchX/pkg/go.mod"),
     ]
 
@@ -2093,3 +2124,221 @@ def test_scancode_toolkit_skips_existence_check_when_local_full_path_empty(
     scancode_api_mock.get_licenses.assert_called_once_with(
         "cache/org-repo/main/LICENSE"
     )
+
+
+def test_scancode_toolkit_rejects_go_fallback_when_go_mod_declares_different_module(
+    mocker: pytest_mock.MockFixture,
+    caplog: LogCaptureFixture,
+) -> None:
+    """Fallback is rejected when the parent go.mod declares a different major version or lacks a matching module directive."""
+    listdir_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+    )
+    path_exists_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        side_effect=[
+            False,
+            True,
+            True,  # default branch declares /v3 instead of /v2
+            False,
+            True,
+            True,  # default branch declares unversioned v1 module
+            False,
+            True,
+            True,  # go.mod has only a commented-out module directive
+        ],
+    )
+    open_file_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.open_file",
+        side_effect=[
+            "module github.com/org/repo/v3\n\ngo 1.22\n",
+            "module github.com/org/repo\n\ngo 1.22\n",
+            "// module github.com/org/repo/v2\ngo 1.22\n",
+        ],
+    )
+    scancode_api_mock = mocker.patch("scancode.api")
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_code.side_effect = [
+        SourceCodeReference(
+            repo_url="https://github.com/org/repo",
+            branch="main",
+            local_root_path="cache/org-repo/main",
+            local_full_path="cache/org-repo/main/v2",
+        ),
+        SourceCodeReference(
+            repo_url="https://github.com/org/repo",
+            branch="main",
+            local_root_path="cache/org-repo/main",
+            local_full_path="cache/org-repo/main/v2",
+        ),
+        SourceCodeReference(
+            repo_url="https://github.com/org/repo",
+            branch="main",
+            local_root_path="cache/org-repo/main",
+            local_full_path="cache/org-repo/main/v2",
+        ),
+    ]
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        source_code_manager_mock,
+        license_source_files=["LICENSE"],
+        copyright_source_files=["NOTICE"],
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/repo/v2",
+            version="v2.1.0",
+            origin=f"https://github.com/org/repo/tree/main/v2?case={i}",
+            local_src_path=None,
+            license=[],
+            copyright=["Org"],
+        )
+        for i in range(3)
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        updated = strategy.augment_metadata(initial_metadata)
+
+    assert [m.license for m in updated] == [[], [], []]
+    skip_warnings = [
+        r for r in caplog.records if "does not exist, skipping" in r.message
+    ]
+    assert len(skip_warnings) == 3
+    listdir_mock.assert_not_called()
+    scancode_api_mock.get_licenses.assert_not_called()
+    scancode_api_mock.get_copyrights.assert_not_called()
+    assert path_exists_mock.call_args_list == [
+        call("cache/org-repo/main/v2"),
+        call("cache/org-repo/main"),
+        call("cache/org-repo/main/go.mod"),
+        call("cache/org-repo/main/v2"),
+        call("cache/org-repo/main"),
+        call("cache/org-repo/main/go.mod"),
+        call("cache/org-repo/main/v2"),
+        call("cache/org-repo/main"),
+        call("cache/org-repo/main/go.mod"),
+    ]
+    assert open_file_mock.call_args_list == [
+        call("cache/org-repo/main/go.mod"),
+        call("cache/org-repo/main/go.mod"),
+        call("cache/org-repo/main/go.mod"),
+    ]
+    assert source_code_manager_mock.get_code.call_args_list == [
+        call(f"https://github.com/org/repo/tree/main/v2?case={i}", force_update=False)
+        for i in range(3)
+    ]
+
+
+def test_scancode_toolkit_rejects_go_fallback_when_go_mod_is_unreadable(
+    mocker: pytest_mock.MockFixture,
+    caplog: LogCaptureFixture,
+) -> None:
+    """Fallback is rejected without raising when reading go.mod fails with OSError or UnicodeError."""
+    listdir_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+    )
+    path_exists_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.path_exists",
+        side_effect=[False, True, True, False, True, True, False, True, True],
+    )
+    open_file_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.open_file",
+        side_effect=[
+            PermissionError("permission denied"),
+            UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte"),
+            UnicodeError("UTF-16 stream does not start with BOM"),
+        ],
+    )
+    scancode_api_mock = mocker.patch("scancode.api")
+    source_code_manager_mock = mocker.Mock()
+    source_code_manager_mock.get_code.side_effect = [
+        SourceCodeReference(
+            repo_url="https://github.com/org/repo",
+            branch="main",
+            local_root_path="cache/org-repo/main",
+            local_full_path="cache/org-repo/main/v2",
+        )
+        for _ in range(3)
+    ]
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        source_code_manager_mock,
+        license_source_files=["LICENSE"],
+        copyright_source_files=["NOTICE"],
+    )
+    initial_metadata = [
+        Metadata(
+            name="github.com/org/repo/v2",
+            version=f"v2.{i}.0",
+            origin="https://github.com/org/repo/tree/main/v2",
+            local_src_path=None,
+            license=[],
+            copyright=["Org"],
+        )
+        for i in range(1, 4)
+    ]
+
+    with caplog.at_level(logging.WARNING):
+        updated = strategy.augment_metadata(initial_metadata)
+
+    assert [m.license for m in updated] == [[], [], []]
+    skip_warnings = [
+        r for r in caplog.records if "does not exist, skipping" in r.message
+    ]
+    assert len(skip_warnings) == 3
+    listdir_mock.assert_not_called()
+    scancode_api_mock.get_licenses.assert_not_called()
+    scancode_api_mock.get_copyrights.assert_not_called()
+    assert (
+        path_exists_mock.call_args_list
+        == [
+            call("cache/org-repo/main/v2"),
+            call("cache/org-repo/main"),
+            call("cache/org-repo/main/go.mod"),
+        ]
+        * 3
+    )
+    assert open_file_mock.call_args_list == [call("cache/org-repo/main/go.mod")] * 3
+    assert (
+        source_code_manager_mock.get_code.call_args_list
+        == [call("https://github.com/org/repo/tree/main/v2", force_update=False)] * 3
+    )
+
+
+def test_parse_go_mod_module() -> None:
+    """Parser handles whitespace, double quotes, comments, and rejects malformed or absent module directives."""
+    assert (
+        _parse_go_mod_module("module github.com/org/repo/v2\n\ngo 1.22\n")
+        == "github.com/org/repo/v2"
+    )
+    assert (
+        _parse_go_mod_module("  \tmodule\t github.com/org/repo/v2  \r\n")
+        == "github.com/org/repo/v2"
+    )
+    assert (
+        _parse_go_mod_module('module "github.com/org/repo/v2"\n')
+        == "github.com/org/repo/v2"
+    )
+    assert (
+        _parse_go_mod_module("module github.com/org/repo/v2 // v2 module\n")
+        == "github.com/org/repo/v2"
+    )
+    assert (
+        _parse_go_mod_module("module github.com/org/repo/v2//inline\n")
+        == "github.com/org/repo/v2"
+    )
+    assert (
+        _parse_go_mod_module('module "github.com/org/repo/v2" // quoted\n')
+        == "github.com/org/repo/v2"
+    )
+    assert (
+        _parse_go_mod_module(
+            "// module github.com/org/repo/v2\nmodule github.com/org/repo/v3\n"
+        )
+        == "github.com/org/repo/v3"
+    )
+    assert _parse_go_mod_module("// module github.com/org/repo/v2\n") is None
+    assert _parse_go_mod_module("") is None
+    assert _parse_go_mod_module("go 1.22\n") is None
+    assert _parse_go_mod_module("module github.com/org/repo/v2 extra\n") is None
+    assert _parse_go_mod_module('module ""\n') is None
+    assert _parse_go_mod_module("module `github.com/org/repo/v2`\n") is None
+    assert _parse_go_mod_module("modulefoo github.com/org/repo/v2\n") is None

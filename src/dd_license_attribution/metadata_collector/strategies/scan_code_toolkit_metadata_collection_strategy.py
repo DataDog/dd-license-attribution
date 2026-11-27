@@ -19,7 +19,12 @@ warnings.filterwarnings("ignore", category=UserWarning, module="typecode.magic2"
 import scancode.api
 from license_expression import AND, ExpressionError, Licensing
 
-from dd_license_attribution.adaptors.os import list_dir, path_exists, walk_directory
+from dd_license_attribution.adaptors.os import (
+    list_dir,
+    open_file,
+    path_exists,
+    walk_directory,
+)
 from dd_license_attribution.artifact_management.artifact_manager import (
     SourceCodeReference,
 )
@@ -54,6 +59,19 @@ def _split_top_level_and(license_expression_str: str) -> list[str]:
 
 
 _GO_MAJOR_VERSION_SUFFIX_RE = re.compile(r"^v([2-9]|[1-9]\d+)$")
+_GO_MOD_MODULE_RE = re.compile(
+    r'^module\s+(?:"([^"]+)"|([^\s"`/]+(?:/[^\s"`/]+)*))\s*(?://.*)?$'
+)
+
+
+def _parse_go_mod_module(go_mod_content: str) -> str | None:
+    """Return the declared module path from go.mod content, or None if absent or malformed."""
+    for line in go_mod_content.splitlines():
+        match = _GO_MOD_MODULE_RE.match(line.strip())
+        if match:
+            declared: str = match.group(1) or match.group(2)
+            return declared
+    return None
 
 
 def _is_go_major_version_module_name(
@@ -72,7 +90,7 @@ def _strip_missing_go_major_version_suffix(
 ) -> SourceCodeReference | None:
     """Strip a trailing Go v2+ semantic import version segment from local_full_path
     when package_name is a Go module path, the vN/ subdirectory does not exist in
-    the cloned repo, and the parent directory contains a go.mod file.
+    the cloned repo, and the parent directory's go.mod declares package_name.
     """
     root = source_code_reference.local_root_path.rstrip("/")
     full = source_code_reference.local_full_path.rstrip("/")
@@ -91,7 +109,14 @@ def _strip_missing_go_major_version_suffix(
             return None
     else:
         fallback_full_path = source_code_reference.local_root_path
-    if not path_exists(f"{fallback_full_path.rstrip('/')}/go.mod"):
+    go_mod_path = f"{fallback_full_path.rstrip('/')}/go.mod"
+    if not path_exists(go_mod_path):
+        return None
+    try:
+        go_mod_content = open_file(go_mod_path)
+    except (OSError, UnicodeError):
+        return None
+    if _parse_go_mod_module(go_mod_content) != package_name:
         return None
     return SourceCodeReference(
         repo_url=source_code_reference.repo_url,
