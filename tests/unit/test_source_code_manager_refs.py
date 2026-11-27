@@ -873,6 +873,7 @@ def test_provisional_sha_fetch_failure_tries_later_mirrors(
     git_mocks["cache_dirs"].assert_called_once_with("cache")
 
 
+@pytest.mark.parametrize("first_mapped", [False, True])
 @pytest.mark.parametrize("target_type", [RefType.BRANCH, RefType.TAG])
 @pytest.mark.parametrize(
     "case",
@@ -894,7 +895,7 @@ def test_provisional_sha_fetch_failure_tries_later_mirrors(
     ],
 )
 def test_cached_sha_mapping_requires_matching_provenance(
-    git_mocks: dict[str, Mock], target_type: RefType, case: str
+    git_mocks: dict[str, Mock], target_type: RefType, case: str, first_mapped: bool
 ) -> None:
     first = "https://mirror.example/missing"
     healthy = "https://mirror.example/healthy"
@@ -933,7 +934,7 @@ def test_cached_sha_mapping_requires_matching_provenance(
         if args[:2] == ["git", "ls-remote"]:
             if args[3] == REPOSITORY:
                 raise OSError("original lookup timed out")
-            return ""
+            return f"{'f' * 40}\t{args[4]}\n" if args[4].startswith("refs/") else ""
         if args[:2] == ["git", "rev-parse"]:
             return head
         assert args == ["git", "config", "--local", "--get", "ddla.resolved-ref"]
@@ -945,10 +946,14 @@ def test_cached_sha_mapping_requires_matching_provenance(
     scm = SourceCodeManager(
         "cache",
         Mock(),
-        mirrors=[
-            MirrorSpec(REPOSITORY, first),
-            MirrorSpec(REPOSITORY, healthy, mapping),
-        ],
+        mirrors=(
+            [MirrorSpec(REPOSITORY, healthy, mapping)]
+            if first_mapped
+            else [
+                MirrorSpec(REPOSITORY, first),
+                MirrorSpec(REPOSITORY, healthy, mapping),
+            ]
+        ),
     )
     result = scm.get_code(REPOSITORY + "/tree/" + SHA, skip_canonical_lookup=True)
     git_mocks["lookup"].assert_any_call(
@@ -975,9 +980,8 @@ def test_cached_sha_mapping_requires_matching_provenance(
     else:
         assert result is None
         assert git_mocks["run"].call_args_list == [
-            call(["git", "init", "--quiet"], cwd=STAGE, **GIT_KWARGS),
-            call(["git", "init", "--quiet"], cwd=STAGE, **GIT_KWARGS),
-        ]
+            call(["git", "init", "--quiet"], cwd=STAGE, **GIT_KWARGS)
+        ] * (1 if first_mapped else 2)
         git_mocks["remove"].assert_called_once_with(STAGE)
     git_mocks["rename"].assert_not_called()
 
@@ -1033,3 +1037,37 @@ def test_failed_sha_mapping_provenance_is_not_published(
     git_mocks["remove"].assert_called_once_with(STAGE)
     git_mocks["rename"].assert_not_called()
     git_mocks["replace"].assert_not_called()
+
+
+@pytest.mark.parametrize("target_type", [RefType.BRANCH, RefType.TAG])
+@pytest.mark.parametrize("failure", ["missing", "timeout"])
+def test_reachable_source_does_not_bypass_a_missing_mapped_destination(
+    git_mocks: dict[str, Mock], target_type: RefType, failure: str
+) -> None:
+    mirror = "https://mirror.example/missing-target"
+    namespace = "heads" if target_type == RefType.BRANCH else "tags"
+    git_mocks["lookup"].side_effect = [
+        f"{SHA}\trefs/tags/v1\n",
+        OSError("target lookup timed out") if failure == "timeout" else "",
+    ]
+    scm = SourceCodeManager(
+        "cache",
+        Mock(),
+        mirrors=[
+            MirrorSpec(
+                REPOSITORY,
+                mirror,
+                {(RefType.TAG, "v1"): (target_type, "stable")},
+            )
+        ],
+    )
+    assert scm.get_code(REPOSITORY + "/tree/v1", skip_canonical_lookup=True) is None
+    assert git_mocks["lookup"].call_args_list == [
+        call(["git", "ls-remote", "--", REPOSITORY, "v1"], **GIT_KWARGS),
+        call(
+            ["git", "ls-remote", "--", mirror, f"refs/{namespace}/stable"], **GIT_KWARGS
+        ),
+    ]
+    git_mocks["run"].assert_not_called()
+    git_mocks["mkdir"].assert_not_called()
+    git_mocks["cache_dirs"].assert_not_called()

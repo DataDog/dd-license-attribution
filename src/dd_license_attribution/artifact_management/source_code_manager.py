@@ -984,13 +984,59 @@ class SourceCodeManager(ArtifactManager):
                 failures.append(error)
                 return ""
 
+        def target_exists(
+            mirror: MirrorSpec, target_type: RefType, target_ref: str
+        ) -> bool:
+            if target_type not in (
+                RefType.BRANCH,
+                RefType.TAG,
+            ) or not _is_safe_git_ref_name(target_ref):
+                return False
+            namespace = "heads" if target_type == RefType.BRANCH else "tags"
+            qualified_ref = f"refs/{namespace}/{target_ref}"
+            try:
+                output = _output_from_git_command(
+                    ["git", "ls-remote", "--", mirror.mirror_url, qualified_ref],
+                    git_env,
+                )
+            except OSError as error:
+                failures.append(error)
+                return False
+            return any(
+                line.partition("\t")[2].strip() == qualified_ref
+                for line in output.splitlines()
+            )
+
         validated_ref = try_extract(ref, repository_url)
         if validated_ref != "" and _is_safe_git_ref_name(validated_ref):
-            return _ResolvedRef(
+            source = _ResolvedRef(
                 ref_name=str(validated_ref),
                 ref_type=getattr(validated_ref, "ref_type", RefType.BRANCH),
                 verified=getattr(validated_ref, "verified", True),
             )
+            if source.ref_type == RefType.COMMIT:
+                return source
+            source_key = (source.ref_type, source.ref_name)
+            mirrors = [m for m in self.mirrors if m.original_url == repository_url]
+            if not any(m.ref_mapping and source_key in m.ref_mapping for m in mirrors):
+                return source
+            for mirror in mirrors:
+                mapping = mirror.ref_mapping or {}
+                target_type, target_ref = mapping.get(source_key, source_key)
+                if target_type == RefType.COMMIT:
+                    raise NotImplementedError(
+                        f"Mirror reference type {target_type} is not yet implemented. Only branch and tag mapping targets are supported."
+                    )
+                if target_exists(mirror, target_type, target_ref):
+                    return _ResolvedRef(
+                        ref_name=source.ref_name,
+                        ref_type=source.ref_type,
+                        mirror_spec=mirror,
+                        verified=source.verified,
+                    )
+            if failures:
+                raise failures[-1]
+            return None
         split_ref = [segment for segment in ref.split("/") if segment]
         candidate_refs = ["/".join(split_ref[:i]) for i in range(len(split_ref), 0, -1)]
         for mirror_map in self.mirrors:
@@ -1008,31 +1054,7 @@ class SourceCodeManager(ArtifactManager):
                             continue
                         has_mapping = True
                         target_type, target_ref = mapped
-                        if target_type not in (
-                            RefType.BRANCH,
-                            RefType.TAG,
-                        ) or not _is_safe_git_ref_name(target_ref):
-                            continue
-                        namespace = "heads" if target_type == RefType.BRANCH else "tags"
-                        qualified_ref = f"refs/{namespace}/{target_ref}"
-                        try:
-                            output = _output_from_git_command(
-                                [
-                                    "git",
-                                    "ls-remote",
-                                    "--",
-                                    mirror_map.mirror_url,
-                                    qualified_ref,
-                                ],
-                                git_env,
-                            )
-                        except OSError as error:
-                            failures.append(error)
-                            continue
-                        if any(
-                            line.partition("\t")[2].strip() == qualified_ref
-                            for line in output.splitlines()
-                        ):
+                        if target_exists(mirror_map, target_type, target_ref):
                             return _ResolvedRef(
                                 ref_name=ref_guess,
                                 ref_type=ref_type,
@@ -1298,7 +1320,7 @@ class SourceCodeManager(ArtifactManager):
             repo,
         )
         try:
-            branch, path, resolved_ref_type, matched_mirror, verified_ref = (
+            branch, path, resolved_ref_type, matched_mirror, _verified_ref = (
                 self._resolve_ref_and_path(original_parsed_url, repository_url, git_env)
             )
         except OSError:
@@ -1306,7 +1328,7 @@ class SourceCodeManager(ArtifactManager):
             return None
         if path is None or not _is_safe_git_ref_name(branch):
             return None
-        provisional_commit = resolved_ref_type == RefType.COMMIT and not verified_ref
+        commit_checkout = resolved_ref_type == RefType.COMMIT
         logger.debug(
             "Using branch: %s and path: %s for repository URL: %s",
             branch,
@@ -1336,7 +1358,7 @@ class SourceCodeManager(ArtifactManager):
         )
 
         candidates = [(effective_repository_url, effective_ref_type, effective_branch)]
-        if provisional_commit:
+        if commit_checkout:
             for mirror in self.mirrors:
                 if mirror.original_url != repository_url:
                     continue
@@ -1380,7 +1402,7 @@ class SourceCodeManager(ArtifactManager):
                 if path_exists(local_branch_path):
                     if not is_dir(path_join(local_branch_path, ".git")):
                         continue
-                    if effective_ref_type == RefType.COMMIT:
+                    if resolved_ref_type == RefType.COMMIT:
                         try:
                             cached_commit = output_from_command(
                                 ["git", "rev-parse", "--verify", "HEAD"],
@@ -1390,15 +1412,15 @@ class SourceCodeManager(ArtifactManager):
                             ).strip()
                         except OSError:
                             continue
-                        if cached_commit.lower() != effective_branch.lower() and not (
-                            provisional_commit
-                            and self._cached_commit_matches_mapping(
-                                local_branch_path,
-                                branch,
-                                cached_commit,
-                                candidates,
-                                git_env,
-                            )
+                        if (
+                            effective_ref_type != RefType.COMMIT
+                            or cached_commit.lower() != branch.lower()
+                        ) and not self._cached_commit_matches_mapping(
+                            local_branch_path,
+                            branch,
+                            cached_commit,
+                            candidates,
+                            git_env,
                         ):
                             continue
                     local_full_path = f"{local_branch_path}{path}"
@@ -1452,7 +1474,7 @@ class SourceCodeManager(ArtifactManager):
                 effective_branch,
                 staging_branch_path,
                 git_env,
-                fetch_only=provisional_commit,
+                fetch_only=commit_checkout,
             ):
                 clone_result = 0
                 break
@@ -1468,7 +1490,7 @@ class SourceCodeManager(ArtifactManager):
             return None
 
         if (
-            provisional_commit
+            resolved_ref_type == RefType.COMMIT
             and effective_ref_type in (RefType.BRANCH, RefType.TAG)
             and not self._record_mapped_commit(
                 staging_branch_path,

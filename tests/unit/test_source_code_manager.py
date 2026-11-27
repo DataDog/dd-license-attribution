@@ -865,6 +865,7 @@ def test_source_code_manager_with_mirror_ref_mapping(
     run_command_mock.return_value = 0
     output_from_command_mock.return_value = (
         "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/mirror_branch\n"
     )
 
     mirror_spec = MirrorSpec(
@@ -904,15 +905,26 @@ def test_source_code_manager_with_mirror_ref_mapping(
         "cache_dir/20220101_000000Z/test_owner-test_repo/test_branch"
     )
     mock_create_dirs.assert_called_once_with(_staging_path(expected_cache_dir))
-    output_from_command_mock.assert_called_once_with(
-        [
-            "git",
-            "ls-remote",
-            "--",
-            expected_source_code_reference.repo_url,
-            expected_source_code_reference.branch,
-        ]
-    )
+    assert output_from_command_mock.call_args_list == [
+        call(
+            [
+                "git",
+                "ls-remote",
+                "--",
+                expected_source_code_reference.repo_url,
+                expected_source_code_reference.branch,
+            ]
+        ),
+        call(
+            [
+                "git",
+                "ls-remote",
+                "--",
+                "https://github.com/mirror_owner/mirror_repo",
+                "refs/heads/mirror_branch",
+            ]
+        ),
+    ]
     run_command_mock.assert_called_once_with(
         [
             "git",
@@ -979,6 +991,7 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
     run_command_mock.return_value = 0
     output_from_command_mock.return_value = (
         "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/tags/v1.0\n"
     )
 
     mirror_spec = MirrorSpec(
@@ -1018,15 +1031,26 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
         "cache_dir/20220101_000000Z/test_owner-test_repo/test_branch"
     )
     mock_create_dirs.assert_called_once_with(_staging_path(expected_cache_dir))
-    output_from_command_mock.assert_called_once_with(
-        [
-            "git",
-            "ls-remote",
-            "--",
-            expected_source_code_reference.repo_url,
-            expected_source_code_reference.branch,
-        ]
-    )
+    assert output_from_command_mock.call_args_list == [
+        call(
+            [
+                "git",
+                "ls-remote",
+                "--",
+                expected_source_code_reference.repo_url,
+                expected_source_code_reference.branch,
+            ]
+        ),
+        call(
+            [
+                "git",
+                "ls-remote",
+                "--",
+                "https://github.com/mirror_owner/mirror_repo",
+                "refs/tags/v1.0",
+            ]
+        ),
+    ]
     run_command_mock.assert_has_calls(
         [
             call(["git", "init", "--quiet"], cwd=_staging_path(expected_cache_dir)),
@@ -1109,6 +1133,7 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
     run_command_mock.side_effect = [0, 0, 128]
     output_from_command_mock.return_value = (
         "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/tags/v1.0\n"
     )
 
     mirror_spec = MirrorSpec(
@@ -1134,15 +1159,26 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
         "cache_dir/20220101_000000Z/test_owner-test_repo/test_branch"
     )
     mock_create_dirs.assert_called_once_with(_staging_path(expected_cache_dir))
-    output_from_command_mock.assert_called_once_with(
-        [
-            "git",
-            "ls-remote",
-            "--",
-            "https://github.com/test_owner/test_repo",
-            "test_branch",
-        ]
-    )
+    assert output_from_command_mock.call_args_list == [
+        call(
+            [
+                "git",
+                "ls-remote",
+                "--",
+                "https://github.com/test_owner/test_repo",
+                "test_branch",
+            ]
+        ),
+        call(
+            [
+                "git",
+                "ls-remote",
+                "--",
+                "https://github.com/mirror_owner/mirror_repo",
+                "refs/tags/v1.0",
+            ]
+        ),
+    ]
     # The checkout step must not run once the tag fetch has failed.
     run_command_mock.assert_has_calls(
         [
@@ -1214,6 +1250,7 @@ def test_source_code_manager_mirror_tag_forced_retry_after_failed_fetch(
     run_command_mock.side_effect = [0, 0, 128, 0, 0, 0, 0]
     output_from_command_mock.return_value = (
         "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/tags/v1.0\n"
     )
 
     mirror_spec = MirrorSpec(
@@ -1260,8 +1297,21 @@ def test_source_code_manager_mirror_tag_forced_retry_after_failed_fetch(
             "test_branch",
         ]
     )
-    output_from_command_mock.assert_has_calls([ls_remote_call, ls_remote_call])
-    assert output_from_command_mock.call_count == 2
+    destination_call = call(
+        [
+            "git",
+            "ls-remote",
+            "--",
+            "https://github.com/mirror_owner/mirror_repo",
+            "refs/tags/v1.0",
+        ]
+    )
+    assert output_from_command_mock.call_args_list == [
+        ls_remote_call,
+        destination_call,
+        ls_remote_call,
+        destination_call,
+    ]
     init = call(["git", "init", "--quiet"], cwd=_staging_path(expected_cache_dir))
     set_origin = call(
         [
@@ -1350,6 +1400,7 @@ def test_source_code_manager_mirror_tag_clone_with_git_env(
     run_command_mock.return_value = 0
     output_from_command_mock.return_value = (
         "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/tags/v1.0\n"
     )
 
     mirror_spec = MirrorSpec(
@@ -1414,17 +1465,30 @@ def test_source_code_manager_mirror_tag_clone_with_git_env(
     assert run_command_mock.call_count == 4
     # The branch-validation ls-remote also carries env and timeout when
     # git_env is set.
-    output_from_command_mock.assert_called_once_with(
-        [
-            "git",
-            "ls-remote",
-            "--",
-            "https://github.com/test_owner/test_repo",
-            "test_branch",
-        ],
-        env=NONINTERACTIVE_GIT_ENV,
-        timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
-    )
+    assert output_from_command_mock.call_args_list == [
+        call(
+            [
+                "git",
+                "ls-remote",
+                "--",
+                "https://github.com/test_owner/test_repo",
+                "test_branch",
+            ],
+            env=NONINTERACTIVE_GIT_ENV,
+            timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
+        ),
+        call(
+            [
+                "git",
+                "ls-remote",
+                "--",
+                "https://github.com/mirror_owner/mirror_repo",
+                "refs/tags/v1.0",
+            ],
+            env=NONINTERACTIVE_GIT_ENV,
+            timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
+        ),
+    ]
 
 
 @patch(
@@ -1645,6 +1709,7 @@ def test_source_code_manager_with_multiple_mirrors(
     run_command_mock.return_value = 0
     output_from_command_mock.return_value = (
         "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/test_branch\n"
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/mirror_branch\n"
     )
 
     mirror_specs = [
@@ -1690,15 +1755,26 @@ def test_source_code_manager_with_multiple_mirrors(
         "cache_dir/20220101_000000Z/test_owner-test_repo/test_branch"
     )
     mock_create_dirs.assert_called_once_with(_staging_path(expected_cache_dir))
-    output_from_command_mock.assert_called_once_with(
-        [
-            "git",
-            "ls-remote",
-            "--",
-            expected_source_code_reference.repo_url,
-            expected_source_code_reference.branch,
-        ]
-    )
+    assert output_from_command_mock.call_args_list == [
+        call(
+            [
+                "git",
+                "ls-remote",
+                "--",
+                expected_source_code_reference.repo_url,
+                expected_source_code_reference.branch,
+            ]
+        ),
+        call(
+            [
+                "git",
+                "ls-remote",
+                "--",
+                "https://github.com/mirror_owner/mirror_repo",
+                "refs/heads/mirror_branch",
+            ]
+        ),
+    ]
     run_command_mock.assert_called_once_with(
         [
             "git",

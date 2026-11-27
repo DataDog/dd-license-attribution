@@ -267,9 +267,15 @@ def test_explicit_mapping_beats_opposite_type_ref_in_real_mirror(
 
 
 @pytest.mark.parametrize("target_type", [RefType.BRANCH, RefType.TAG])
+@pytest.mark.parametrize("source_available", [False, True])
+@pytest.mark.parametrize("source_type", [RefType.BRANCH, RefType.TAG])
 @pytest.mark.parametrize("annotated", [False, True])
 def test_mapped_target_namespace_skips_a_wrong_type_mirror(
-    tmp_path: Path, target_type: RefType, annotated: bool
+    tmp_path: Path,
+    target_type: RefType,
+    annotated: bool,
+    source_available: bool,
+    source_type: RefType,
 ) -> None:
     mirrors: list[Path] = []
     expected_commit = ""
@@ -295,7 +301,7 @@ def test_mapped_target_namespace_skips_a_wrong_type_mirror(
     cache = tmp_path / "cache"
     cache.mkdir()
     url = "https://github.com/example/repo"
-    mapping = {(RefType.BRANCH, "main"): (target_type, "stable")}
+    mapping = {(source_type, "main"): (target_type, "stable")}
     scm = SourceCodeManager(
         str(cache),
         Mock(),
@@ -306,6 +312,9 @@ def test_mapped_target_namespace_skips_a_wrong_type_mirror(
         args: list[str], env: dict[str, str] | None = None, timeout: int | None = None
     ) -> str:
         if args[3] == url:
+            if source_available:
+                namespace = "heads" if source_type == RefType.BRANCH else "tags"
+                return f"{'a' * 40}\trefs/{namespace}/main\n"
             raise OSError("original repository unavailable")
         return output_from_command(args, env=env, timeout=timeout)
 
@@ -327,7 +336,10 @@ def test_mapped_target_namespace_skips_a_wrong_type_mirror(
     assert _git(["rev-parse", "HEAD"], root) == expected_commit
 
 
-def test_provisional_commit_fetch_continues_to_a_healthy_mirror(tmp_path: Path) -> None:
+@pytest.mark.parametrize("source_advertised", [False, True])
+def test_commit_fetch_continues_to_a_healthy_mirror(
+    tmp_path: Path, source_advertised: bool
+) -> None:
     mirrors: list[Path] = []
     requested = ""
     for name in ["missing", "healthy"]:
@@ -349,6 +361,8 @@ def test_provisional_commit_fetch_continues_to_a_healthy_mirror(tmp_path: Path) 
         args: list[str], env: dict[str, str] | None = None, timeout: int | None = None
     ) -> str:
         if args[3] == url:
+            if source_advertised:
+                return f"{requested}\trefs/heads/release/{requested}\n"
             raise OSError("original lookup timed out")
         return output_from_command(args, env=env, timeout=timeout)
 
