@@ -6,6 +6,7 @@
 # Copyright 2024-present Datadog, Inc.
 
 import hashlib
+import json
 import logging
 import re
 import uuid
@@ -339,30 +340,132 @@ def github_api_get_with_retry(
     return (status, result, attempt)
 
 
-def extract_ref(ref: str, url: str, git_env: dict[str, str] | None = None) -> str:
-    logger.debug("Extracting ref %s from %s", ref, url)
-    split_ref = ref.split("/")
-    for i in range(len(split_ref)):
-        ref_guess = "/".join(split_ref[: i + 1])
-        ls_output = _output_from_git_command(
-            ["git", "ls-remote", url, ref_guess], git_env
-        )
-        if ref_guess in ls_output:
-            logger.debug("Found valid ref: %s", ref_guess)
-            return ref_guess
-    if len(split_ref) > 0:  # may be a hash
-        ref_guess = split_ref[0]
-        ls_output = _output_from_git_command(["git", "ls-remote", url], git_env)
-        if ref_guess in ls_output:
-            logger.debug("Found valid ref from hash: %s", ref_guess)
-            return ref_guess
-    return ""
-
-
 class RefType(Enum):
     BRANCH = "branch"
     TAG = "tag"
     COMMIT = "commit"
+
+
+class _ExtractedRef(str):
+    """String subclass returned by `extract_ref` carrying ref type and verification state."""
+
+    ref_type: RefType
+    verified: bool
+
+    def __new__(
+        cls,
+        value: str,
+        ref_type: RefType = RefType.BRANCH,
+        verified: bool = True,
+    ) -> "_ExtractedRef":
+        obj = super().__new__(cls, value)
+        obj.ref_type = ref_type
+        obj.verified = verified
+        return obj
+
+
+def _ls_remote_match_ref_type(ls_output: str, ref_guess: str) -> RefType | None:
+    """Return the advertised RefType if `git ls-remote` contains an exact branch/tag named ref_guess."""
+    branch_ref = f"refs/heads/{ref_guess}"
+    tag_refs = (f"refs/tags/{ref_guess}", f"refs/tags/{ref_guess}^{{}}")
+    matched_tag = False
+    for line in ls_output.splitlines():
+        parts = line.split("\t", 1)
+        if len(parts) != 2:
+            continue
+        ref_name = parts[1].strip()
+        if ref_name == branch_ref:
+            return RefType.BRANCH
+        if ref_name in tag_refs:
+            matched_tag = True
+    return RefType.TAG if matched_tag else None
+
+
+def _ls_remote_matches_sha(ls_output: str, sha_guess: str) -> bool:
+    """Check whether `git ls-remote` output contains a ref pointing to exact commit sha_guess."""
+    for line in ls_output.splitlines():
+        parts = line.split("\t", 1)
+        if len(parts) == 2 and parts[0].strip() == sha_guess:
+            return True
+    return False
+
+
+_COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
+
+
+def _is_safe_git_ref_name(ref_name: str) -> bool:
+    """Validate a Git ref name against git-check-ref-format and path-safety rules."""
+    if not ref_name:
+        return False
+    if ref_name.startswith("/") or ref_name.endswith("/") or ref_name.endswith("."):
+        return False
+    if ".." in ref_name or "//" in ref_name or "@{" in ref_name or "\\" in ref_name:
+        return False
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7F or ch in " ~^:?*[" for ch in ref_name):
+        return False
+    for segment in ref_name.split("/"):
+        if (
+            not segment
+            or segment in (".", "..")
+            or segment.startswith(".")
+            or segment.endswith(".lock")
+        ):
+            return False
+    return True
+
+
+def extract_ref(ref: str, url: str, git_env: dict[str, str] | None = None) -> str:
+    logger.debug("Extracting Git ref %s", ref)
+    split_ref = [segment for segment in ref.split("/") if segment]
+    if not split_ref:
+        return ""
+    candidate_refs = ["/".join(split_ref[:i]) for i in range(len(split_ref), 0, -1)]
+    ls_output = _output_from_git_command(
+        ["git", "ls-remote", "--", url, *candidate_refs], git_env
+    )
+    # Probe longest prefix first so slash branches (e.g. "release/v2") win over "release".
+    for ref_guess in candidate_refs:
+        matched_type = _ls_remote_match_ref_type(ls_output, ref_guess)
+        if matched_type is not None:
+            logger.debug("Found valid ref: %s", ref_guess)
+            return _ExtractedRef(ref_guess, ref_type=matched_type, verified=True)
+    # May be a commit hash: reachable historical commits may not be advertised
+    # by `git ls-remote`, so accept full 40-char SHAs provisionally and let
+    # Git fetch confirm commit existence.
+    ref_guess = split_ref[0]
+    if _COMMIT_SHA_PATTERN.fullmatch(ref_guess):
+        logger.debug("Found provisional full commit SHA ref: %s", ref_guess)
+        return _ExtractedRef(ref_guess, ref_type=RefType.COMMIT, verified=False)
+    ls_output = _output_from_git_command(["git", "ls-remote", "--", url], git_env)
+    if _ls_remote_matches_sha(ls_output, ref_guess):
+        logger.debug("Found valid ref from hash: %s", ref_guess)
+        return _ExtractedRef(ref_guess, ref_type=RefType.COMMIT, verified=True)
+    return ""
+
+
+def _strip_url_query_and_fragment(url: str) -> str:
+    return url.split("#", 1)[0].split("?", 1)[0]
+
+
+def _sanitize_repo_subpath(path: str) -> str | None:
+    """Normalize a repository-relative subpath and reject any `..` traversal.
+
+    Returns "" for the repository root, "/a/b" for a valid nested path, or
+    None when any path segment is "..".
+    """
+    stripped = path.strip("/")
+    if not stripped:
+        return ""
+    parts: list[str] = []
+    for part in stripped.split("/"):
+        if part in ("", "."):
+            continue
+        if part == "..":
+            return None
+        parts.append(part)
+    if not parts:
+        return ""
+    return "/" + "/".join(parts)
 
 
 @dataclass
@@ -394,6 +497,14 @@ class MirrorSpec:
     ref_mapping: dict[tuple[RefType, str], tuple[RefType, str]] | None = (
         None  # Maps (ref_type, ref_name) to (ref_type, ref_name)
     )
+
+
+@dataclass(frozen=True)
+class _ResolvedRef:
+    ref_name: str
+    ref_type: RefType = RefType.BRANCH
+    mirror_spec: MirrorSpec | None = None
+    verified: bool = True
 
 
 class SourceCodeManager(ArtifactManager):
@@ -626,7 +737,7 @@ class SourceCodeManager(ArtifactManager):
         try:
             discovered_branch = (
                 _output_from_git_command(
-                    ["git", "ls-remote", "--symref", url, "HEAD"],
+                    ["git", "ls-remote", "--symref", "--", url, "HEAD"],
                     git_env,
                 )
                 .split()[1]
@@ -699,6 +810,7 @@ class SourceCodeManager(ArtifactManager):
         original_ref_type: RefType,
         original_ref_name: str,
         git_env: dict[str, str] | None = None,
+        preferred_mirror: MirrorSpec | None = None,
     ) -> tuple[str, RefType, str, str]:
         """Get the mirror URL and reference for a given original URL and reference.
         Returns a tuple of (mirror_url, ref_type, effective_ref_name, discovered_branch) where discovered_branch
@@ -717,7 +829,10 @@ class SourceCodeManager(ArtifactManager):
                     str(e),
                 )
 
-        for mirror_map in self.mirrors:
+        candidate_mirrors = (
+            [preferred_mirror] if preferred_mirror is not None else self.mirrors
+        )
+        for mirror_map in candidate_mirrors:
             if mirror_map.original_url == original_url:
                 logger.debug(
                     "Found mirror definition for %s: %s",
@@ -854,6 +969,318 @@ class SourceCodeManager(ArtifactManager):
             return is_dir(path_join(target_path, ".git"))
         return True
 
+    def _extract_ref_with_mirror_fallback(
+        self,
+        ref: str,
+        repository_url: str,
+        git_env: dict[str, str] | None,
+    ) -> _ResolvedRef | None:
+        failures: list[OSError] = []
+
+        def try_extract(candidate: str, url: str) -> str:
+            try:
+                return extract_ref(candidate, url, git_env=git_env)
+            except OSError as error:
+                failures.append(error)
+                return ""
+
+        def target_exists(
+            mirror: MirrorSpec, target_type: RefType, target_ref: str
+        ) -> bool:
+            if target_type not in (
+                RefType.BRANCH,
+                RefType.TAG,
+            ) or not _is_safe_git_ref_name(target_ref):
+                return False
+            namespace = "heads" if target_type == RefType.BRANCH else "tags"
+            qualified_ref = f"refs/{namespace}/{target_ref}"
+            try:
+                output = _output_from_git_command(
+                    ["git", "ls-remote", "--", mirror.mirror_url, qualified_ref],
+                    git_env,
+                )
+            except OSError as error:
+                failures.append(error)
+                return False
+            return any(
+                line.partition("\t")[2].strip() == qualified_ref
+                for line in output.splitlines()
+            )
+
+        validated_ref = try_extract(ref, repository_url)
+        if validated_ref != "" and _is_safe_git_ref_name(validated_ref):
+            source = _ResolvedRef(
+                ref_name=str(validated_ref),
+                ref_type=getattr(validated_ref, "ref_type", RefType.BRANCH),
+                verified=getattr(validated_ref, "verified", True),
+            )
+            if source.ref_type == RefType.COMMIT:
+                return source
+            source_key = (source.ref_type, source.ref_name)
+            mirrors = [m for m in self.mirrors if m.original_url == repository_url]
+            if not any(m.ref_mapping and source_key in m.ref_mapping for m in mirrors):
+                return source
+            for mirror in mirrors:
+                mapping = mirror.ref_mapping or {}
+                target_type, target_ref = mapping.get(source_key, source_key)
+                if target_type == RefType.COMMIT:
+                    raise NotImplementedError(
+                        f"Mirror reference type {target_type} is not yet implemented. Only branch and tag mapping targets are supported."
+                    )
+                if target_exists(mirror, target_type, target_ref):
+                    return _ResolvedRef(
+                        ref_name=source.ref_name,
+                        ref_type=source.ref_type,
+                        mirror_spec=mirror,
+                        verified=source.verified,
+                    )
+            if failures:
+                raise failures[-1]
+            return None
+        split_ref = [segment for segment in ref.split("/") if segment]
+        candidate_refs = ["/".join(split_ref[:i]) for i in range(len(split_ref), 0, -1)]
+        for mirror_map in self.mirrors:
+            if mirror_map.original_url != repository_url:
+                continue
+            validated_ref = try_extract(ref, mirror_map.mirror_url)
+            for ref_guess in candidate_refs:
+                if not _is_safe_git_ref_name(ref_guess):
+                    continue
+                has_mapping = False
+                if mirror_map.ref_mapping:
+                    for ref_type in (RefType.COMMIT, RefType.BRANCH, RefType.TAG):
+                        if (
+                            ref_type == RefType.COMMIT
+                            and not _COMMIT_SHA_PATTERN.fullmatch(ref_guess)
+                        ):
+                            continue
+                        mapped = mirror_map.ref_mapping.get((ref_type, ref_guess))
+                        if mapped is None:
+                            continue
+                        has_mapping = True
+                        target_type, target_ref = mapped
+                        if target_exists(mirror_map, target_type, target_ref):
+                            return _ResolvedRef(
+                                ref_name=ref_guess,
+                                ref_type=ref_type,
+                                mirror_spec=mirror_map,
+                                verified=ref_type != RefType.COMMIT,
+                            )
+                if has_mapping:
+                    break
+                if ref_guess == validated_ref:
+                    return _ResolvedRef(
+                        ref_name=str(validated_ref),
+                        ref_type=getattr(validated_ref, "ref_type", RefType.BRANCH),
+                        mirror_spec=mirror_map,
+                        verified=getattr(validated_ref, "verified", True),
+                    )
+        if failures:
+            raise failures[-1]
+        return None
+
+    def _resolve_ref_and_path(
+        self,
+        original_parsed_url: Any,
+        repository_url: str,
+        git_env: dict[str, str] | None,
+    ) -> tuple[str, str | None, RefType, MirrorSpec | None, bool]:
+        """Split a parsed GitHub URL into its ref, sanitized subdirectory, ref type, matched mirror, and verification state.
+
+        Returns `(branch, None, ...)` if the path contains a `..` traversal segment
+        or if a `/tree/` or `/blob/` URL's ref cannot be resolved.
+        """
+        branch = "default_branch"
+        resolved_ref_type = RefType.BRANCH
+        matched_mirror: MirrorSpec | None = None
+        verified = True
+        if original_parsed_url.branch:
+            # branches are guessed from url, and may fail to be correct specially on tags and branches with slashes
+            resolved_ref = self._extract_ref_with_mirror_fallback(
+                original_parsed_url.branch, repository_url, git_env=git_env
+            )
+            if resolved_ref is not None:
+                branch = resolved_ref.ref_name
+                resolved_ref_type = resolved_ref.ref_type
+                matched_mirror = resolved_ref.mirror_spec
+                verified = resolved_ref.verified
+        if original_parsed_url.path_raw.startswith("/tree/"):
+            if branch == "default_branch":
+                return branch, None, resolved_ref_type, matched_mirror, False
+            segments = [
+                segment
+                for segment in original_parsed_url.path_raw.removeprefix(
+                    "/tree/"
+                ).split("/")
+                if segment
+            ]
+            branch_parts = branch.split("/")
+            if segments[: len(branch_parts)] != branch_parts:
+                return branch, None, resolved_ref_type, matched_mirror, False
+            raw_path = "/".join(segments[len(branch_parts) :])
+            return (
+                branch,
+                _sanitize_repo_subpath(raw_path),
+                resolved_ref_type,
+                matched_mirror,
+                verified,
+            )
+        if original_parsed_url.path_raw.startswith("/blob/"):
+            blob_segments = [
+                segment
+                for segment in original_parsed_url.path_raw.removeprefix(
+                    "/blob/"
+                ).split("/")
+                if segment
+            ][:-1]
+            blob_dir = "/".join(blob_segments)
+            resolved_ref = self._extract_ref_with_mirror_fallback(
+                blob_dir, repository_url, git_env=git_env
+            )
+            if resolved_ref is None:
+                return branch, None, resolved_ref_type, matched_mirror, False
+            branch = resolved_ref.ref_name
+            resolved_ref_type = resolved_ref.ref_type
+            matched_mirror = resolved_ref.mirror_spec
+            verified = resolved_ref.verified
+            branch_parts = branch.split("/")
+            if blob_segments[: len(branch_parts)] != branch_parts:
+                return branch, None, resolved_ref_type, matched_mirror, False
+            raw_path = "/".join(blob_segments[len(branch_parts) :])
+            return (
+                branch,
+                _sanitize_repo_subpath(raw_path),
+                resolved_ref_type,
+                matched_mirror,
+                verified,
+            )
+        return branch, "", resolved_ref_type, matched_mirror, verified
+
+    def _checkout_ref(
+        self,
+        url: str,
+        ref_type: RefType,
+        ref_name: str,
+        destination: str,
+        git_env: dict[str, str] | None,
+        fetch_only: bool = False,
+    ) -> bool:
+        if ref_type in (RefType.TAG, RefType.COMMIT) or fetch_only:
+            if ref_type == RefType.TAG:
+                refspec = f"refs/tags/{ref_name}:refs/tags/{ref_name}"
+            elif ref_type == RefType.BRANCH:
+                refspec = f"refs/heads/{ref_name}"
+            else:
+                refspec = ref_name
+            fetch = ["git", "fetch"]
+            checkout = ["git", "-c", "advice.detachedHead=False", "checkout"]
+            if fetch_only:
+                fetch.append("--force")
+                checkout.append("--force")
+            commands = [
+                ["git", "init", "--quiet"],
+                ["git", "config", "remote.origin.url", url],
+                [*fetch, "--depth", "1", "origin", refspec],
+                [*checkout, "FETCH_HEAD"],
+            ]
+            if fetch_only:
+                commands.append(["git", "clean", "-ffdx"])
+            kwargs: dict[str, Any] = {"cwd": destination}
+        else:
+            commands = [
+                [
+                    "git",
+                    "clone",
+                    "-c",
+                    "advice.detachedHead=False",
+                    "--depth",
+                    "1",
+                    f"--branch={ref_name}",
+                    url,
+                    destination,
+                ]
+            ]
+            kwargs = {}
+        if git_env is not None:
+            kwargs["env"] = git_env
+        if git_env is not None or fetch_only:
+            kwargs["timeout"] = NONINTERACTIVE_GIT_TIMEOUT_SECONDS
+        for command in commands:
+            if run_command(command, **kwargs) != 0:
+                return False
+        return True
+
+    def _record_mapped_commit(
+        self,
+        checkout: str,
+        source_ref: str,
+        target: tuple[str, RefType, str],
+        git_env: dict[str, str] | None,
+    ) -> bool:
+        try:
+            commit = output_from_command(
+                ["git", "rev-parse", "--verify", "HEAD"],
+                cwd=checkout,
+                env=git_env,
+                timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
+            ).strip()
+        except OSError:
+            return False
+        if not _COMMIT_SHA_PATTERN.fullmatch(commit):
+            return False
+        url, ref_type, ref_name = target
+        provenance = json.dumps([source_ref, url, ref_type.value, ref_name, commit])
+        return (
+            run_command(
+                ["git", "config", "--local", "ddla.resolved-ref", provenance],
+                cwd=checkout,
+                env=git_env,
+                timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
+            )
+            == 0
+        )
+
+    def _cached_commit_matches_mapping(
+        self,
+        checkout: str,
+        source_ref: str,
+        commit: str,
+        candidates: list[tuple[str, RefType, str]],
+        git_env: dict[str, str] | None,
+    ) -> bool:
+        if not _COMMIT_SHA_PATTERN.fullmatch(commit):
+            return False
+        candidates = [
+            candidate
+            for candidate in candidates
+            if candidate[1] in (RefType.BRANCH, RefType.TAG)
+        ]
+        if not candidates:
+            return False
+        try:
+            provenance = json.loads(
+                output_from_command(
+                    ["git", "config", "--local", "--get", "ddla.resolved-ref"],
+                    cwd=checkout,
+                    env=git_env,
+                    timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
+                )
+            )
+        except (OSError, ValueError):
+            return False
+        if (
+            not isinstance(provenance, list)
+            or len(provenance) != 5
+            or not all(isinstance(value, str) for value in provenance)
+            or provenance[0] != source_ref
+            or provenance[4].lower() != commit.lower()
+        ):
+            return False
+        return any(
+            provenance[1:4] == [url, ref_type.value, ref_name]
+            for url, ref_type, ref_name in candidates
+        )
+
     def get_code(
         self,
         resource_url: str,
@@ -862,7 +1289,7 @@ class SourceCodeManager(ArtifactManager):
     ) -> SourceCodeReference | None:
         logger.debug("Getting code for resource URL: %s", resource_url)
 
-        original_parsed_url = parse_git_url(resource_url)
+        original_parsed_url = parse_git_url(_strip_url_query_and_fragment(resource_url))
         if not original_parsed_url.valid or not original_parsed_url.github:
             return None
 
@@ -898,26 +1325,16 @@ class SourceCodeManager(ArtifactManager):
             owner,
             repo,
         )
-        branch = "default_branch"
-        if original_parsed_url.branch:
-            # branches are guessed from url, and may fail to be correct specially on tags and branches with slashes
-            validated_ref = extract_ref(
-                original_parsed_url.branch, repository_url, git_env=git_env
+        try:
+            branch, path, resolved_ref_type, matched_mirror, _verified_ref = (
+                self._resolve_ref_and_path(original_parsed_url, repository_url, git_env)
             )
-            if validated_ref != "":
-                branch = validated_ref
-        if original_parsed_url.path_raw.startswith("/tree/"):
-            path = original_parsed_url.path_raw.removeprefix(f"/tree/{branch}")
-        elif original_parsed_url.path_raw.startswith("/blob/"):
-            path = "/".join(
-                original_parsed_url.path_raw.removeprefix("/blob/").split("/")[:-1]
-            )
-            validated_ref = extract_ref(path, repository_url, git_env=git_env)
-            if validated_ref != "":
-                branch = validated_ref
-                path = path.removeprefix(f"{branch}")
-        else:
-            path = ""
+        except OSError:
+            logger.warning("Failed to resolve ref/path for %s", resource_url)
+            return None
+        if path is None or not _is_safe_git_ref_name(branch):
+            return None
+        commit_checkout = resolved_ref_type == RefType.COMMIT
         logger.debug(
             "Using branch: %s and path: %s for repository URL: %s",
             branch,
@@ -929,9 +1346,10 @@ class SourceCodeManager(ArtifactManager):
             effective_repository_url, effective_ref_type, effective_branch, branch = (
                 self._get_mirror_url_and_ref(
                     repository_url,
-                    RefType.BRANCH,
+                    resolved_ref_type,
                     branch,
                     git_env=git_env,
+                    preferred_mirror=matched_mirror,
                 )
             )
         except NonAccessibleRepository as e:
@@ -944,6 +1362,27 @@ class SourceCodeManager(ArtifactManager):
             effective_repository_url,
             effective_branch,
         )
+
+        candidates = [(effective_repository_url, effective_ref_type, effective_branch)]
+        if commit_checkout:
+            for mirror in self.mirrors:
+                if mirror.original_url != repository_url:
+                    continue
+                try:
+                    candidate_url, candidate_type, candidate_ref, _ = (
+                        self._get_mirror_url_and_ref(
+                            repository_url,
+                            resolved_ref_type,
+                            branch,
+                            git_env=git_env,
+                            preferred_mirror=mirror,
+                        )
+                    )
+                except (NonAccessibleRepository, NotImplementedError):
+                    continue
+                candidate = (candidate_url, candidate_type, candidate_ref)
+                if candidate not in candidates:
+                    candidates.append(candidate)
 
         cached_timestamps = list_dir(self.local_cache_dir)
         cached_timestamps.sort(reverse=True)
@@ -969,6 +1408,27 @@ class SourceCodeManager(ArtifactManager):
                 if path_exists(local_branch_path):
                     if not is_dir(path_join(local_branch_path, ".git")):
                         continue
+                    if resolved_ref_type == RefType.COMMIT:
+                        try:
+                            cached_commit = output_from_command(
+                                ["git", "rev-parse", "--verify", "HEAD"],
+                                cwd=local_branch_path,
+                                env=git_env,
+                                timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
+                            ).strip()
+                        except OSError:
+                            continue
+                        if (
+                            effective_ref_type != RefType.COMMIT
+                            or cached_commit.lower() != branch.lower()
+                        ) and not self._cached_commit_matches_mapping(
+                            local_branch_path,
+                            branch,
+                            cached_commit,
+                            candidates,
+                            git_env,
+                        ):
+                            continue
                     local_full_path = f"{local_branch_path}{path}"
                     if path and (
                         not is_dir(local_full_path)
@@ -1008,55 +1468,31 @@ class SourceCodeManager(ArtifactManager):
             effective_branch,
             local_branch_path,
         )
-        if effective_ref_type == RefType.TAG:
-            # `git clone --branch` prefers a same-named branch over the tag, so
-            # fetch the fully qualified tag ref explicitly instead. Keep it as a
-            # local tag so tag-derived versioning works, and set `origin` as
-            # clone would, since Git LFS resolves its endpoint from it. Use
-            # `git config` rather than `remote add` so retries in the same
-            # directory do not fail on an already existing remote.
-            clone_commands = [
-                ["git", "init", "--quiet"],
-                ["git", "config", "remote.origin.url", effective_repository_url],
-                [
-                    "git",
-                    "fetch",
-                    "--depth",
-                    "1",
-                    "origin",
-                    f"refs/tags/{effective_branch}:refs/tags/{effective_branch}",
-                ],
-                [
-                    "git",
-                    "-c",
-                    "advice.detachedHead=False",
-                    "checkout",
-                    "FETCH_HEAD",
-                ],
-            ]
-            clone_kwargs: dict[str, Any] = {"cwd": staging_branch_path}
-        else:
-            clone_commands = [
-                [
-                    "git",
-                    "clone",
-                    "-c",
-                    "advice.detachedHead=False",
-                    "--depth",
-                    "1",
-                    f"--branch={effective_branch}",
-                    effective_repository_url,
-                    staging_branch_path,
-                ]
-            ]
-            clone_kwargs = {}
-        if git_env is not None:
-            clone_kwargs["env"] = git_env
-            clone_kwargs["timeout"] = NONINTERACTIVE_GIT_TIMEOUT_SECONDS
-        clone_result = 0
-        for clone_command in clone_commands:
-            clone_result = run_command(clone_command, **clone_kwargs)
-            if clone_result != 0:
+        clone_result = 1
+        for attempt, (
+            effective_repository_url,
+            effective_ref_type,
+            effective_branch,
+        ) in enumerate(candidates):
+            if attempt:
+                if not self._is_within_cache_dir(staging_branch_path):
+                    return None
+                remove_tree(staging_branch_path)
+                staging_branch_path = self._get_staging_clone_path(
+                    repository_cache_path
+                )
+                if not self._is_within_cache_dir(staging_branch_path):
+                    return None
+                create_dirs(staging_branch_path)
+            if self._checkout_ref(
+                effective_repository_url,
+                effective_ref_type,
+                effective_branch,
+                staging_branch_path,
+                git_env,
+                fetch_only=commit_checkout,
+            ):
+                clone_result = 0
                 break
         if clone_result != 0:
             if self._is_within_cache_dir(staging_branch_path):
@@ -1067,6 +1503,20 @@ class SourceCodeManager(ArtifactManager):
                 effective_branch,
                 local_branch_path,
             )
+            return None
+
+        if (
+            resolved_ref_type == RefType.COMMIT
+            and effective_ref_type in (RefType.BRANCH, RefType.TAG)
+            and not self._record_mapped_commit(
+                staging_branch_path,
+                branch,
+                (effective_repository_url, effective_ref_type, effective_branch),
+                git_env,
+            )
+        ):
+            if self._is_within_cache_dir(staging_branch_path):
+                remove_tree(staging_branch_path)
             return None
 
         if not self._publish_staging_checkout(staging_branch_path, local_branch_path):
