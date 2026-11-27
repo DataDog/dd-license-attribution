@@ -17,19 +17,8 @@ from collections.abc import Iterable, Iterator, Mapping
 from pathlib import Path
 
 import requests
-from requests.auth import AuthBase
 
 PATH_SEPARATOR = os.sep
-
-
-class _NoAuth(AuthBase):
-    """Suppresses ambient credentials (e.g., .netrc) while preserving proxy and CA settings."""
-
-    def __call__(self, r: requests.PreparedRequest) -> requests.PreparedRequest:
-        return r
-
-
-_NO_AUTH = _NoAuth()
 
 
 def _merge_env(extra: dict[str, str] | None) -> dict[str, str] | None:
@@ -190,42 +179,13 @@ def stream_url(
             response.close()
 
 
-@contextlib.contextmanager
-def stream_url_once(
-    url: str,
-    headers: dict[str, str],
-    chunk_size: int,
-    timeout: int = 30,
-) -> Iterator[tuple[int, Mapping[str, str], Iterator[bytes]]]:
-    response: requests.Response | None = None
-    try:
-        response = requests.get(
-            url,
-            allow_redirects=False,
-            auth=_NO_AUTH,
-            headers=headers,
-            stream=True,
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        yield (
-            response.status_code,
-            response.headers,
-            response.iter_content(chunk_size=chunk_size),
-        )
-    except requests.RequestException as e:
-        raise OSError(f"Failed to download {url}: {e}") from e
-    finally:
-        if response is not None:
-            response.close()
-
-
-def resolve_host_ips(hostname: str, port: int = 443) -> list[str]:
+def resolve_host_ips(hostname: str, port: int) -> list[str]:
+    """Resolve hostname to unique IP strings, keeping the resolver's preference order."""
     try:
         infos = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
     except OSError as e:
         raise OSError(f"Failed to resolve host {hostname}: {e}") from e
-    return sorted({str(info[4][0]) for info in infos})
+    return list(dict.fromkeys(str(info[4][0]) for info in infos))
 
 
 def is_dir(path: str) -> bool:

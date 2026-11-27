@@ -18,7 +18,6 @@ from dd_license_attribution.adaptors.os import (
     output_from_command,
     path_exists,
     path_join,
-    resolve_host_ips,
     walk_directory,
 )
 from dd_license_attribution.artifact_management.go_package_resolver import (
@@ -32,11 +31,12 @@ from dd_license_attribution.metadata_collector.project_scope import ProjectScope
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
-from dd_license_attribution.utils.bounded_download import download_bounded
+from dd_license_attribution.utils.bounded_download import fetch_bounded_validated
 
 logger = logging.getLogger("dd_license_attribution")
 
 _VANITY_MAX_RESPONSE_BYTES = 64 * 1024
+_NAT64_WELL_KNOWN_PREFIX = ipaddress.IPv6Network("64:ff9b::/96")
 
 
 class _GoImportMetaParser(HTMLParser):
@@ -65,10 +65,12 @@ class _GoImportMetaParser(HTMLParser):
                 self.go_imports.append(content)
 
 
-def _validate_vanity_url_syntax(url: str) -> str:
-    """Validate vanity URL syntax (HTTPS, public-looking host, no credentials/ports/IPs) and return hostname."""
-    if any(ch.isspace() for ch in url):
-        raise ValueError(f"Disallowed whitespace in vanity URL: {url}")
+def _validate_vanity_url(url: str) -> None:
+    """Ensure a vanity fetch or redirect URL is HTTPS to a public-looking DNS name without credentials or ports."""
+    if any(ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7F for ch in url):
+        raise ValueError(
+            f"Disallowed whitespace or control character in vanity URL: {url}"
+        )
     parsed = urlparse(url)
     hostname = parsed.hostname
     if (
@@ -93,7 +95,6 @@ def _validate_vanity_url_syntax(url: str) -> str:
     tld = labels[-1]
     if not (tld.isascii() and (tld.isalpha() or tld.startswith("xn--"))):
         raise ValueError(f"Numeric or non-public host disallowed in vanity URL: {url}")
-    return hostname
 
 
 def _is_public_ip(ip: str) -> bool:
@@ -101,24 +102,21 @@ def _is_public_ip(ip: str) -> bool:
         addr = ipaddress.ip_address(ip)
     except ValueError:
         return False
-    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
-        addr = addr.ipv4_mapped
-    return addr.is_global and not addr.is_multicast
-
-
-def _validate_vanity_url(url: str) -> None:
-    """Ensure a vanity fetch or redirect URL targets a public HTTPS host resolving only to public IPs."""
-    hostname = _validate_vanity_url_syntax(url)
-    resolved_ips = resolve_host_ips(hostname)
-    if not resolved_ips or not all(_is_public_ip(ip) for ip in resolved_ips):
-        raise ValueError(f"Non-public resolved IP disallowed for vanity URL: {url}")
+    if isinstance(addr, ipaddress.IPv6Address):
+        if addr.scope_id is not None:
+            return False
+        if addr.ipv4_mapped is not None:
+            addr = addr.ipv4_mapped
+        elif addr in _NAT64_WELL_KNOWN_PREFIX:
+            addr = ipaddress.IPv4Address(int(addr) & 0xFFFFFFFF)
+    return addr.is_global and not addr.is_multicast and not addr.is_reserved
 
 
 def _is_resolvable_vanity_path(module_path: str) -> bool:
     """Return True if module_path looks like a public remote Go vanity import path."""
     url = f"https://{module_path}"
     try:
-        _validate_vanity_url_syntax(url)
+        _validate_vanity_url(url)
         parsed = urlparse(url)
     except ValueError:
         return False
@@ -438,13 +436,17 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
     def _fetch_go_import_match(self, path: str) -> tuple[str, str] | None:
         url = f"https://{path}?go-get=1"
         try:
-            _validate_vanity_url(url)
-            raw_html = download_bounded(
+            status, raw_html = fetch_bounded_validated(
                 url,
                 max_bytes=_VANITY_MAX_RESPONSE_BYTES,
-                redirect_validator=_validate_vanity_url,
+                url_validator=_validate_vanity_url,
+                ip_validator=_is_public_ip,
             )
-            html = raw_html.decode(errors="replace")
+            # Like `go get`, honor go-import tags in non-2xx responses (some hosts serve
+            # discovery metadata with HTTP 404); the status only matters when none match.
+            match = _extract_github_repo_from_go_import(
+                raw_html.decode(errors="replace"), path
+            )
         except (OSError, ValueError) as e:
             logger.debug(
                 "Could not resolve Go vanity import for %s: %s",
@@ -452,7 +454,13 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                 e,
             )
             return None
-        return _extract_github_repo_from_go_import(html, path)
+        if match is None and status >= 400:
+            logger.debug(
+                "Could not resolve Go vanity import for %s: HTTP %s",
+                path,
+                status,
+            )
+        return match
 
     def _resolve_vanity_import(self, module_path: str) -> str | None:
         """Resolve a non-GitHub Go vanity module path via ?go-get=1 to a GitHub repo URL."""

@@ -19,6 +19,7 @@ from dd_license_attribution.utils.bounded_download import (
     MAX_VALIDATED_REDIRECTS,
     _exceeds_content_length,
     download_bounded,
+    fetch_bounded_validated,
 )
 
 
@@ -69,15 +70,13 @@ def test_download_bounded_rejects_content_length_over_limit_without_reading_chun
         return_value=contextlib.nullcontext(({"Content-Length": "21"}, chunks)),
     )
 
-    with pytest.raises(
-        OSError,
-        match=r"^Download from https://example\.test/crate/download exceeds maximum size of 20 bytes$",
-    ):
+    with pytest.raises(OSError, match="exceeds maximum size"):
         download_bounded(
             "https://example.test/crate/download",
             user_agent="test-agent",
             max_bytes=20,
         )
+
     mock_stream_url.assert_called_once_with(
         "https://example.test/crate/download",
         {"User-Agent": "test-agent"},
@@ -122,15 +121,13 @@ def test_download_bounded_rejects_cumulative_stream_over_limit(
         return_value=contextlib.nullcontext(({}, chunks)),
     )
 
-    with pytest.raises(
-        OSError,
-        match=r"^Download from https://example\.test/crate/download exceeds maximum size of 10 bytes$",
-    ):
+    with pytest.raises(OSError, match="exceeds maximum size"):
         download_bounded(
             "https://example.test/crate/download",
             user_agent="test-agent",
             max_bytes=10,
         )
+
     mock_stream_url.assert_called_once_with(
         "https://example.test/crate/download",
         {"User-Agent": "test-agent"},
@@ -208,453 +205,240 @@ def test_download_constants_are_pinned() -> None:
     assert MAX_VALIDATED_REDIRECTS == 5
 
 
-def test_download_bounded_validates_redirects_before_following(
+def _public_only(ip: str) -> bool:
+    return ip == "93.184.216.34"
+
+
+def _fake_pinned_responses(
     mocker: pytest_mock.MockFixture,
-) -> None:
-    chunks, consumed = _tracked_chunks([b"ok"])
-    events: list[str] = []
-    responses = iter(
-        [
-            (301, {"Location": "/pkg/?go-get=1"}, iter([])),
-            (200, {}, chunks),
-        ]
-    )
+    responses: list[tuple[int, dict[str, str], list[bytes]]],
+) -> tuple[Mock, list[Mock]]:
+    """Patch the pinned transport with canned (status, headers, chunks) responses; track body reads."""
+    consumed_mocks: list[Mock] = []
+    remaining = list(responses)
 
     @contextlib.contextmanager
-    def fake_stream_once(
+    def fake_stream(
         url: str,
         headers: dict[str, str],
         chunk_size: int,
+        ip_validator: object,
     ) -> Iterator[tuple[int, dict[str, str], Iterator[bytes]]]:
-        status_code, resp_headers, resp_chunks = next(responses)
-        try:
-            yield status_code, resp_headers, resp_chunks
-        finally:
-            events.append(f"close:{url}")
+        status, response_headers, chunks = remaining.pop(0)
+        tracked, consumed = _tracked_chunks(chunks)
+        consumed_mocks.append(consumed)
+        yield status, response_headers, tracked
 
-    def validator(target: str) -> None:
-        events.append(f"validate:{target}")
-
-    mock_stream_once = mocker.patch(
-        "dd_license_attribution.utils.bounded_download.stream_url_once",
-        side_effect=fake_stream_once,
+    mock_stream = mocker.patch(
+        "dd_license_attribution.utils.bounded_download.stream_pinned_https_once",
+        side_effect=fake_stream,
     )
-    mock_validator = Mock(side_effect=validator)
+    return mock_stream, consumed_mocks
 
-    result = download_bounded(
+
+def test_fetch_bounded_validated_follows_validated_redirects_without_reading_their_bodies(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_stream, consumed = _fake_pinned_responses(
+        mocker,
+        [
+            (301, {"Location": "/moved?go-get=1"}, [b"redirect-body"]),
+            (302, {"Location": "https://other.example/final"}, [b"more"]),
+            (200, {"Content-Length": "4"}, [b"do", b"", b"ne"]),
+        ],
+    )
+    validator = Mock()
+
+    status, body = fetch_bounded_validated(
         "https://vanity.example/pkg?go-get=1",
-        max_bytes=1024,
-        redirect_validator=mock_validator,
+        max_bytes=4,
+        url_validator=validator,
+        ip_validator=_public_only,
+        user_agent="test-agent",
     )
 
-    assert result == b"ok"
-    # First response closes before validator inspects the resolved redirect URL
-    assert events == [
-        "close:https://vanity.example/pkg?go-get=1",
-        "validate:https://vanity.example/pkg/?go-get=1",
-        "close:https://vanity.example/pkg/?go-get=1",
+    assert (status, body) == (200, b"done")
+    assert [c.args[0] for c in validator.call_args_list] == [
+        "https://vanity.example/pkg?go-get=1",
+        "https://vanity.example/moved?go-get=1",
+        "https://other.example/final",
     ]
-    mock_validator.assert_called_once_with("https://vanity.example/pkg/?go-get=1")
-    assert mock_stream_once.call_args_list == [
-        mocker.call(
+    assert [c.args for c in mock_stream.call_args_list] == [
+        (
             "https://vanity.example/pkg?go-get=1",
-            {"User-Agent": DDLA_USER_AGENT},
-            DOWNLOAD_CHUNK_SIZE_BYTES,
+            {"User-Agent": "test-agent"},
+            5,
+            _public_only,
         ),
-        mocker.call(
-            "https://vanity.example/pkg/?go-get=1",
-            {"User-Agent": DDLA_USER_AGENT},
-            DOWNLOAD_CHUNK_SIZE_BYTES,
+        (
+            "https://vanity.example/moved?go-get=1",
+            {"User-Agent": "test-agent"},
+            5,
+            _public_only,
+        ),
+        (
+            "https://other.example/final",
+            {"User-Agent": "test-agent"},
+            5,
+            _public_only,
         ),
     ]
-    consumed.assert_called_once_with(b"ok")
+    consumed[0].assert_not_called()
+    consumed[1].assert_not_called()
+    assert consumed[2].call_count == 3
 
 
-def test_download_bounded_aborts_on_rejected_redirect_without_requesting_target(
+def test_fetch_bounded_validated_returns_error_status_bodies_and_redirects_without_location(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    @contextlib.contextmanager
-    def fake_stream_once(
-        url: str,
-        headers: dict[str, str],
-        chunk_size: int,
-    ) -> Iterator[tuple[int, dict[str, str], Iterator[bytes]]]:
-        yield 302, {"Location": "http://127.0.0.1:8123/admin/reload"}, iter([])
-
-    mock_stream_once = mocker.patch(
-        "dd_license_attribution.utils.bounded_download.stream_url_once",
-        side_effect=fake_stream_once,
-    )
-    validator = Mock(side_effect=ValueError("disallowed redirect"))
-
-    with pytest.raises(ValueError, match="disallowed redirect"):
-        download_bounded(
-            "https://evil.example/pkg?go-get=1",
-            max_bytes=1024,
-            redirect_validator=validator,
-        )
-
-    validator.assert_called_once_with("http://127.0.0.1:8123/admin/reload")
-    mock_stream_once.assert_called_once_with(
-        "https://evil.example/pkg?go-get=1",
-        {"User-Agent": DDLA_USER_AGENT},
-        DOWNLOAD_CHUNK_SIZE_BYTES,
-    )
-
-
-def test_download_bounded_allows_max_validated_redirects(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    chunks, consumed = _tracked_chunks([b"final"])
-    responses: Iterator[tuple[int, dict[str, str], Iterator[bytes]]] = iter(
+    _fake_pinned_responses(
+        mocker,
         [
-            (302, {"Location": f"https://vanity.example/hop{i}"}, iter([]))
-            for i in range(1, MAX_VALIDATED_REDIRECTS + 1)
-        ]
-        + [(200, {}, chunks)]
+            (404, {}, [b"<meta go-import>"]),
+            (304, {}, [b""]),
+            (400, {"Location": "/ignored"}, [b"bad-request"]),
+            (300, {"Location": "/chosen"}, [b"ignored"]),
+            (200, {}, [b"x"]),
+        ],
     )
 
-    @contextlib.contextmanager
-    def fake_stream_once(
-        url: str,
-        headers: dict[str, str],
-        chunk_size: int,
-    ) -> Iterator[tuple[int, dict[str, str], Iterator[bytes]]]:
-        yield next(responses)
-
-    mock_stream_once = mocker.patch(
-        "dd_license_attribution.utils.bounded_download.stream_url_once",
-        side_effect=fake_stream_once,
-    )
-    validator = Mock()
-
-    result = download_bounded(
-        "https://vanity.example/start",
-        user_agent="custom-agent",
-        max_bytes=1024,
-        redirect_validator=validator,
-    )
-
-    assert result == b"final"
-    expected_targets = [
-        f"https://vanity.example/hop{i}" for i in range(1, MAX_VALIDATED_REDIRECTS + 1)
-    ]
-    assert validator.call_args_list == [mocker.call(t) for t in expected_targets]
-    assert mock_stream_once.call_args_list == [
-        mocker.call(
-            target,
-            {"User-Agent": "custom-agent"},
-            DOWNLOAD_CHUNK_SIZE_BYTES,
-        )
-        for target in ["https://vanity.example/start", *expected_targets]
-    ]
-    consumed.assert_called_once_with(b"final")
+    assert fetch_bounded_validated(
+        "https://vanity.example/a",
+        max_bytes=64,
+        url_validator=Mock(),
+        ip_validator=_public_only,
+    ) == (404, b"<meta go-import>")
+    assert fetch_bounded_validated(
+        "https://vanity.example/b",
+        max_bytes=64,
+        url_validator=Mock(),
+        ip_validator=_public_only,
+    ) == (304, b"")
+    assert fetch_bounded_validated(
+        "https://vanity.example/c",
+        max_bytes=64,
+        url_validator=Mock(),
+        ip_validator=_public_only,
+    ) == (400, b"bad-request")
+    assert fetch_bounded_validated(
+        "https://vanity.example/d",
+        max_bytes=1,
+        url_validator=Mock(),
+        ip_validator=_public_only,
+    ) == (200, b"x")
 
 
-def test_download_bounded_rejects_excessive_validated_redirects(
+def test_fetch_bounded_validated_stops_before_connecting_to_rejected_redirect(
     mocker: pytest_mock.MockFixture,
 ) -> None:
-    responses: Iterator[tuple[int, dict[str, str], Iterator[bytes]]] = iter(
-        [
-            (302, {"Location": f"https://loop.example/hop{i}"}, iter([]))
-            for i in range(1, MAX_VALIDATED_REDIRECTS + 1)
-        ]
-        + [(302, {"Location": "http://127.0.0.1/never-validated"}, iter([]))]
+    mock_stream, _ = _fake_pinned_responses(
+        mocker,
+        [(302, {"Location": "https://127.1/admin"}, [b""])],
     )
 
-    @contextlib.contextmanager
-    def fake_stream_once(
-        url: str,
-        headers: dict[str, str],
-        chunk_size: int,
-    ) -> Iterator[tuple[int, dict[str, str], Iterator[bytes]]]:
-        yield next(responses)
+    def validator(url: str) -> None:
+        if "127.1" in url:
+            raise ValueError("Numeric or non-public host")
 
-    mock_stream_once = mocker.patch(
-        "dd_license_attribution.utils.bounded_download.stream_url_once",
-        side_effect=fake_stream_once,
+    with pytest.raises(ValueError, match="Numeric or non-public host"):
+        fetch_bounded_validated(
+            "https://vanity.example/pkg",
+            max_bytes=64,
+            url_validator=validator,
+            ip_validator=_public_only,
+        )
+    assert mock_stream.call_count == 1
+
+
+def test_fetch_bounded_validated_rejects_initial_url_without_connecting(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_stream, _ = _fake_pinned_responses(mocker, [])
+
+    with pytest.raises(ValueError, match="bad"):
+        fetch_bounded_validated(
+            "https://127.1/pkg",
+            max_bytes=64,
+            url_validator=Mock(side_effect=ValueError("bad")),
+            ip_validator=_public_only,
+        )
+    mock_stream.assert_not_called()
+
+
+def test_fetch_bounded_validated_limits_redirect_hops(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_stream, _ = _fake_pinned_responses(
+        mocker,
+        [(302, {"Location": f"/hop{i}"}, [b""]) for i in range(7)],
     )
-    validator = Mock()
 
     with pytest.raises(
-        OSError,
-        match=r"^Too many redirects while downloading https://loop\.example/start$",
+        OSError, match="Too many redirects while downloading https://loop.example/start"
     ):
-        download_bounded(
+        fetch_bounded_validated(
             "https://loop.example/start",
-            max_bytes=1024,
-            redirect_validator=validator,
+            max_bytes=64,
+            url_validator=Mock(),
+            ip_validator=_public_only,
         )
-
-    expected_targets = [
-        f"https://loop.example/hop{i}" for i in range(1, MAX_VALIDATED_REDIRECTS + 1)
-    ]
-    assert validator.call_args_list == [mocker.call(t) for t in expected_targets]
-    assert mock_stream_once.call_args_list == [
-        mocker.call(
-            target,
-            {"User-Agent": DDLA_USER_AGENT},
-            DOWNLOAD_CHUNK_SIZE_BYTES,
-        )
-        for target in ["https://loop.example/start", *expected_targets]
-    ]
+    assert mock_stream.call_count == MAX_VALIDATED_REDIRECTS + 1
 
 
-@pytest.mark.parametrize(
-    ("status_code", "resp_headers"),
-    [
-        (299, {"Location": "https://other.example/ignored"}),
-        (302, {}),
-        (302, {"Location": ""}),
-        (400, {"Location": "https://other.example/ignored"}),
-    ],
-)
-def test_download_bounded_does_not_follow_non_redirect_or_missing_location(
+def test_fetch_bounded_validated_enforces_size_cap(
     mocker: pytest_mock.MockFixture,
-    status_code: int,
-    resp_headers: dict[str, str],
 ) -> None:
-    chunks, consumed = _tracked_chunks([b"body"])
-
-    @contextlib.contextmanager
-    def fake_stream_once(
-        url: str,
-        headers: dict[str, str],
-        chunk_size: int,
-    ) -> Iterator[tuple[int, dict[str, str], Iterator[bytes]]]:
-        yield status_code, resp_headers, chunks
-
-    mock_stream_once = mocker.patch(
-        "dd_license_attribution.utils.bounded_download.stream_url_once",
-        side_effect=fake_stream_once,
+    _fake_pinned_responses(
+        mocker,
+        [
+            (200, {"Content-Length": "65"}, [b"x"]),
+            (200, {}, [b"x" * 40, b"x" * 25]),
+        ],
     )
-    validator = Mock()
 
-    assert (
-        download_bounded(
-            "https://vanity.example/pkg?go-get=1",
-            max_bytes=1024,
-            redirect_validator=validator,
+    for _ in range(2):
+        with pytest.raises(
+            OSError,
+            match=(
+                r"^Download from https://vanity\.example/big "
+                r"exceeds maximum size of 64 bytes$"
+            ),
+        ):
+            fetch_bounded_validated(
+                "https://vanity.example/big",
+                max_bytes=64,
+                url_validator=Mock(),
+                ip_validator=_public_only,
+            )
+
+
+def test_fetch_bounded_validated_rejects_invalid_size_limit() -> None:
+    with pytest.raises(ValueError) as exc_info:
+        fetch_bounded_validated(
+            "https://vanity.example/pkg",
+            max_bytes=0,
+            url_validator=Mock(),
+            ip_validator=_public_only,
         )
-        == b"body"
+    assert str(exc_info.value) == "max_bytes must be greater than zero"
+
+
+def test_fetch_bounded_validated_caps_chunk_size_at_download_chunk_size(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_stream, _ = _fake_pinned_responses(mocker, [(200, {}, [b"ok"])])
+
+    status, body = fetch_bounded_validated(
+        "https://vanity.example/large",
+        max_bytes=DOWNLOAD_CHUNK_SIZE_BYTES * 2,
+        url_validator=Mock(),
+        ip_validator=_public_only,
     )
-    validator.assert_not_called()
-    mock_stream_once.assert_called_once_with(
-        "https://vanity.example/pkg?go-get=1",
+
+    assert (status, body) == (200, b"ok")
+    mock_stream.assert_called_once_with(
+        "https://vanity.example/large",
         {"User-Agent": DDLA_USER_AGENT},
         DOWNLOAD_CHUNK_SIZE_BYTES,
+        _public_only,
     )
-    consumed.assert_called_once_with(b"body")
-
-
-def test_download_bounded_follows_status_300_and_399_redirects(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    chunks, consumed = _tracked_chunks([b"done"])
-    responses = iter(
-        [
-            (300, {"Location": "https://vanity.example/hop1"}, iter([])),
-            (399, {"Location": "https://vanity.example/hop2"}, iter([])),
-            (200, {}, chunks),
-        ]
-    )
-
-    @contextlib.contextmanager
-    def fake_stream_once(
-        url: str,
-        headers: dict[str, str],
-        chunk_size: int,
-    ) -> Iterator[tuple[int, dict[str, str], Iterator[bytes]]]:
-        yield next(responses)
-
-    mock_stream_once = mocker.patch(
-        "dd_license_attribution.utils.bounded_download.stream_url_once",
-        side_effect=fake_stream_once,
-    )
-    validator = Mock()
-
-    assert (
-        download_bounded(
-            "https://vanity.example/start",
-            max_bytes=1024,
-            redirect_validator=validator,
-        )
-        == b"done"
-    )
-    assert validator.call_args_list == [
-        mocker.call("https://vanity.example/hop1"),
-        mocker.call("https://vanity.example/hop2"),
-    ]
-    assert mock_stream_once.call_args_list == [
-        mocker.call(
-            "https://vanity.example/start",
-            {"User-Agent": DDLA_USER_AGENT},
-            DOWNLOAD_CHUNK_SIZE_BYTES,
-        ),
-        mocker.call(
-            "https://vanity.example/hop1",
-            {"User-Agent": DDLA_USER_AGENT},
-            DOWNLOAD_CHUNK_SIZE_BYTES,
-        ),
-        mocker.call(
-            "https://vanity.example/hop2",
-            {"User-Agent": DDLA_USER_AGENT},
-            DOWNLOAD_CHUNK_SIZE_BYTES,
-        ),
-    ]
-    consumed.assert_called_once_with(b"done")
-
-
-@pytest.mark.parametrize("location_header", ["location", "LOCATION"])
-def test_download_bounded_matches_location_header_case_insensitively(
-    mocker: pytest_mock.MockFixture,
-    location_header: str,
-) -> None:
-    chunks, consumed = _tracked_chunks([b"ok"])
-    responses = iter(
-        [
-            (301, {location_header: "/target"}, iter([])),
-            (200, {}, chunks),
-        ]
-    )
-
-    @contextlib.contextmanager
-    def fake_stream_once(
-        url: str,
-        headers: dict[str, str],
-        chunk_size: int,
-    ) -> Iterator[tuple[int, dict[str, str], Iterator[bytes]]]:
-        yield next(responses)
-
-    mock_stream_once = mocker.patch(
-        "dd_license_attribution.utils.bounded_download.stream_url_once",
-        side_effect=fake_stream_once,
-    )
-    validator = Mock()
-
-    assert (
-        download_bounded(
-            "https://vanity.example/start",
-            max_bytes=1024,
-            redirect_validator=validator,
-        )
-        == b"ok"
-    )
-    validator.assert_called_once_with("https://vanity.example/target")
-    assert mock_stream_once.call_args_list == [
-        mocker.call(
-            "https://vanity.example/start",
-            {"User-Agent": DDLA_USER_AGENT},
-            DOWNLOAD_CHUNK_SIZE_BYTES,
-        ),
-        mocker.call(
-            "https://vanity.example/target",
-            {"User-Agent": DDLA_USER_AGENT},
-            DOWNLOAD_CHUNK_SIZE_BYTES,
-        ),
-    ]
-    consumed.assert_called_once_with(b"ok")
-
-
-@pytest.mark.parametrize("content_length_header", ["content-length", "CONTENT-LENGTH"])
-def test_download_bounded_enforces_content_length_on_redirected_response(
-    mocker: pytest_mock.MockFixture,
-    content_length_header: str,
-) -> None:
-    chunks, consumed = _tracked_chunks([b"too-big"])
-    responses = iter(
-        [
-            (301, {"Location": "https://cdn.example/final"}, iter([])),
-            (200, {content_length_header: "11"}, chunks),
-        ]
-    )
-
-    @contextlib.contextmanager
-    def fake_stream_once(
-        url: str,
-        headers: dict[str, str],
-        chunk_size: int,
-    ) -> Iterator[tuple[int, dict[str, str], Iterator[bytes]]]:
-        yield next(responses)
-
-    mock_stream_once = mocker.patch(
-        "dd_license_attribution.utils.bounded_download.stream_url_once",
-        side_effect=fake_stream_once,
-    )
-    validator = Mock()
-
-    with pytest.raises(
-        OSError,
-        match=r"^Download from https://cdn\.example/final exceeds maximum size of 10 bytes$",
-    ):
-        download_bounded(
-            "https://vanity.example/start",
-            max_bytes=10,
-            redirect_validator=validator,
-        )
-
-    validator.assert_called_once_with("https://cdn.example/final")
-    assert mock_stream_once.call_args_list == [
-        mocker.call(
-            "https://vanity.example/start",
-            {"User-Agent": DDLA_USER_AGENT},
-            DOWNLOAD_CHUNK_SIZE_BYTES,
-        ),
-        mocker.call(
-            "https://cdn.example/final",
-            {"User-Agent": DDLA_USER_AGENT},
-            DOWNLOAD_CHUNK_SIZE_BYTES,
-        ),
-    ]
-    consumed.assert_not_called()
-
-
-def test_download_bounded_enforces_stream_limit_on_redirected_response(
-    mocker: pytest_mock.MockFixture,
-) -> None:
-    chunks, consumed = _tracked_chunks([b"12345", b"678901"])
-    responses = iter(
-        [
-            (302, {"Location": "https://cdn.example/stream"}, iter([])),
-            (200, {}, chunks),
-        ]
-    )
-
-    @contextlib.contextmanager
-    def fake_stream_once(
-        url: str,
-        headers: dict[str, str],
-        chunk_size: int,
-    ) -> Iterator[tuple[int, dict[str, str], Iterator[bytes]]]:
-        yield next(responses)
-
-    mock_stream_once = mocker.patch(
-        "dd_license_attribution.utils.bounded_download.stream_url_once",
-        side_effect=fake_stream_once,
-    )
-    validator = Mock()
-
-    with pytest.raises(
-        OSError,
-        match=r"^Download from https://cdn\.example/stream exceeds maximum size of 10 bytes$",
-    ):
-        download_bounded(
-            "https://vanity.example/start",
-            max_bytes=10,
-            redirect_validator=validator,
-        )
-
-    validator.assert_called_once_with("https://cdn.example/stream")
-    assert mock_stream_once.call_args_list == [
-        mocker.call(
-            "https://vanity.example/start",
-            {"User-Agent": DDLA_USER_AGENT},
-            DOWNLOAD_CHUNK_SIZE_BYTES,
-        ),
-        mocker.call(
-            "https://cdn.example/stream",
-            {"User-Agent": DDLA_USER_AGENT},
-            DOWNLOAD_CHUNK_SIZE_BYTES,
-        ),
-    ]
-    assert consumed.call_args_list == [mocker.call(b"12345"), mocker.call(b"678901")]

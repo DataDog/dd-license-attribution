@@ -44,6 +44,9 @@ dependencies = [
     "pytz",
     "giturlparse",
     "requests",
+    # Imported directly for pinned single-hop HTTPS in utils/pinned_https.py
+    # (2.x connection API); already in the closure through requests.
+    "urllib3>=2",
     "license-expression",
     "openai>=1.0.1",
     "anthropic>=0.18.1",
