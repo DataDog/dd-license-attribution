@@ -6,6 +6,7 @@
 # Copyright 2024-present Datadog, Inc.
 
 import logging
+import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -22,9 +23,14 @@ from giturlparse import parse as parse_git_url
 from dd_license_attribution.adaptors.os import (
     create_dirs,
     current_time,
+    is_dir,
     list_dir,
     output_from_command,
     path_exists,
+    path_join,
+    real_path,
+    remove_tree,
+    rename_path,
     run_command,
     sleep,
 )
@@ -764,6 +770,56 @@ class SourceCodeManager(ArtifactManager):
             )
         return original_url, original_ref_type, original_ref_name, original_ref_name
 
+    def _is_within_cache_dir(self, path: str) -> bool:
+        cache_root = real_path(self.local_cache_dir)
+        resolved = real_path(path)
+        return resolved != cache_root and resolved.startswith(path_join(cache_root, ""))
+
+    @staticmethod
+    def _is_within_checkout_root(checkout_root: str, path: str) -> bool:
+        root = real_path(checkout_root)
+        resolved = real_path(path)
+        return resolved == root or resolved.startswith(path_join(root, ""))
+
+    def _get_staging_clone_path(self, local_branch_path: str) -> str:
+        return f"{local_branch_path}.tmp-{uuid.uuid4().hex}"
+
+    def _publish_staging_checkout(
+        self, staging_path: str, target_path: str, force_update: bool
+    ) -> bool:
+        """Atomically publish an attempt-owned staging checkout to `target_path`.
+
+        Returns True only when `target_path` holds a usable checkout after
+        publication.
+        """
+        if not is_dir(staging_path):
+            return is_dir(path_join(target_path, ".git"))
+        backup_path = ""
+        if force_update and is_dir(target_path):
+            backup_path = f"{target_path}.old-{uuid.uuid4().hex}"
+            try:
+                rename_path(target_path, backup_path)
+            except OSError:
+                if self._is_within_cache_dir(staging_path):
+                    remove_tree(staging_path)
+                return False
+        try:
+            rename_path(staging_path, target_path)
+        except OSError:
+            if self._is_within_cache_dir(staging_path):
+                remove_tree(staging_path)
+            if backup_path and is_dir(backup_path):
+                try:
+                    rename_path(backup_path, target_path)
+                except OSError:
+                    pass
+                return False
+            return is_dir(path_join(target_path, ".git"))
+        else:
+            if backup_path and self._is_within_cache_dir(backup_path):
+                remove_tree(backup_path)
+            return True
+
     def get_code(
         self,
         resource_url: str,
@@ -871,7 +927,19 @@ class SourceCodeManager(ArtifactManager):
                 local_branch_path = (
                     f"{self.local_cache_dir}/{time_copy_str}/{owner}-{repo}/{branch}"
                 )
+                if not self._is_within_cache_dir(local_branch_path):
+                    continue
                 if path_exists(local_branch_path):
+                    if not is_dir(path_join(local_branch_path, ".git")):
+                        continue
+                    local_full_path = f"{local_branch_path}{path}"
+                    if path and (
+                        not is_dir(local_full_path)
+                        or not self._is_within_checkout_root(
+                            local_branch_path, local_full_path
+                        )
+                    ):
+                        return None
                     logger.debug(
                         "Found cached branch %s for %s/%s at %s",
                         branch,
@@ -890,7 +958,12 @@ class SourceCodeManager(ArtifactManager):
             f"{self.local_cache_dir}/{self.timestamped_dir}/{owner}-{repo}/{branch}"
         )
 
-        create_dirs(local_branch_path)
+        staging_branch_path = self._get_staging_clone_path(local_branch_path)
+        if not self._is_within_cache_dir(
+            local_branch_path
+        ) or not self._is_within_cache_dir(staging_branch_path):
+            return None
+        create_dirs(staging_branch_path)
         logger.debug(
             "Cloning repository %s at branch %s to %s",
             effective_repository_url,
@@ -923,7 +996,7 @@ class SourceCodeManager(ArtifactManager):
                     "FETCH_HEAD",
                 ],
             ]
-            clone_kwargs: dict[str, Any] = {"cwd": local_branch_path}
+            clone_kwargs: dict[str, Any] = {"cwd": staging_branch_path}
         else:
             clone_commands = [
                 [
@@ -935,7 +1008,7 @@ class SourceCodeManager(ArtifactManager):
                     "1",
                     f"--branch={effective_branch}",
                     effective_repository_url,
-                    local_branch_path,
+                    staging_branch_path,
                 ]
             ]
             clone_kwargs = {}
@@ -948,12 +1021,26 @@ class SourceCodeManager(ArtifactManager):
             if clone_result != 0:
                 break
         if clone_result != 0:
+            if self._is_within_cache_dir(staging_branch_path):
+                remove_tree(staging_branch_path)
             logger.error(
                 "Failed to clone repository %s at branch %s to %s",
                 effective_repository_url,
                 effective_branch,
                 local_branch_path,
             )
+            return None
+
+        if not self._publish_staging_checkout(
+            staging_branch_path, local_branch_path, force_update
+        ):
+            logger.error("Failed to publish checkout for %s", repository_url)
+            return None
+        local_full_path = f"{local_branch_path}{path}"
+        if path and (
+            not is_dir(local_full_path)
+            or not self._is_within_checkout_root(local_branch_path, local_full_path)
+        ):
             return None
 
         logger.debug(

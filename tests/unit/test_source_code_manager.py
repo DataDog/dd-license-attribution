@@ -6,6 +6,8 @@
 # Copyright 2024-present Datadog, Inc.
 
 import logging
+import posixpath
+from collections.abc import Iterator
 from datetime import datetime
 from typing import Any  # used for auxiliary testing function only
 from unittest.mock import Mock, call, patch
@@ -24,6 +26,23 @@ from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
     _is_rate_limit_response,
 )
+
+
+@pytest.fixture(autouse=True)
+def staging_adaptors() -> Iterator[None]:
+    module = "dd_license_attribution.artifact_management.source_code_manager."
+    with (
+        patch(module + "uuid.uuid4") as unique,
+        patch(module + "rename_path"),
+        patch(module + "remove_tree"),
+        patch(module + "is_dir", return_value=True),
+        patch(
+            module + "real_path",
+            side_effect=lambda path: posixpath.normpath("/" + path),
+        ),
+    ):
+        unique.return_value.hex = "staging"
+        yield
 
 
 class GitUrlParseMock:
@@ -238,7 +257,7 @@ def test_source_code_manager_get_non_cached_code(
                 "1",
                 f"--branch={expected_branch}",
                 expected_clone_url,
-                expected_local_path_root,
+                expected_local_path_root + ".tmp-staging",
             ]
         )
     if (
@@ -421,10 +440,10 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
             "1",
             f"--branch={expected_source_code_reference.branch}",
             expected_source_code_reference.repo_url,
-            expected_cache_dir,
+            expected_cache_dir + ".tmp-staging",
         ]
     )
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    mock_create_dirs.assert_called_once_with(expected_cache_dir + ".tmp-staging")
 
 
 @patch(
@@ -490,7 +509,7 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
     artifact_mock_list_dir.assert_called_once_with("cache_dir")
     source_code_mock_list_dir.assert_called_once_with("cache_dir")
 
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    mock_create_dirs.assert_called_once_with(expected_cache_dir + ".tmp-staging")
 
     output_from_command_mock.assert_called_once_with(
         [
@@ -510,7 +529,7 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
             "1",
             f"--branch={expected_source_code_reference.branch}",
             expected_source_code_reference.repo_url,
-            expected_cache_dir,
+            expected_cache_dir + ".tmp-staging",
         ]
     )
 
@@ -627,7 +646,7 @@ def test_artifact_manager_get_non_cached_code_for_ambiguous_branch_names(
             "1",
             f"--branch={expected_source_code_reference.branch}",
             expected_source_code_reference.repo_url,
-            expected_source_code_reference.local_root_path,
+            expected_source_code_reference.local_root_path + ".tmp-staging",
         ]
     )
 
@@ -729,7 +748,7 @@ def test_source_code_manager_with_mirror_url(
     )  # Called: in get_code (disambiguation), in get_canonical_urls, in get_code (main logic)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    mock_create_dirs.assert_called_once_with(expected_cache_dir + ".tmp-staging")
     output_from_command_mock.assert_called_once_with(
         [
             "git",
@@ -748,7 +767,7 @@ def test_source_code_manager_with_mirror_url(
             "1",
             f"--branch={expected_source_code_reference.branch}",
             "https://github.com/mirror_owner/mirror_repo",
-            expected_cache_dir,
+            expected_cache_dir + ".tmp-staging",
         ]
     )
 
@@ -820,7 +839,7 @@ def test_source_code_manager_with_mirror_ref_mapping(
     )  # Called: in get_code (disambiguation), in get_canonical_urls, in get_code (main logic)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    mock_create_dirs.assert_called_once_with(expected_cache_dir + ".tmp-staging")
     output_from_command_mock.assert_called_once_with(
         [
             "git",
@@ -839,7 +858,7 @@ def test_source_code_manager_with_mirror_ref_mapping(
             "1",
             "--branch=mirror_branch",
             "https://github.com/mirror_owner/mirror_repo",
-            expected_cache_dir,
+            expected_cache_dir + ".tmp-staging",
         ]
     )
 
@@ -924,7 +943,7 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     source_code_list_dir_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    mock_create_dirs.assert_called_once_with(expected_cache_dir + ".tmp-staging")
     output_from_command_mock.assert_called_once_with(
         [
             "git",
@@ -935,7 +954,7 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
     )
     run_command_mock.assert_has_calls(
         [
-            call(["git", "init", "--quiet"], cwd=expected_cache_dir),
+            call(["git", "init", "--quiet"], cwd=expected_cache_dir + ".tmp-staging"),
             call(
                 [
                     "git",
@@ -943,7 +962,7 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
                     "remote.origin.url",
                     "https://github.com/mirror_owner/mirror_repo",
                 ],
-                cwd=expected_cache_dir,
+                cwd=expected_cache_dir + ".tmp-staging",
             ),
             call(
                 [
@@ -954,7 +973,7 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
                     "origin",
                     "refs/tags/v1.0:refs/tags/v1.0",
                 ],
-                cwd=expected_cache_dir,
+                cwd=expected_cache_dir + ".tmp-staging",
             ),
             call(
                 [
@@ -964,7 +983,7 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
                     "checkout",
                     "FETCH_HEAD",
                 ],
-                cwd=expected_cache_dir,
+                cwd=expected_cache_dir + ".tmp-staging",
             ),
         ]
     )
@@ -1035,7 +1054,7 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     source_code_list_dir_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    mock_create_dirs.assert_called_once_with(expected_cache_dir + ".tmp-staging")
     output_from_command_mock.assert_called_once_with(
         [
             "git",
@@ -1047,7 +1066,7 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
     # The checkout step must not run once the tag fetch has failed.
     run_command_mock.assert_has_calls(
         [
-            call(["git", "init", "--quiet"], cwd=expected_cache_dir),
+            call(["git", "init", "--quiet"], cwd=expected_cache_dir + ".tmp-staging"),
             call(
                 [
                     "git",
@@ -1055,7 +1074,7 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
                     "remote.origin.url",
                     "https://github.com/mirror_owner/mirror_repo",
                 ],
-                cwd=expected_cache_dir,
+                cwd=expected_cache_dir + ".tmp-staging",
             ),
             call(
                 [
@@ -1066,7 +1085,7 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
                     "origin",
                     "refs/tags/v1.0:refs/tags/v1.0",
                 ],
-                cwd=expected_cache_dir,
+                cwd=expected_cache_dir + ".tmp-staging",
             ),
         ]
     )
@@ -1145,7 +1164,10 @@ def test_source_code_manager_mirror_tag_forced_retry_after_failed_fetch(
     source_code_list_dir_mock.assert_has_calls([call("cache_dir"), call("cache_dir")])
     assert source_code_list_dir_mock.call_count == 2
     mock_create_dirs.assert_has_calls(
-        [call(expected_cache_dir), call(expected_cache_dir)]
+        [
+            call(expected_cache_dir + ".tmp-staging"),
+            call(expected_cache_dir + ".tmp-staging"),
+        ]
     )
     assert mock_create_dirs.call_count == 2
     ls_remote_call = call(
@@ -1153,7 +1175,7 @@ def test_source_code_manager_mirror_tag_forced_retry_after_failed_fetch(
     )
     output_from_command_mock.assert_has_calls([ls_remote_call, ls_remote_call])
     assert output_from_command_mock.call_count == 2
-    init = call(["git", "init", "--quiet"], cwd=expected_cache_dir)
+    init = call(["git", "init", "--quiet"], cwd=expected_cache_dir + ".tmp-staging")
     set_origin = call(
         [
             "git",
@@ -1161,7 +1183,7 @@ def test_source_code_manager_mirror_tag_forced_retry_after_failed_fetch(
             "remote.origin.url",
             "https://github.com/mirror_owner/mirror_repo",
         ],
-        cwd=expected_cache_dir,
+        cwd=expected_cache_dir + ".tmp-staging",
     )
     fetch = call(
         [
@@ -1172,11 +1194,11 @@ def test_source_code_manager_mirror_tag_forced_retry_after_failed_fetch(
             "origin",
             "refs/tags/v1.0:refs/tags/v1.0",
         ],
-        cwd=expected_cache_dir,
+        cwd=expected_cache_dir + ".tmp-staging",
     )
     checkout = call(
         ["git", "-c", "advice.detachedHead=False", "checkout", "FETCH_HEAD"],
-        cwd=expected_cache_dir,
+        cwd=expected_cache_dir + ".tmp-staging",
     )
     assert run_command_mock.call_args_list == [
         init,
@@ -1261,7 +1283,7 @@ def test_source_code_manager_mirror_tag_clone_with_git_env(
         local_full_path=f"{expected_cache_dir}/test_dir",
     )
     expected_kwargs = {
-        "cwd": expected_cache_dir,
+        "cwd": expected_cache_dir + ".tmp-staging",
         "env": NONINTERACTIVE_GIT_ENV,
         "timeout": NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
     }
@@ -1455,7 +1477,7 @@ def test_source_code_manager_with_mirror_url_and_ref_mapping_for_the_default_bra
     )  # Called: in get_code (first call), in get_canonical_urls, in get_code (after default branch resolved)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    mock_create_dirs.assert_called_once_with(expected_cache_dir + ".tmp-staging")
     output_from_command_mock.assert_called_once_with(
         [
             "git",
@@ -1475,7 +1497,7 @@ def test_source_code_manager_with_mirror_url_and_ref_mapping_for_the_default_bra
             "1",
             "--branch=development",
             "https://github.com/mirror_owner/mirror_repo",
-            expected_cache_dir,
+            expected_cache_dir + ".tmp-staging",
         ]
     )
 
@@ -1553,7 +1575,7 @@ def test_source_code_manager_with_multiple_mirrors(
     )  # Called: in get_code (disambiguation), in get_canonical_urls, in get_code (main logic)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    mock_create_dirs.assert_called_once_with(expected_cache_dir + ".tmp-staging")
     output_from_command_mock.assert_called_once_with(
         [
             "git",
@@ -1572,7 +1594,7 @@ def test_source_code_manager_with_multiple_mirrors(
             "1",
             "--branch=mirror_branch",
             "https://github.com/mirror_owner/mirror_repo",
-            expected_cache_dir,
+            expected_cache_dir + ".tmp-staging",
         ]
     )
 
@@ -1641,7 +1663,7 @@ def test_source_code_manager_with_no_mirror_match(
     )  # Called: in get_code (disambiguation), in get_canonical_urls, in get_code (main logic)
     path_exists_artifact_mock.assert_called_once_with("cache_dir")
     path_exists_source_code_mock.assert_called_once_with(expected_cache_dir)
-    mock_create_dirs.assert_called_once_with(expected_cache_dir)
+    mock_create_dirs.assert_called_once_with(expected_cache_dir + ".tmp-staging")
     output_from_command_mock.assert_called_once_with(
         [
             "git",
@@ -1660,7 +1682,7 @@ def test_source_code_manager_with_no_mirror_match(
             "1",
             f"--branch={expected_source_code_reference.branch}",
             expected_source_code_reference.repo_url,
-            expected_cache_dir,
+            expected_cache_dir + ".tmp-staging",
         ]
     )
 
@@ -2290,7 +2312,7 @@ def test_get_code_can_skip_canonical_lookup_for_direct_git_checkout(
         timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
     )
     create_dirs_mock.assert_called_once_with(
-        "cache_dir/20220101_000000Z/test_owner-test_repo/main"
+        "cache_dir/20220101_000000Z/test_owner-test_repo/main.tmp-staging"
     )
     run_command_mock.assert_called_once_with(
         [
@@ -2302,7 +2324,7 @@ def test_get_code_can_skip_canonical_lookup_for_direct_git_checkout(
             "1",
             "--branch=main",
             "https://github.com/test_owner/test_repo",
-            "cache_dir/20220101_000000Z/test_owner-test_repo/main",
+            "cache_dir/20220101_000000Z/test_owner-test_repo/main" + ".tmp-staging",
         ],
         env=NONINTERACTIVE_GIT_ENV,
         timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,

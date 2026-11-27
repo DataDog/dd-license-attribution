@@ -9,6 +9,7 @@
 
 import contextlib
 import os
+import shutil
 import subprocess
 import tarfile
 import time
@@ -234,3 +235,15 @@ def path_join(path: str, *paths: str) -> str:
 
 def normalize_path(path: str) -> str:
     return os.path.normpath(path)
+
+
+def rename_path(source: str, destination: str) -> None:
+    os.rename(source, destination)
+
+
+def remove_tree(path: str) -> None:
+    shutil.rmtree(path, ignore_errors=True)
+
+
+def real_path(path: str) -> str:
+    return os.path.realpath(path)
