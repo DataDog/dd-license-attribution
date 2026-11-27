@@ -288,7 +288,7 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
             ]
             if exact_roots:
                 root_indices = exact_roots
-        if not root_indices:
+        if len(root_indices) != 1:
             return []
 
         packages_by_name: dict[str, list[int]] = {}

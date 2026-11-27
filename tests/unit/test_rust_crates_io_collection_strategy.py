@@ -2391,6 +2391,7 @@ def test_rust_crates_io_skips_ambiguous_same_version_mixed_source_crate(
 def _assert_ancestor_dependency_enrichment(
     mocker: pytest_mock.MockFixture,
     lockfile: str,
+    member_manifest: str = '[package]\nname = "member"\nversion = "0.1.0"\n',
 ) -> None:
     member_path = "/cache/org-project/member"
     top_package = "https://github.com/org/project/tree/main/member"
@@ -2418,8 +2419,7 @@ def _assert_ancestor_dependency_enrichment(
         prefix + "open_file",
         side_effect={
             "/cache/org-project/Cargo.lock": lockfile,
-            member_path
-            + "/Cargo.toml": ('[package]\nname = "member"\nversion = "0.1.0"\n'),
+            member_path + "/Cargo.toml": member_manifest,
         }.__getitem__,
     )
     mock_download = mocker.patch(
@@ -2468,6 +2468,64 @@ def _assert_ancestor_dependency_enrichment(
     assert mock_open.call_count == 3
     mock_download.assert_called_once_with(
         f"{CRATES_IO_API_BASE_URL}/leaf", user_agent=DDLA_USER_AGENT
+    )
+
+
+@pytest.mark.parametrize(
+    "version_declaration, duplicate_root",
+    [
+        ("version.workspace = true", True),
+        ('version = "0.1.0"', True),
+        ("version.workspace = true", False),
+    ],
+    ids=["inherited-ambiguous", "explicit-version", "inherited-unambiguous"],
+)
+@pytest.mark.parametrize("reverse_roots", [False, True], ids=["forward", "reverse"])
+def test_ancestor_lockfile_root_identity_does_not_merge_unrelated_graphs(
+    mocker: pytest_mock.MockFixture,
+    version_declaration: str,
+    duplicate_root: bool,
+    reverse_roots: bool,
+) -> None:
+    roots = [
+        '[[package]]\nname = "member"\nversion = "0.1.0"\n'
+        'dependencies = ["leaf 1.0.0"]\n'
+    ]
+    if duplicate_root:
+        roots.append(
+            '[[package]]\nname = "member"\nversion = "0.2.0"\n'
+            'dependencies = ["leaf 2.0.0", "unrelated-only"]\n'
+        )
+    if reverse_roots:
+        roots.reverse()
+    lockfile = "version = 4\n\n" + "\n".join(roots) + """
+[[package]]
+name = "leaf"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "leaf"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
+name = "unrelated-only"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+"""
+    requirement = (
+        "=1.0.0"
+        if duplicate_root and version_declaration == "version.workspace = true"
+        else "1"
+    )
+    _assert_ancestor_dependency_enrichment(
+        mocker,
+        lockfile,
+        member_manifest=(
+            f'[package]\nname = "member"\n{version_declaration}\n'
+            f'[dependencies]\nleaf = "{requirement}"\n'
+        ),
     )
 
 
