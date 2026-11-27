@@ -21,8 +21,10 @@ from dd_license_attribution.artifact_management.source_code_manager import (
 
 MODULE = "dd_license_attribution.artifact_management."
 ROOT = "cache/20261127_120000Z/owner-repo/main"
-STAGE = ROOT + ".tmp-unique"
-BACKUP = ROOT + ".old-unique"
+REPOSITORY_CACHE = "cache/20261127_120000Z/owner-repo"
+STAGE = REPOSITORY_CACHE + "/.checkout-staging-unique"
+GENERATION = REPOSITORY_CACHE + "/.checkout-unique"
+POINTER_TEMP = REPOSITORY_CACHE + "/.checkout-pointer-unique"
 URL = "https://github.com/owner/repo"
 
 
@@ -42,6 +44,11 @@ def checkout_mocks() -> Iterator[dict[str, Mock]]:
         "is_dir": "source_code_manager.is_dir",
         "resolve": "source_code_manager.real_path",
         "unique": "source_code_manager.uuid.uuid4",
+        "is_file": "source_code_manager.is_file",
+        "read": "source_code_manager.open_file",
+        "write": "source_code_manager.write_file",
+        "replace": "source_code_manager.replace_path",
+        "unlink": "source_code_manager.remove_file",
     }
     with ExitStack() as stack:
         mocks = {
@@ -54,6 +61,7 @@ def checkout_mocks() -> Iterator[dict[str, Mock]]:
         mocks["dirs"].return_value = []
         mocks["cached"].return_value = False
         mocks["run"].return_value = 0
+        mocks["is_file"].return_value = False
         mocks["is_dir"].return_value = True
         mocks["resolve"].side_effect = lambda path: posixpath.normpath("/" + path)
         mocks["unique"].return_value.hex = "unique"
@@ -107,7 +115,7 @@ def test_concurrent_publication_accepts_only_a_verified_existing_checkout(
     )
     checkout_mocks["rename"].side_effect = OSError("destination exists")
     scm = SourceCodeManager("cache", Mock())
-    assert scm._publish_staging_checkout(STAGE, ROOT, False) == valid_target
+    assert scm._publish_staging_checkout(STAGE, ROOT) == valid_target
     checkout_mocks["rename"].assert_called_once_with(STAGE, ROOT)
     checkout_mocks["remove"].assert_called_once_with(STAGE)
 
@@ -122,9 +130,7 @@ def test_publication_checks_missing_staging_and_normal_success(
         stage_exists and path == STAGE
     ) or (valid_target and path == ROOT + "/.git")
     scm = SourceCodeManager("cache", Mock())
-    assert scm._publish_staging_checkout(STAGE, ROOT, False) == (
-        stage_exists or valid_target
-    )
+    assert scm._publish_staging_checkout(STAGE, ROOT) == (stage_exists or valid_target)
     if stage_exists:
         checkout_mocks["rename"].assert_called_once_with(STAGE, ROOT)
     else:
@@ -132,34 +138,43 @@ def test_publication_checks_missing_staging_and_normal_success(
     checkout_mocks["remove"].assert_not_called()
 
 
-@pytest.mark.parametrize("failure", ["none", "backup", "publish", "rollback"])
-def test_forced_update_preserves_the_old_checkout_on_failure(
+def test_forced_refresh_keeps_the_live_checkout_immutable(
+    checkout_mocks: dict[str, Mock],
+) -> None:
+    scm = SourceCodeManager("cache", Mock())
+    result = scm.get_code(URL, force_update=True, skip_canonical_lookup=True)
+    assert result is not None
+    assert result.local_root_path == GENERATION
+    checkout_mocks["rename"].assert_called_once_with(STAGE, GENERATION)
+    checkout_mocks["write"].assert_called_once_with(POINTER_TEMP, ".checkout-unique")
+    pointer = scm._get_ref_pointer_path(REPOSITORY_CACHE, "main")
+    checkout_mocks["replace"].assert_called_once_with(POINTER_TEMP, pointer)
+    checkout_mocks["remove"].assert_not_called()
+    checkout_mocks["unlink"].assert_not_called()
+
+
+@pytest.mark.parametrize("failure", ["write", "replace", "cleanup"])
+def test_failed_pointer_publication_preserves_old_checkouts(
     checkout_mocks: dict[str, Mock], failure: str
 ) -> None:
-    effects = {
-        "none": [None, None],
-        "backup": [OSError("busy")],
-        "publish": [None, OSError("publish failed"), None],
-        "rollback": [None, OSError("publish failed"), OSError("rollback failed")],
-    }
-    checkout_mocks["rename"].side_effect = effects[failure]
-    checkout_mocks["is_dir"].side_effect = lambda path: path in {
-        STAGE,
-        ROOT,
-        BACKUP,
-        ROOT + "/.git",
-    }
+    if failure == "write":
+        checkout_mocks["write"].side_effect = OSError("write failed")
+    else:
+        checkout_mocks["replace"].side_effect = OSError("replace failed")
+    if failure == "cleanup":
+        checkout_mocks["unlink"].side_effect = OSError("cleanup failed")
     scm = SourceCodeManager("cache", Mock())
-    assert scm._publish_staging_checkout(STAGE, ROOT, True) == (failure == "none")
-    expected = [call(ROOT, BACKUP)]
-    if failure != "backup":
-        expected.append(call(STAGE, ROOT))
-    if failure in ("publish", "rollback"):
-        expected.append(call(BACKUP, ROOT))
-    assert checkout_mocks["rename"].call_args_list == expected
-    checkout_mocks["remove"].assert_called_once_with(
-        BACKUP if failure == "none" else STAGE
-    )
+    assert scm.get_code(URL, force_update=True, skip_canonical_lookup=True) is None
+    checkout_mocks["rename"].assert_called_once_with(STAGE, GENERATION)
+    checkout_mocks["write"].assert_called_once_with(POINTER_TEMP, ".checkout-unique")
+    if failure == "write":
+        checkout_mocks["replace"].assert_not_called()
+    else:
+        checkout_mocks["replace"].assert_called_once_with(
+            POINTER_TEMP, scm._get_ref_pointer_path(REPOSITORY_CACHE, "main")
+        )
+    checkout_mocks["unlink"].assert_called_once_with(POINTER_TEMP)
+    checkout_mocks["remove"].assert_not_called()
 
 
 @pytest.mark.parametrize("escaping", ["checkout", "staging", "subdirectory"])
@@ -241,3 +256,118 @@ def test_containment_requires_a_directory_boundary(
     checkout_mocks["resolve"].assert_has_calls(
         [call("cache"), call(path), call("cache/repo"), call(path)]
     )
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        ".checkout-" + "a" * 32,
+        "../escape",
+        "/outside",
+        ".checkout-nothex",
+        ".checkout-" + "a" * 32 + "/child",
+        "",
+    ],
+)
+def test_cached_pointer_only_accepts_a_generation_basename(
+    checkout_mocks: dict[str, Mock], name: str
+) -> None:
+    checkout_mocks["is_file"].return_value = True
+    checkout_mocks["read"].return_value = name + "\n"
+    scm = SourceCodeManager("cache", Mock())
+    result = scm._get_cached_checkout_path(REPOSITORY_CACHE, "main")
+    valid = name == ".checkout-" + "a" * 32
+    assert result == (REPOSITORY_CACHE + "/" + name if valid else ROOT)
+    pointer = scm._get_ref_pointer_path(REPOSITORY_CACHE, "main")
+    checkout_mocks["is_file"].assert_called_once_with(pointer)
+    checkout_mocks["read"].assert_called_once_with(pointer)
+    if valid:
+        checkout_mocks["is_dir"].assert_called_once_with(result + "/.git")
+    else:
+        checkout_mocks["is_dir"].assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "error", [OSError("missing pointer"), UnicodeError("invalid pointer encoding")]
+)
+def test_unreadable_pointer_falls_back_to_legacy_checkout(
+    checkout_mocks: dict[str, Mock], error: Exception
+) -> None:
+    checkout_mocks["is_file"].return_value = True
+    checkout_mocks["read"].side_effect = error
+    scm = SourceCodeManager("cache", Mock())
+    assert scm._get_cached_checkout_path(REPOSITORY_CACHE, "main") == ROOT
+    pointer = scm._get_ref_pointer_path(REPOSITORY_CACHE, "main")
+    checkout_mocks["is_file"].assert_called_once_with(pointer)
+    checkout_mocks["read"].assert_called_once_with(pointer)
+    checkout_mocks["is_dir"].assert_not_called()
+
+
+@pytest.mark.parametrize("escaping", ["pointer", "generation"])
+def test_pointer_cache_rejects_escaping_symlinks(
+    checkout_mocks: dict[str, Mock], escaping: str
+) -> None:
+    name = ".checkout-" + "a" * 32
+    checkout_mocks["is_file"].return_value = True
+    checkout_mocks["read"].return_value = name
+    scm = SourceCodeManager("cache", Mock())
+    pointer = scm._get_ref_pointer_path(REPOSITORY_CACHE, "main")
+
+    def resolve(path: str) -> str:
+        if escaping == "pointer" and path == pointer:
+            return "/outside/pointer"
+        if escaping == "generation" and path == REPOSITORY_CACHE + "/" + name:
+            return "/cache/another-repository/" + name
+        return posixpath.normpath("/" + path)
+
+    checkout_mocks["resolve"].side_effect = resolve
+    assert scm._get_cached_checkout_path(REPOSITORY_CACHE, "main") == ROOT
+    if escaping == "pointer":
+        checkout_mocks["read"].assert_not_called()
+        checkout_mocks["is_file"].assert_not_called()
+    else:
+        checkout_mocks["read"].assert_called_once_with(pointer)
+    checkout_mocks["is_dir"].assert_not_called()
+
+
+def test_pointer_target_requires_a_git_checkout(
+    checkout_mocks: dict[str, Mock],
+) -> None:
+    name = ".checkout-" + "a" * 32
+    checkout_mocks["is_file"].return_value = True
+    checkout_mocks["read"].return_value = name
+    checkout_mocks["is_dir"].return_value = False
+    scm = SourceCodeManager("cache", Mock())
+    assert scm._get_cached_checkout_path(REPOSITORY_CACHE, "main") == ROOT
+    checkout_mocks["is_dir"].assert_called_once_with(
+        REPOSITORY_CACHE + "/" + name + "/.git"
+    )
+
+
+@pytest.mark.parametrize("escaping", ["pointer", "temporary"])
+def test_pointer_publication_rejects_paths_outside_cache(
+    checkout_mocks: dict[str, Mock], escaping: str
+) -> None:
+    scm = SourceCodeManager("cache", Mock())
+    pointer = scm._get_ref_pointer_path(REPOSITORY_CACHE, "main")
+    outside = pointer if escaping == "pointer" else POINTER_TEMP
+    checkout_mocks["resolve"].side_effect = lambda path: (
+        "/outside" if path == outside else posixpath.normpath("/" + path)
+    )
+    assert not scm._publish_ref_pointer(REPOSITORY_CACHE, "main", ".checkout-unique")
+    checkout_mocks["write"].assert_not_called()
+    checkout_mocks["replace"].assert_not_called()
+    checkout_mocks["unlink"].assert_not_called()
+
+
+def test_staging_publication_creates_a_missing_nested_ref_parent(
+    checkout_mocks: dict[str, Mock],
+) -> None:
+    target = REPOSITORY_CACHE + "/release/v2"
+    parent = REPOSITORY_CACHE + "/release"
+    checkout_mocks["is_dir"].side_effect = lambda path: path == STAGE
+    scm = SourceCodeManager("cache", Mock())
+    assert scm._publish_staging_checkout(STAGE, target)
+    checkout_mocks["mkdir"].assert_called_once_with(parent)
+    checkout_mocks["rename"].assert_called_once_with(STAGE, target)
+    checkout_mocks["remove"].assert_not_called()

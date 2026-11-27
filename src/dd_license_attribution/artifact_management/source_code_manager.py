@@ -5,7 +5,9 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2024-present Datadog, Inc.
 
+import hashlib
 import logging
+import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -24,15 +26,21 @@ from dd_license_attribution.adaptors.os import (
     create_dirs,
     current_time,
     is_dir,
+    is_file,
     list_dir,
+    open_file,
     output_from_command,
     path_exists,
     path_join,
+    path_parent,
     real_path,
+    remove_file,
     remove_tree,
     rename_path,
+    replace_path,
     run_command,
     sleep,
+    write_file,
 )
 from dd_license_attribution.artifact_management.artifact_manager import (
     ArtifactManager,
@@ -781,44 +789,70 @@ class SourceCodeManager(ArtifactManager):
         resolved = real_path(path)
         return resolved == root or resolved.startswith(path_join(root, ""))
 
-    def _get_staging_clone_path(self, local_branch_path: str) -> str:
-        return f"{local_branch_path}.tmp-{uuid.uuid4().hex}"
+    def _get_staging_clone_path(self, repository_cache_path: str) -> str:
+        return path_join(repository_cache_path, f".checkout-staging-{uuid.uuid4().hex}")
 
-    def _publish_staging_checkout(
-        self, staging_path: str, target_path: str, force_update: bool
+    @staticmethod
+    def _get_ref_pointer_path(repository_cache_path: str, branch: str) -> str:
+        digest = hashlib.sha256(branch.encode("utf-8")).hexdigest()
+        return path_join(repository_cache_path, f".checkout-ref-{digest}")
+
+    def _get_cached_checkout_path(self, repository_cache_path: str, branch: str) -> str:
+        legacy_path = path_join(repository_cache_path, branch)
+        pointer = self._get_ref_pointer_path(repository_cache_path, branch)
+        if not self._is_within_cache_dir(pointer) or not is_file(pointer):
+            return legacy_path
+        try:
+            name = open_file(pointer).strip()
+        except (OSError, UnicodeError):
+            return legacy_path
+        if re.fullmatch(r"\.checkout-[0-9a-f]{32}", name) is None:
+            return legacy_path
+        target = path_join(repository_cache_path, name)
+        if (
+            self._is_within_cache_dir(target)
+            and self._is_within_checkout_root(repository_cache_path, target)
+            and is_dir(path_join(target, ".git"))
+        ):
+            return target
+        return legacy_path
+
+    def _publish_ref_pointer(
+        self, repository_cache_path: str, branch: str, checkout_name: str
     ) -> bool:
-        """Atomically publish an attempt-owned staging checkout to `target_path`.
+        pointer = self._get_ref_pointer_path(repository_cache_path, branch)
+        temporary = path_join(
+            repository_cache_path, f".checkout-pointer-{uuid.uuid4().hex}"
+        )
+        if not self._is_within_cache_dir(pointer) or not self._is_within_cache_dir(
+            temporary
+        ):
+            return False
+        try:
+            write_file(temporary, checkout_name)
+            replace_path(temporary, pointer)
+        except OSError:
+            try:
+                remove_file(temporary)
+            except OSError:
+                pass
+            return False
+        return True
 
-        Returns True only when `target_path` holds a usable checkout after
-        publication.
-        """
+    def _publish_staging_checkout(self, staging_path: str, target_path: str) -> bool:
+        """Publish a new immutable checkout without moving an existing reader's path."""
         if not is_dir(staging_path):
             return is_dir(path_join(target_path, ".git"))
-        backup_path = ""
-        if force_update and is_dir(target_path):
-            backup_path = f"{target_path}.old-{uuid.uuid4().hex}"
-            try:
-                rename_path(target_path, backup_path)
-            except OSError:
-                if self._is_within_cache_dir(staging_path):
-                    remove_tree(staging_path)
-                return False
         try:
+            parent = path_parent(target_path)
+            if not is_dir(parent):
+                create_dirs(parent)
             rename_path(staging_path, target_path)
         except OSError:
             if self._is_within_cache_dir(staging_path):
                 remove_tree(staging_path)
-            if backup_path and is_dir(backup_path):
-                try:
-                    rename_path(backup_path, target_path)
-                except OSError:
-                    pass
-                return False
             return is_dir(path_join(target_path, ".git"))
-        else:
-            if backup_path and self._is_within_cache_dir(backup_path):
-                remove_tree(backup_path)
-            return True
+        return True
 
     def get_code(
         self,
@@ -924,8 +958,11 @@ class SourceCodeManager(ArtifactManager):
                 )
                 if (self.setup_time - time_copy).total_seconds() > self.local_cache_ttl:
                     break
-                local_branch_path = (
-                    f"{self.local_cache_dir}/{time_copy_str}/{owner}-{repo}/{branch}"
+                repository_cache_path = (
+                    f"{self.local_cache_dir}/{time_copy_str}/{owner}-{repo}"
+                )
+                local_branch_path = self._get_cached_checkout_path(
+                    repository_cache_path, branch
                 )
                 if not self._is_within_cache_dir(local_branch_path):
                     continue
@@ -954,11 +991,12 @@ class SourceCodeManager(ArtifactManager):
                         local_full_path=f"{local_branch_path}{path}",
                     )
         # we need to clone
-        local_branch_path = (
-            f"{self.local_cache_dir}/{self.timestamped_dir}/{owner}-{repo}/{branch}"
+        repository_cache_path = (
+            f"{self.local_cache_dir}/{self.timestamped_dir}/{owner}-{repo}"
         )
-
-        staging_branch_path = self._get_staging_clone_path(local_branch_path)
+        checkout_name = f".checkout-{uuid.uuid4().hex}" if force_update else branch
+        local_branch_path = path_join(repository_cache_path, checkout_name)
+        staging_branch_path = self._get_staging_clone_path(repository_cache_path)
         if not self._is_within_cache_dir(
             local_branch_path
         ) or not self._is_within_cache_dir(staging_branch_path):
@@ -1031,10 +1069,13 @@ class SourceCodeManager(ArtifactManager):
             )
             return None
 
-        if not self._publish_staging_checkout(
-            staging_branch_path, local_branch_path, force_update
-        ):
+        if not self._publish_staging_checkout(staging_branch_path, local_branch_path):
             logger.error("Failed to publish checkout for %s", repository_url)
+            return None
+        if force_update and not self._publish_ref_pointer(
+            repository_cache_path, branch, checkout_name
+        ):
+            logger.error("Failed to publish refreshed checkout for %s", repository_url)
             return None
         local_full_path = f"{local_branch_path}{path}"
         if path and (

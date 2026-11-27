@@ -9,8 +9,15 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import pytest
+
+from dd_license_attribution.adaptors.os import output_from_command, rename_path
+from dd_license_attribution.artifact_management.source_code_manager import (
+    MirrorSpec,
+    SourceCodeManager,
+)
 
 _ISOLATED_GIT_ENV = {
     **os.environ,
@@ -135,3 +142,73 @@ class TestGitCliContract:
         # Without an `origin` remote, Git LFS cannot resolve where to download
         # from and the checkout's smudge filter fails.
         assert (dest / "LICENSE").read_text() == "MIT License\n"
+
+
+@pytest.mark.parametrize("branch", ["main", "a" * 240])
+def test_forced_refresh_preserves_readers_and_updates_future_cache_lookups(
+    tmp_path: Path, branch: str
+) -> None:
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    _git(["init", "--quiet", f"--initial-branch={branch}"], origin)
+    (origin / "LICENSE").write_text("old snapshot")
+    _git(["add", "LICENSE"], origin)
+    _git(["commit", "--quiet", "-m", "old"], origin)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    url = "https://github.com/example/repo"
+    mirrors = [MirrorSpec(url, origin.as_uri())]
+    scm = SourceCodeManager(str(cache), Mock(), mirrors=mirrors)
+
+    def lookup(
+        args: list[str], env: dict[str, str] | None = None, timeout: int | None = None
+    ) -> str:
+        if url in args:
+            return f"ref: refs/heads/{branch}\tHEAD\n"
+        return output_from_command(args, env=env, timeout=timeout)
+
+    with patch(
+        "dd_license_attribution.artifact_management.source_code_manager.output_from_command",
+        side_effect=lookup,
+    ):
+        old = scm.get_code(url, skip_canonical_lookup=True)
+        assert old is not None
+        old_root = Path(old.local_root_path)
+        _git(["commit", "--quiet", "--allow-empty", "-m", "new revision"], origin)
+        (origin / "LICENSE").write_text("new snapshot")
+        _git(["add", "LICENSE"], origin)
+        _git(["commit", "--quiet", "-m", "new contents"], origin)
+
+        def observe_publication(source: str, destination: str) -> None:
+            assert (old_root / "LICENSE").read_text() == "old snapshot"
+            rename_path(source, destination)
+            assert (old_root / "LICENSE").read_text() == "old snapshot"
+
+        with patch(
+            "dd_license_attribution.artifact_management.source_code_manager.rename_path",
+            side_effect=observe_publication,
+        ) as publish:
+            fresh = scm.get_code(url, force_update=True, skip_canonical_lookup=True)
+            publish.assert_called()
+        assert fresh is not None
+        assert fresh.local_root_path != old.local_root_path
+        assert (old_root / "LICENSE").read_text() == "old snapshot"
+        assert (Path(fresh.local_root_path) / "LICENSE").read_text() == "new snapshot"
+        assert scm.get_code(url, skip_canonical_lookup=True) == fresh
+        another_reader = SourceCodeManager(str(cache), Mock(), mirrors=mirrors)
+        assert another_reader.get_code(url, skip_canonical_lookup=True) == fresh
+
+        (origin / "LICENSE").write_text("failed refresh")
+        _git(["add", "LICENSE"], origin)
+        _git(["commit", "--quiet", "-m", "unpublished"], origin)
+        with patch(
+            "dd_license_attribution.artifact_management.source_code_manager.replace_path",
+            side_effect=OSError("pointer publication failed"),
+        ) as replace:
+            assert (
+                scm.get_code(url, force_update=True, skip_canonical_lookup=True) is None
+            )
+            replace.assert_called_once()
+        assert scm.get_code(url, skip_canonical_lookup=True) == fresh
+        assert (old_root / "LICENSE").read_text() == "old snapshot"
+        assert (Path(fresh.local_root_path) / "LICENSE").read_text() == "new snapshot"

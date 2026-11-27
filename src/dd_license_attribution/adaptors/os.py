@@ -247,3 +247,15 @@ def remove_tree(path: str) -> None:
 
 def real_path(path: str) -> str:
     return os.path.realpath(path)
+
+
+def is_file(path: str) -> bool:
+    return os.path.isfile(path)
+
+
+def path_parent(path: str) -> str:
+    return os.path.dirname(path)
+
+
+def replace_path(source: str, destination: str) -> None:
+    os.replace(source, destination)
