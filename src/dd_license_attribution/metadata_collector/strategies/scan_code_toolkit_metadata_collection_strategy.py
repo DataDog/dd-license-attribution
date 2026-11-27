@@ -6,6 +6,7 @@
 # Copyright 2024-present Datadog, Inc.
 
 import logging
+from typing import Any
 
 # Get application-specific logger
 logger = logging.getLogger("dd_license_attribution")
@@ -15,6 +16,7 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="typecode.magic2")
 
 import scancode.api
+from license_expression import AND, ExpressionError, Licensing
 
 from dd_license_attribution.adaptors.os import list_dir, path_exists, walk_directory
 from dd_license_attribution.artifact_management.artifact_manager import (
@@ -27,6 +29,27 @@ from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.strategies.abstract_collection_strategy import (
     MetadataCollectionStrategy,
 )
+
+_licensing = Licensing()
+
+
+def _collect_and_operands(node: Any) -> list[str]:
+    if isinstance(node, AND):
+        operands: list[str] = []
+        for arg in node.args:
+            operands.extend(_collect_and_operands(arg))
+        return operands
+    return [str(node)]
+
+
+def _split_top_level_and(license_expression_str: str) -> list[str]:
+    try:
+        parsed = _licensing.parse(license_expression_str)
+    except ExpressionError:
+        return [license_expression_str]
+    if parsed is None:
+        return []
+    return _collect_and_operands(parsed)
 
 
 class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
@@ -215,10 +238,10 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
 
     @staticmethod
     def cleanup_licenses(licenses: list[str]) -> list[str]:
-        # split the licenses by 'AND'
-        ret_licenses = []
-        for license in licenses:
-            ret_licenses.extend(license.split(" AND "))
+        # Split top-level 'AND' conjuncts without breaking parenthesized groups
+        ret_licenses: list[str] = []
+        for license_expr in licenses:
+            ret_licenses.extend(_split_top_level_and(license_expr))
         # remove duplicates
         ret_licenses = list(set(ret_licenses))
         # remove the unknown licenses

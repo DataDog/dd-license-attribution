@@ -231,3 +231,89 @@ def test_spdx_reporting_writter_uses_unknown_when_package_version_is_missing() -
 
     assert spdx_report_writter.tool_version == "unknown"
     mock_version.assert_called_once_with("datadog-license-attribution")
+
+
+def test_spdx_reporting_writter_parenthesizes_or_operands_across_merges(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """When multiple license entries are joined with AND (same row or merged rows),
+    OR operands are parenthesized so AND precedence does not weaken mandatory conjuncts.
+    """
+    metadata = [
+        Metadata(
+            name="merged-pkg",
+            version="1.0.0",
+            origin="https://github.com/example/merged-pkg",
+            local_src_path=None,
+            license=["MIT OR Apache-2.0"],
+            copyright=["Author A"],
+        ),
+        Metadata(
+            name="merged-pkg",
+            version="1.0.0",
+            origin="https://github.com/example/merged-pkg",
+            local_src_path=None,
+            license=["BSD-3-Clause"],
+            copyright=["Author B"],
+        ),
+        Metadata(
+            name="dual-or-pkg",
+            version="1.0.0",
+            origin="https://github.com/example/dual-or-pkg",
+            local_src_path=None,
+            license=["BSD-3-Clause OR ISC", "MIT OR Apache-2.0"],
+            copyright=["Author C"],
+        ),
+        Metadata(
+            name="single-or-pkg",
+            version="1.0.0",
+            origin="https://github.com/example/single-or-pkg",
+            local_src_path=None,
+            license=["MIT OR Apache-2.0"],
+            copyright=["Author D"],
+        ),
+        Metadata(
+            name="and-operand-pkg",
+            version="1.0.0",
+            origin="https://github.com/example/and-operand-pkg",
+            local_src_path=None,
+            license=["Apache-2.0 AND BSD-3-Clause", "MIT"],
+            copyright=["Author E"],
+        ),
+        Metadata(
+            name="custom-ref-pkg",
+            version="1.0.0",
+            origin="https://github.com/example/custom-ref-pkg",
+            local_src_path=None,
+            license=["LicenseRef-custom OR MIT", "BSD-3-Clause"],
+            copyright=["Author F"],
+        ),
+        Metadata(
+            name="bad-multi-pkg",
+            version="1.0.0",
+            origin="https://github.com/example/bad-multi-pkg",
+            local_src_path=None,
+            license=["MIT AND", "BSD-3-Clause"],
+            copyright=["Author G"],
+        ),
+    ]
+
+    spdx_report_writter = SPDXReportingWritter(
+        document_namespace="https://datadoghq.com/spdx/or-grouping-fixed",
+        created_at=lambda: datetime(2026, 1, 2, 3, 4, 5, tzinfo=pytz.UTC),
+        tool_version="0.5.0",
+    )
+    with caplog.at_level(logging.WARNING, logger="dd_license_attribution"):
+        parsed = json.loads(spdx_report_writter.write(metadata))
+    by_name = {pkg["name"]: pkg["licenseConcluded"] for pkg in parsed["packages"]}
+
+    assert by_name["merged-pkg"] == "BSD-3-Clause AND (MIT OR Apache-2.0)"
+    assert by_name["dual-or-pkg"] == "(BSD-3-Clause OR ISC) AND (MIT OR Apache-2.0)"
+    assert by_name["single-or-pkg"] == "MIT OR Apache-2.0"
+    assert by_name["and-operand-pkg"] == "Apache-2.0 AND BSD-3-Clause AND MIT"
+    assert by_name["custom-ref-pkg"] == "BSD-3-Clause AND (LicenseRef-custom OR MIT)"
+    assert by_name["bad-multi-pkg"] == "NOASSERTION"
+    assert (
+        "Unable to parse license expression BSD-3-Clause AND MIT AND for SPDX output; using NOASSERTION."
+        in [record.getMessage() for record in caplog.records]
+    )
