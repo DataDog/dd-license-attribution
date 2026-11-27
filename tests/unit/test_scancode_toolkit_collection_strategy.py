@@ -1507,3 +1507,107 @@ def test_scancode_toolkit_does_not_turn_dual_license_choice_into_and(
     scancode_api_mock.get_licenses.assert_called_once_with("/local/packaging/LICENSE")
     scancode_api_mock.get_copyrights.assert_not_called()
     source_code_manager_mock.get_code.assert_not_called()
+
+
+def test_cleanup_licenses_preserves_parenthesized_spdx_expressions() -> None:
+    result = ScanCodeToolkitMetadataCollectionStrategy.cleanup_licenses(
+        ["(Apache-2.0 AND (Apache-2.0 OR BSD-3-Clause))"]
+    )
+    assert set(result) == {"Apache-2.0", "Apache-2.0 OR BSD-3-Clause"}
+
+
+def test_cleanup_licenses_flattens_nested_and_and_deduplicates() -> None:
+    result = ScanCodeToolkitMetadataCollectionStrategy.cleanup_licenses(
+        [
+            "(BSD-3-Clause AND (MIT AND Apache-2.0) AND MIT)",
+            "((Apache-2.0 OR BSD-3-Clause) AND Apache-2.0)",
+        ]
+    )
+    assert len(result) == 4
+    assert set(result) == {
+        "Apache-2.0",
+        "Apache-2.0 OR BSD-3-Clause",
+        "BSD-3-Clause",
+        "MIT",
+    }
+
+
+def test_cleanup_licenses_keeps_or_unwrapped_for_cautionary_prefix_checks() -> None:
+    result = ScanCodeToolkitMetadataCollectionStrategy.cleanup_licenses(
+        ["GPL-3.0-only OR MIT", "Apache-2.0"]
+    )
+    assert set(result) == {"Apache-2.0", "GPL-3.0-only OR MIT"}
+
+
+def test_cleanup_licenses_does_not_split_and_inside_or() -> None:
+    result = ScanCodeToolkitMetadataCollectionStrategy.cleanup_licenses(
+        ["(Apache-2.0 OR (MIT AND BSD-3-Clause))"]
+    )
+    assert result == ["Apache-2.0 OR (MIT AND BSD-3-Clause)"]
+
+
+def test_cleanup_licenses_preserves_with_exception_and_filters_unknown_and_cla() -> (
+    None
+):
+    result = ScanCodeToolkitMetadataCollectionStrategy.cleanup_licenses(
+        [
+            "(Apache-2.0 WITH LLVM-exception) AND LicenseRef-scancode-unknown-license-reference AND LicenseRef-scancode-generic-cla"
+        ]
+    )
+    assert result == ["Apache-2.0 WITH LLVM-exception"]
+
+    filtered_to_single_or = ScanCodeToolkitMetadataCollectionStrategy.cleanup_licenses(
+        ["(MIT OR Apache-2.0) AND LicenseRef-scancode-unknown-license-reference"]
+    )
+    assert filtered_to_single_or == ["MIT OR Apache-2.0"]
+
+
+def test_cleanup_licenses_falls_back_on_unparseable_and_skips_empty() -> None:
+    result = ScanCodeToolkitMetadataCollectionStrategy.cleanup_licenses(
+        ["", "   ", "invalid ( broken"]
+    )
+    assert result == ["invalid ( broken"]
+
+    with_other_license = ScanCodeToolkitMetadataCollectionStrategy.cleanup_licenses(
+        ["invalid ( broken", "MIT"]
+    )
+    assert len(with_other_license) == 2
+    assert set(with_other_license) == {"invalid ( broken", "MIT"}
+
+
+def test_scancode_toolkit_extracts_valid_spdx_from_parenthesized_expression(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    listdir_mock = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.scan_code_toolkit_metadata_collection_strategy.list_dir",
+        return_value=["LICENSE"],
+    )
+    scancode_api_mock = mocker.patch("scancode.api")
+    scancode_api_mock.get_licenses.return_value = {
+        "detected_license_expression_spdx": "(MIT AND Apache-2.0)"
+    }
+    source_code_manager_mock = mocker.Mock()
+    strategy = ScanCodeToolkitMetadataCollectionStrategy(
+        source_code_manager_mock,
+        license_source_files=["LICENSE"],
+        copyright_source_files=["NOTICE"],
+    )
+    initial_metadata = [
+        Metadata(
+            name="go.yaml.in/yaml/v3",
+            version="v3.0.4",
+            origin="https://go.yaml.in/yaml/v3",
+            local_src_path="/local/yaml/v3",
+            license=[],
+            copyright=["Canonical Ltd."],
+        )
+    ]
+
+    updated = strategy.augment_metadata(initial_metadata)
+
+    assert len(updated) == 1
+    assert set(updated[0].license) == {"Apache-2.0", "MIT"}
+    listdir_mock.assert_called_once_with("/local/yaml/v3")
+    scancode_api_mock.get_licenses.assert_called_once_with("/local/yaml/v3/LICENSE")
+    scancode_api_mock.get_copyrights.assert_not_called()
+    source_code_manager_mock.get_code.assert_not_called()
