@@ -253,12 +253,18 @@ def test_source_code_manager_get_non_cached_code(
 
     assert code_ref == expected_source_code_reference
     if mocked_parser_results.path_raw != "":
-        output_from_command_mock.assert_any_call(
+        lookup_ref = mocked_parser_results.branch or "test_branch/dir"
+        prefixes = [
+            "/".join(lookup_ref.split("/")[:i])
+            for i in range(len(lookup_ref.split("/")), 0, -1)
+        ]
+        output_from_command_mock.assert_called_once_with(
             [
                 "git",
                 "ls-remote",
+                "--",
                 expected_source_code_reference.repo_url,
-                expected_source_code_reference.branch,
+                *prefixes,
             ]
         )
         run_command_mock.assert_called_once_with(
@@ -283,6 +289,7 @@ def test_source_code_manager_get_non_cached_code(
                 "git",
                 "ls-remote",
                 "--symref",
+                "--",
                 expected_source_code_reference.repo_url,
                 "HEAD",
             ]
@@ -366,6 +373,7 @@ def test_source_code_manager_get_cached_code(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -447,6 +455,7 @@ def test_source_code_manager_get_non_cached_code_because_it_expired(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -543,6 +552,7 @@ def test_source_code_manager_get_non_cached_code_because_force_update(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -665,7 +675,9 @@ def test_artifact_manager_get_non_cached_code_for_ambiguous_branch_names(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
+            "test_branch/test_dir",
             expected_source_code_reference.branch,
         ]
     )
@@ -795,6 +807,7 @@ def test_source_code_manager_with_mirror_url(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -895,6 +908,7 @@ def test_source_code_manager_with_mirror_ref_mapping(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -1008,6 +1022,7 @@ def test_source_code_manager_with_mirror_ref_mapping_to_tag(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -1123,6 +1138,7 @@ def test_source_code_manager_mirror_tag_fetch_failure_returns_none(
         [
             "git",
             "ls-remote",
+            "--",
             "https://github.com/test_owner/test_repo",
             "test_branch",
         ]
@@ -1236,7 +1252,13 @@ def test_source_code_manager_mirror_tag_forced_retry_after_failed_fetch(
     )
     assert mock_create_dirs.call_count == 2
     ls_remote_call = call(
-        ["git", "ls-remote", "https://github.com/test_owner/test_repo", "test_branch"]
+        [
+            "git",
+            "ls-remote",
+            "--",
+            "https://github.com/test_owner/test_repo",
+            "test_branch",
+        ]
     )
     output_from_command_mock.assert_has_calls([ls_remote_call, ls_remote_call])
     assert output_from_command_mock.call_count == 2
@@ -1396,6 +1418,7 @@ def test_source_code_manager_mirror_tag_clone_with_git_env(
         [
             "git",
             "ls-remote",
+            "--",
             "https://github.com/test_owner/test_repo",
             "test_branch",
         ],
@@ -1474,7 +1497,13 @@ def test_source_code_manager_with_unsupported_commit_ref_type(
     artifact_list_dir_mock.assert_called_once_with("cache_dir")
     source_code_list_dir_mock.assert_not_called()
     output_from_command_mock.assert_called_once_with(
-        ["git", "ls-remote", "https://github.com/test_owner/test_repo", "test_branch"]
+        [
+            "git",
+            "ls-remote",
+            "--",
+            "https://github.com/test_owner/test_repo",
+            "test_branch",
+        ]
     )
     run_command_mock.assert_not_called()
 
@@ -1558,6 +1587,7 @@ def test_source_code_manager_with_mirror_url_and_ref_mapping_for_the_default_bra
             "git",
             "ls-remote",
             "--symref",
+            "--",
             expected_source_code_reference.repo_url,
             "HEAD",
         ]
@@ -1664,6 +1694,7 @@ def test_source_code_manager_with_multiple_mirrors(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -1761,6 +1792,7 @@ def test_source_code_manager_with_no_mirror_match(
         [
             "git",
             "ls-remote",
+            "--",
             expected_source_code_reference.repo_url,
             expected_source_code_reference.branch,
         ]
@@ -2163,17 +2195,9 @@ def test_extract_ref_with_commit_hash(output_from_command_mock: Mock) -> None:
         extract_ref,
     )
 
-    # extract_ref tries progressively longer prefixes:
-    # 1. "abc123def456" - no match in output
-    # 2. "abc123def456/path" - no match
-    # 3. "abc123def456/path/to" - no match
-    # 4. "abc123def456/path/to/file" - no match
-    # Then tries hash fallback:
-    # 5. "abc123def456" as hash - found in full ls-remote output
+    # First call queries all candidate ref prefixes together (no match),
+    # second call queries all refs for the commit-hash fallback.
     output_from_command_mock.side_effect = [
-        "",
-        "",
-        "",
         "",
         "abc123def456\trefs/heads/main\n",
     ]
@@ -2184,43 +2208,55 @@ def test_extract_ref_with_commit_hash(output_from_command_mock: Mock) -> None:
     result = extract_ref(ref, url)
 
     assert result == "abc123def456"
-    assert output_from_command_mock.call_count == 5
-    # Verify the hash check was called
-    output_from_command_mock.assert_any_call(["git", "ls-remote", url])
+    assert output_from_command_mock.call_count == 2
+    output_from_command_mock.assert_has_calls(
+        [
+            call(
+                [
+                    "git",
+                    "ls-remote",
+                    "--",
+                    url,
+                    "abc123def456/path/to/file",
+                    "abc123def456/path/to",
+                    "abc123def456/path",
+                    "abc123def456",
+                ]
+            ),
+            call(["git", "ls-remote", "--", url]),
+        ]
+    )
 
 
 @patch(
     "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
 )
-def test_extract_ref_returns_first_matching_ref_prefix(
+def test_extract_ref_returns_longest_matching_ref_prefix_in_one_call(
     output_from_command_mock: Mock,
 ) -> None:
     from dd_license_attribution.artifact_management.source_code_manager import (
         extract_ref,
     )
 
-    output_from_command_mock.side_effect = [
-        "",
-        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/feature/slash\n",
-    ]
+    output_from_command_mock.return_value = (
+        "1111111111111111111111111111111111111111\trefs/heads/feature\n"
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/feature/slash\n"
+    )
 
     result = extract_ref("feature/slash/path", "https://github.com/owner/repo")
 
     assert result == "feature/slash"
-    output_from_command_mock.assert_has_calls(
+    output_from_command_mock.assert_called_once_with(
         [
-            call(["git", "ls-remote", "https://github.com/owner/repo", "feature"]),
-            call(
-                [
-                    "git",
-                    "ls-remote",
-                    "https://github.com/owner/repo",
-                    "feature/slash",
-                ]
-            ),
+            "git",
+            "ls-remote",
+            "--",
+            "https://github.com/owner/repo",
+            "feature/slash/path",
+            "feature/slash",
+            "feature",
         ]
     )
-    assert output_from_command_mock.call_count == 2
 
 
 @patch(
@@ -2234,12 +2270,7 @@ def test_extract_ref_with_invalid_hash_returns_empty(
         extract_ref,
     )
 
-    # extract_ref tries progressively longer prefixes:
-    # 1. "invalid_ref" - no match in output
-    # 2. "invalid_ref/path" - no match
-    # Then tries hash fallback:
-    # 3. "invalid_ref" as hash - also no match
-    output_from_command_mock.side_effect = ["", "", ""]
+    output_from_command_mock.side_effect = ["", ""]
 
     ref = "invalid_ref/path"
     url = "https://github.com/owner/repo"
@@ -2249,12 +2280,11 @@ def test_extract_ref_with_invalid_hash_returns_empty(
     assert result == ""
     output_from_command_mock.assert_has_calls(
         [
-            call(["git", "ls-remote", url, "invalid_ref"]),
-            call(["git", "ls-remote", url, "invalid_ref/path"]),
-            call(["git", "ls-remote", url]),
+            call(["git", "ls-remote", "--", url, "invalid_ref/path", "invalid_ref"]),
+            call(["git", "ls-remote", "--", url]),
         ]
     )
-    assert output_from_command_mock.call_count == 3
+    assert output_from_command_mock.call_count == 2
 
 
 @patch(
@@ -2282,7 +2312,7 @@ def test_discover_default_branch_with_exception(
     assert "Could not discover default branch for" in str(exc_info.value)
     assert url in str(exc_info.value)
     output_from_command_mock.assert_called_once_with(
-        ["git", "ls-remote", "--symref", url, "HEAD"]
+        ["git", "ls-remote", "--symref", "--", url, "HEAD"]
     )
 
 
@@ -2328,6 +2358,7 @@ def test_get_code_returns_none_when_default_branch_cannot_be_discovered(
             "git",
             "ls-remote",
             "--symref",
+            "--",
             "https://github.com/test_owner/test_repo",
             "HEAD",
         ]
@@ -2402,6 +2433,7 @@ def test_get_code_can_skip_canonical_lookup_for_direct_git_checkout(
             "git",
             "ls-remote",
             "--symref",
+            "--",
             "https://github.com/test_owner/test_repo",
             "HEAD",
         ],
@@ -3026,3 +3058,79 @@ def test_source_code_manager_remaps_default_branch_non_github_path_case(
     list_dir_mock.assert_called_once_with("cache_dir")
     # The default branch can only be looked up on GitHub.
     assert github_client_mock.mock_calls == []
+
+
+@patch("dd_license_attribution.artifact_management.source_code_manager.logger")
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+def test_extract_ref_does_not_log_url_credentials(
+    output_from_command_mock: Mock,
+    logger_mock: Mock,
+) -> None:
+    from dd_license_attribution.artifact_management.source_code_manager import (
+        extract_ref,
+    )
+
+    output_from_command_mock.return_value = (
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/main\n"
+    )
+    secret = "ghp_super_secret_mirror_token"
+    url = f"https://x-access-token:{secret}@github.com/owner/repo"
+
+    assert extract_ref("main/apis", url) == "main"
+    for log_call in logger_mock.debug.call_args_list:
+        assert secret not in str(log_call)
+
+
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+def test_extract_ref_rejects_suffix_match_and_hash_substring(
+    output_from_command_mock: Mock,
+) -> None:
+    from dd_license_attribution.artifact_management.source_code_manager import (
+        extract_ref,
+    )
+
+    # "ci/release" must not match "release", and "heads" must not match as a SHA.
+    output_from_command_mock.side_effect = [
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/ci/release\n",
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/main\n",
+    ]
+    assert extract_ref("release", "https://github.com/owner/repo") == ""
+
+    output_from_command_mock.side_effect = [
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/main\n",
+        "72a11341aa684010caf1ca5dee779f0e7e84dfe9\trefs/heads/main\n",
+    ]
+    assert extract_ref("heads", "https://github.com/owner/repo") == ""
+
+
+@patch(
+    "dd_license_attribution.artifact_management.source_code_manager.output_from_command"
+)
+def test_extract_ref_accepts_unadvertised_full_commit_sha(
+    output_from_command_mock: Mock,
+) -> None:
+    from dd_license_attribution.artifact_management.source_code_manager import (
+        extract_ref,
+    )
+
+    sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
+    output_from_command_mock.return_value = ""
+
+    result = extract_ref(f"{sha}/subdir/pkg", "https://github.com/owner/repo")
+
+    assert result == sha
+    output_from_command_mock.assert_called_once_with(
+        [
+            "git",
+            "ls-remote",
+            "--",
+            "https://github.com/owner/repo",
+            f"{sha}/subdir/pkg",
+            f"{sha}/subdir",
+            sha,
+        ]
+    )

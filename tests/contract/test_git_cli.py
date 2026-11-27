@@ -16,6 +16,7 @@ import pytest
 from dd_license_attribution.adaptors.os import output_from_command, rename_path
 from dd_license_attribution.artifact_management.source_code_manager import (
     MirrorSpec,
+    RefType,
     SourceCodeManager,
 )
 
@@ -212,3 +213,229 @@ def test_forced_refresh_preserves_readers_and_updates_future_cache_lookups(
         assert scm.get_code(url, skip_canonical_lookup=True) == fresh
         assert (old_root / "LICENSE").read_text() == "old snapshot"
         assert (Path(fresh.local_root_path) / "LICENSE").read_text() == "new snapshot"
+
+
+@pytest.mark.parametrize("source_type", [RefType.BRANCH, RefType.TAG])
+def test_explicit_mapping_beats_opposite_type_ref_in_real_mirror(
+    tmp_path: Path, source_type: RefType
+) -> None:
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    _git(["init", "--quiet", "--initial-branch=review"], origin)
+    _git(["commit", "--quiet", "--allow-empty", "-m", "unmapped"], origin)
+    old_commit = _git(["rev-parse", "HEAD"], origin)
+    if source_type == RefType.BRANCH:
+        _git(["tag", "main"], origin)
+    else:
+        _git(["branch", "main"], origin)
+    _git(["commit", "--quiet", "--allow-empty", "-m", "mapped"], origin)
+    mapped_commit = _git(["rev-parse", "HEAD"], origin)
+    assert old_commit != mapped_commit
+
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    repository_url = "https://github.com/example/repo"
+    mirror = MirrorSpec(
+        repository_url,
+        origin.as_uri(),
+        {(source_type, "main"): (RefType.BRANCH, "review")},
+    )
+    scm = SourceCodeManager(str(cache), Mock(), mirrors=[mirror])
+
+    def lookup(
+        args: list[str], env: dict[str, str] | None = None, timeout: int | None = None
+    ) -> str:
+        if args[3] == repository_url:
+            raise OSError("original repository unavailable")
+        return output_from_command(args, env=env, timeout=timeout)
+
+    with patch(
+        "dd_license_attribution.artifact_management.source_code_manager.output_from_command",
+        side_effect=lookup,
+    ) as lookup_mock:
+        result = scm.get_code(f"{repository_url}/tree/main", skip_canonical_lookup=True)
+        lookup_mock.assert_any_call(
+            ["git", "ls-remote", "--", origin.as_uri(), "refs/heads/review"],
+            env={"GIT_TERMINAL_PROMPT": "0"},
+            timeout=30,
+        )
+    assert result is not None
+    assert result.branch == "main"
+    root = Path(result.local_root_path)
+    assert _git(["branch", "--show-current"], root) == "review"
+    assert _git(["rev-parse", "HEAD"], root) == mapped_commit
+
+
+@pytest.mark.parametrize("target_type", [RefType.BRANCH, RefType.TAG])
+@pytest.mark.parametrize("annotated", [False, True])
+def test_mapped_target_namespace_skips_a_wrong_type_mirror(
+    tmp_path: Path, target_type: RefType, annotated: bool
+) -> None:
+    mirrors: list[Path] = []
+    expected_commit = ""
+    for name in ["wrong", "healthy"]:
+        origin = tmp_path / name
+        origin.mkdir()
+        _git(["init", "--quiet", "--initial-branch=work"], origin)
+        _git(["commit", "--quiet", "--allow-empty", "-m", "opposite type"], origin)
+        if target_type == RefType.TAG:
+            _git(["branch", "stable"], origin)
+        else:
+            _git(["tag", "stable"], origin)
+        if name == "healthy":
+            _git(["commit", "--quiet", "--allow-empty", "-m", "requested type"], origin)
+            expected_commit = _git(["rev-parse", "HEAD"], origin)
+            if target_type == RefType.BRANCH:
+                _git(["branch", "stable"], origin)
+            elif annotated:
+                _git(["tag", "-a", "stable", "-m", "stable"], origin)
+            else:
+                _git(["tag", "stable"], origin)
+        mirrors.append(origin)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    url = "https://github.com/example/repo"
+    mapping = {(RefType.BRANCH, "main"): (target_type, "stable")}
+    scm = SourceCodeManager(
+        str(cache),
+        Mock(),
+        mirrors=[MirrorSpec(url, path.as_uri(), mapping) for path in mirrors],
+    )
+
+    def lookup(
+        args: list[str], env: dict[str, str] | None = None, timeout: int | None = None
+    ) -> str:
+        if args[3] == url:
+            raise OSError("original repository unavailable")
+        return output_from_command(args, env=env, timeout=timeout)
+
+    with patch(
+        "dd_license_attribution.artifact_management.source_code_manager.output_from_command",
+        side_effect=lookup,
+    ) as advertised:
+        result = scm.get_code(url + "/tree/main", skip_canonical_lookup=True)
+        namespace = "heads" if target_type == RefType.BRANCH else "tags"
+        for mirror in mirrors:
+            advertised.assert_any_call(
+                ["git", "ls-remote", "--", mirror.as_uri(), f"refs/{namespace}/stable"],
+                env={"GIT_TERMINAL_PROMPT": "0"},
+                timeout=30,
+            )
+    assert result is not None
+    root = Path(result.local_root_path)
+    assert _git(["remote", "get-url", "origin"], root) == mirrors[1].as_uri()
+    assert _git(["rev-parse", "HEAD"], root) == expected_commit
+
+
+def test_provisional_commit_fetch_continues_to_a_healthy_mirror(tmp_path: Path) -> None:
+    mirrors: list[Path] = []
+    requested = ""
+    for name in ["missing", "healthy"]:
+        origin = tmp_path / name
+        origin.mkdir()
+        _git(["init", "--quiet", "--initial-branch=main"], origin)
+        _git(["commit", "--quiet", "--allow-empty", "-m", name], origin)
+        if name == "healthy":
+            requested = _git(["rev-parse", "HEAD"], origin)
+        mirrors.append(origin)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    url = "https://github.com/example/repo"
+    scm = SourceCodeManager(
+        str(cache), Mock(), mirrors=[MirrorSpec(url, path.as_uri()) for path in mirrors]
+    )
+
+    def lookup(
+        args: list[str], env: dict[str, str] | None = None, timeout: int | None = None
+    ) -> str:
+        if args[3] == url:
+            raise OSError("original lookup timed out")
+        return output_from_command(args, env=env, timeout=timeout)
+
+    with patch(
+        "dd_license_attribution.artifact_management.source_code_manager.output_from_command",
+        side_effect=lookup,
+    ) as lookup_mock:
+        result = scm.get_code(f"{url}/tree/{requested}", skip_canonical_lookup=True)
+        lookup_mock.assert_any_call(
+            ["git", "ls-remote", "--", url, requested],
+            env={"GIT_TERMINAL_PROMPT": "0"},
+            timeout=30,
+        )
+    assert result is not None
+    assert result.branch == requested
+    assert _git(["rev-parse", "HEAD"], Path(result.local_root_path)) == requested
+    assert (
+        _git(["remote", "get-url", "origin"], Path(result.local_root_path))
+        == mirrors[1].as_uri()
+    )
+
+
+@pytest.mark.parametrize("target_type", [RefType.BRANCH, RefType.TAG])
+def test_sha_checkout_retry_does_not_publish_partial_checkout_files(
+    tmp_path: Path, target_type: RefType
+) -> None:
+    first = tmp_path / "broken-filter"
+    healthy = tmp_path / "healthy"
+    for origin in [first, healthy]:
+        origin.mkdir()
+        _git(["init", "--quiet", "--initial-branch=main"], origin)
+    (first / ".gitattributes").write_text("b_fail filter=broken\n")
+    (first / "a_extra").write_text("from failed checkout")
+    (first / "b_fail").write_text("smudge fails")
+    _git(["add", "."], first)
+    _git(["commit", "--quiet", "-m", "broken checkout"], first)
+    requested = _git(["rev-parse", "HEAD"], first)
+    (healthy / "ok").write_text("healthy checkout")
+    (healthy / ".gitignore").write_text("a_extra\n")
+    _git(["add", "."], healthy)
+    _git(["commit", "--quiet", "-m", "healthy checkout"], healthy)
+    expected = _git(["rev-parse", "HEAD"], healthy)
+    target = "main"
+    if target_type == RefType.TAG:
+        target = "stable"
+        _git(["tag", target], healthy)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    url = "https://github.com/example/repo"
+    mapping = {(RefType.COMMIT, requested): (target_type, target)}
+    scm = SourceCodeManager(
+        str(cache),
+        Mock(),
+        mirrors=[
+            MirrorSpec(url, first.as_uri()),
+            MirrorSpec(url, healthy.as_uri(), mapping),
+        ],
+    )
+
+    def lookup(
+        args: list[str], env: dict[str, str] | None = None, timeout: int | None = None
+    ) -> str:
+        if args[3] == url:
+            raise OSError("original lookup timed out")
+        return output_from_command(args, env=env, timeout=timeout)
+
+    filter_env = {
+        "GIT_CONFIG_COUNT": "3",
+        "GIT_CONFIG_KEY_0": "filter.broken.required",
+        "GIT_CONFIG_VALUE_0": "true",
+        "GIT_CONFIG_KEY_1": "filter.broken.smudge",
+        "GIT_CONFIG_VALUE_1": "false",
+        "GIT_CONFIG_KEY_2": "init.defaultBranch",
+        "GIT_CONFIG_VALUE_2": "main",
+    }
+    with (
+        patch.dict(os.environ, filter_env),
+        patch(
+            "dd_license_attribution.artifact_management.source_code_manager.output_from_command",
+            side_effect=lookup,
+        ) as advertised,
+    ):
+        result = scm.get_code(url + "/tree/" + requested, skip_canonical_lookup=True)
+        advertised.assert_called()
+    assert result is not None
+    root = Path(result.local_root_path)
+    assert _git(["rev-parse", "HEAD"], root) == expected
+    assert (root / "ok").read_text() == "healthy checkout"
+    assert not (root / "a_extra").exists()
+    assert not (root / ".gitattributes").exists()
