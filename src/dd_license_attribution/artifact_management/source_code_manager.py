@@ -994,7 +994,7 @@ class SourceCodeManager(ArtifactManager):
         repository_cache_path = (
             f"{self.local_cache_dir}/{self.timestamped_dir}/{owner}-{repo}"
         )
-        checkout_name = f".checkout-{uuid.uuid4().hex}" if force_update else branch
+        checkout_name = f".checkout-{uuid.uuid4().hex}"
         local_branch_path = path_join(repository_cache_path, checkout_name)
         staging_branch_path = self._get_staging_clone_path(repository_cache_path)
         if not self._is_within_cache_dir(
@@ -1072,10 +1072,8 @@ class SourceCodeManager(ArtifactManager):
         if not self._publish_staging_checkout(staging_branch_path, local_branch_path):
             logger.error("Failed to publish checkout for %s", repository_url)
             return None
-        if force_update and not self._publish_ref_pointer(
-            repository_cache_path, branch, checkout_name
-        ):
-            logger.error("Failed to publish refreshed checkout for %s", repository_url)
+        if not self._publish_ref_pointer(repository_cache_path, branch, checkout_name):
+            logger.error("Failed to publish checkout pointer for %s", repository_url)
             return None
         local_full_path = f"{local_branch_path}{path}"
         if path and (

@@ -101,8 +101,8 @@ def test_clone_only_writes_and_cleans_its_own_staging_directory(
         checkout_mocks["remove"].assert_called_once_with(STAGE)
     else:
         assert result is not None
-        assert result.local_full_path == ROOT
-        checkout_mocks["rename"].assert_called_once_with(STAGE, ROOT)
+        assert result.local_full_path == GENERATION
+        checkout_mocks["rename"].assert_called_once_with(STAGE, GENERATION)
         checkout_mocks["remove"].assert_not_called()
 
 
@@ -183,9 +183,9 @@ def test_escaping_resolved_paths_never_produce_a_checkout(
 ) -> None:
     def resolve(path: str) -> str:
         if (
-            (escaping == "checkout" and path == ROOT)
+            (escaping == "checkout" and path == GENERATION)
             or (escaping == "staging" and path == STAGE)
-            or (escaping == "subdirectory" and path == ROOT + "/pkg")
+            or (escaping == "subdirectory" and path == GENERATION + "/pkg")
         ):
             return "/outside"
         return posixpath.normpath("/" + path)
