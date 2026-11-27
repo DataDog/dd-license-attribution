@@ -5,6 +5,8 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2026-present Datadog, Inc.
 
+import json
+from pathlib import Path
 from unittest.mock import ANY, Mock, call, patch
 
 import pytest
@@ -1000,3 +1002,469 @@ def test_only_transitive_dependencies_drops_a_non_canonical_seed_without_github_
     mock_csv.return_value.write.assert_called_once()
     (written,), _ = mock_csv.return_value.write.call_args
     assert [m.name for m in written] == ["github.com/other/dependency"]
+
+
+def _subdirectory_metadata() -> list[Metadata]:
+    return [
+        Metadata(
+            name="github.com/org/repo/tree/main/apis",
+            version=None,
+            origin="https://github.com/org/repo",
+            local_src_path=None,
+            license=["Apache-2.0"],
+            copyright=[],
+        ),
+        Metadata(
+            name="github.com/org/repo",
+            version="v1.2.3",
+            origin="https://github.com/org/repo",
+            local_src_path=None,
+            license=["Apache-2.0"],
+            copyright=[],
+        ),
+        Metadata(
+            name="github.com/org/dep",
+            version="v1.0.0",
+            origin="https://github.com/org/dep",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=[],
+        ),
+    ]
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
+def test_generate_sbom_only_transitive_drops_subdirectory_seed(
+    mock_three_phase_collector: Mock,
+    mock_csv_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    metadata = _subdirectory_metadata()
+    mock_three_phase_collector.return_value.collect_metadata.return_value = metadata
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        None,
+    )
+    mock_source_code_manager.return_value.get_subdirectory_path.return_value = "/apis"
+    mock_csv_reporting_writter.return_value.write.return_value = "csv-output"
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo/tree/main/apis",
+            "--only-transitive-dependencies",
+            "--no-gh-auth",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_source_code_manager.return_value.get_subdirectory_path.assert_called_once_with(
+        "https://github.com/org/repo/tree/main/apis"
+    )
+    mock_csv_reporting_writter.return_value.write.assert_called_once_with(
+        [metadata[1], metadata[2]]
+    )
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
+def test_generate_sbom_keeps_subdirectory_seed_when_root_is_in_scope(
+    mock_three_phase_collector: Mock,
+    mock_csv_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    metadata = _subdirectory_metadata()
+    mock_three_phase_collector.return_value.collect_metadata.return_value = metadata
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        None,
+    )
+    mock_source_code_manager.return_value.get_subdirectory_path.return_value = "/apis"
+    mock_csv_reporting_writter.return_value.write.return_value = "csv-output"
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo/tree/main/apis",
+            "--no-gh-auth",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_source_code_manager.return_value.get_subdirectory_path.assert_not_called()
+    mock_csv_reporting_writter.return_value.write.assert_called_once_with(metadata)
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
+def test_generate_sbom_exits_with_error_when_repository_path_unresolved(
+    mock_three_phase_collector: Mock,
+    mock_csv_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    mock_three_phase_collector.return_value.collect_metadata.return_value = [
+        Metadata(
+            name="github.com/org/repo/tree/0123456789abcdef/apis",
+            version=None,
+            origin="https://github.com/org/repo/tree/0123456789abcdef/apis",
+            local_src_path=None,
+            license=[],
+            copyright=[],
+        ),
+        # An ADD override row must not mask failed source collection.
+        Metadata(
+            name="manual-dep",
+            version="1.0.0",
+            origin="https://example.com/manual-dep",
+            local_src_path=None,
+            license=["MIT"],
+            copyright=["Manual"],
+        ),
+    ]
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    mock_source_code_manager.return_value.has_unresolved_path.return_value = True
+    mock_source_code_manager.return_value.has_successful_checkout.return_value = False
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo/tree/0123456789abcdef/apis",
+            "--only-transitive-dependencies",
+            "--no-gh-auth",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 1
+    mock_csv_reporting_writter.return_value.write.assert_not_called()
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
+def test_generate_sbom_succeeds_when_checkout_succeeded_without_row_local_path(
+    mock_three_phase_collector: Mock,
+    mock_csv_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    root_only_seed = Metadata(
+        name="github.com/org/repo/tree/main/apis",
+        version="1.0.0",
+        origin="https://github.com/org/repo/tree/main/apis",
+        local_src_path=None,
+        license=["Apache-2.0"],
+        copyright=["Org"],
+    )
+    mock_three_phase_collector.return_value.collect_metadata.return_value = [
+        root_only_seed
+    ]
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    # Even if an earlier or later scope lookup failed, a successful checkout
+    # for the target preserves the valid scan result.
+    mock_source_code_manager.return_value.has_unresolved_path.return_value = True
+    mock_source_code_manager.return_value.has_successful_checkout.return_value = True
+    mock_csv_reporting_writter.return_value.write.return_value = "csv-output"
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo/tree/main/apis",
+            "--only-root-project",
+            "--no-gh-auth",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 0, result.output
+    mock_csv_reporting_writter.return_value.write.assert_called_once_with(
+        [root_only_seed]
+    )
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
+def test_generate_sbom_metadata_only_replace_override_does_not_mask_failed_dependency_scan(
+    mock_three_phase_collector: Mock,
+    mock_csv_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+    tmp_path: Path,
+) -> None:
+    override_file = tmp_path / "overrides.json"
+    override_file.write_text(
+        json.dumps(
+            [
+                {
+                    "override_type": "replace",
+                    "target": {
+                        "origin": "https://github.com/org/repo/tree/missing-ref/apis"
+                    },
+                    "replacement": {
+                        "name": "github.com/org/repo/tree/missing-ref/apis",
+                        "origin": "https://github.com/org/repo/tree/missing-ref/apis",
+                        "license": ["Apache-2.0"],
+                        "copyright": ["Org"],
+                    },
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    def _collect(package: str) -> list[Metadata]:
+        override_strategy = mock_three_phase_collector.call_args.kwargs[
+            "override_strategy"
+        ]
+        # Mark the override rule as used (as OverrideCollectionStrategy would).
+        override_strategy.unused_rules = []
+        return [
+            Metadata(
+                name="github.com/org/repo/tree/missing-ref/apis",
+                version=None,
+                origin="https://github.com/org/repo/tree/missing-ref/apis",
+                local_src_path=None,
+                license=["Apache-2.0"],
+                copyright=["Org"],
+            )
+        ]
+
+    mock_three_phase_collector.return_value.collect_metadata.side_effect = _collect
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    mock_source_code_manager.return_value.has_unresolved_path.return_value = True
+    mock_source_code_manager.return_value.has_successful_checkout.return_value = False
+    mock_csv_reporting_writter.return_value.write.return_value = "csv-output"
+
+    # Under --only-transitive-dependencies, a metadata-only REPLACE override must
+    # not bypass the checkout check and emit a header-only CSV.
+    transitive_result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo/tree/missing-ref/apis",
+            "--only-transitive-dependencies",
+            "--override-spec",
+            str(override_file),
+            "--no-gh-auth",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+    assert transitive_result.exit_code == 1
+    mock_csv_reporting_writter.return_value.write.assert_not_called()
+
+    # Under --only-root-project, a metadata-only REPLACE override satisfies the scan.
+    root_only_result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo/tree/missing-ref/apis",
+            "--only-root-project",
+            "--override-spec",
+            str(override_file),
+            "--no-gh-auth",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+    assert root_only_result.exit_code == 0, root_only_result.output
+    mock_csv_reporting_writter.return_value.write.assert_called_once()
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
+def test_generate_sbom_validates_scoped_url_when_no_collector_attempted_lookup(
+    mock_three_phase_collector: Mock,
+    mock_csv_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    mock_three_phase_collector.return_value.collect_metadata.return_value = [
+        Metadata(
+            name="github.com/org/repo/tree/nonexistent/apis",
+            version=None,
+            origin="https://github.com/org/repo/tree/nonexistent/apis",
+            local_src_path=None,
+            license=["Apache-2.0"],
+            copyright=["Org"],
+        )
+    ]
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    # Neither checkout nor path lookup ran during collection.
+    mock_source_code_manager.return_value.has_successful_checkout.return_value = False
+    mock_source_code_manager.return_value.has_unresolved_path.return_value = False
+    mock_source_code_manager.return_value.has_resolved_path.return_value = False
+    mock_source_code_manager.return_value.get_subdirectory_path.return_value = None
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            "https://github.com/org/repo/tree/nonexistent/apis",
+            "--no-gh-auth",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 1
+    mock_source_code_manager.return_value.get_subdirectory_path.assert_called_once_with(
+        "https://github.com/org/repo/tree/nonexistent/apis"
+    )
+    mock_csv_reporting_writter.return_value.write.assert_not_called()
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
+def test_generate_sbom_verifies_provisional_sha_via_get_code_when_no_checkout_ran(
+    mock_three_phase_collector: Mock,
+    mock_csv_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    sha = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
+    url = f"https://github.com/org/repo/tree/{sha}/apis"
+    mock_three_phase_collector.return_value.collect_metadata.return_value = [
+        Metadata(
+            name=f"github.com/org/repo/tree/{sha}/apis",
+            version=None,
+            origin=url,
+            local_src_path=None,
+            license=["Apache-2.0"],
+            copyright=["Org"],
+        )
+    ]
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    mock_source_code_manager.return_value.has_successful_checkout.return_value = False
+    mock_source_code_manager.return_value.has_unresolved_path.return_value = False
+    # Format-only SHA stays unverified after get_subdirectory_path; get_code fails.
+    mock_source_code_manager.return_value.has_resolved_path.return_value = False
+    mock_source_code_manager.return_value.get_subdirectory_path.return_value = "/apis"
+    mock_source_code_manager.return_value.get_code.return_value = None
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            url,
+            "--no-gh-auth",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 1
+    mock_source_code_manager.return_value.get_subdirectory_path.assert_called_once_with(
+        url
+    )
+    mock_source_code_manager.return_value.get_code.assert_called_once_with(url)
+    mock_csv_reporting_writter.return_value.write.assert_not_called()
+
+
+@patch("dd_license_attribution.cli.generate_sbom_command.GitHub")
+@patch("dd_license_attribution.cli.generate_sbom_command.SourceCodeManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.PythonEnvManager")
+@patch("dd_license_attribution.cli.generate_sbom_command.CSVReportingWritter")
+@patch("dd_license_attribution.cli.generate_sbom_command.ThreePhaseMetadataCollector")
+def test_generate_sbom_verifies_nonempty_subdirectory_via_get_code_when_no_checkout_ran(
+    mock_three_phase_collector: Mock,
+    mock_csv_reporting_writter: Mock,
+    mock_python_env_manager: Mock,
+    mock_source_code_manager: Mock,
+    mock_github: Mock,
+) -> None:
+    url = "https://github.com/org/repo/tree/main/missing"
+    mock_three_phase_collector.return_value.collect_metadata.return_value = [
+        Metadata(
+            name="github.com/org/repo/tree/main/missing",
+            version=None,
+            origin=url,
+            local_src_path=None,
+            license=["Apache-2.0"],
+            copyright=["Org"],
+        )
+    ]
+    mock_source_code_manager.return_value.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    mock_source_code_manager.return_value.has_successful_checkout.return_value = False
+    mock_source_code_manager.return_value.has_unresolved_path.return_value = False
+    # ls-remote confirmed `main`, so has_resolved_path is True, but the
+    # subdirectory itself was never checked out and does not exist.
+    mock_source_code_manager.return_value.has_resolved_path.return_value = True
+    mock_source_code_manager.return_value.get_subdirectory_path.return_value = (
+        "/missing"
+    )
+    mock_source_code_manager.return_value.get_code.return_value = None
+
+    result = runner.invoke(
+        app,
+        [
+            "generate-sbom",
+            url,
+            "--no-gh-auth",
+            *_SKIP_DEPENDENCY_STRATEGIES,
+        ],
+        env={"GITHUB_TOKEN": ""},
+    )
+
+    assert result.exit_code == 1
+    mock_source_code_manager.return_value.get_code.assert_called_once_with(url)
+    mock_csv_reporting_writter.return_value.write.assert_not_called()

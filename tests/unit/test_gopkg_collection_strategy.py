@@ -7,6 +7,7 @@
 
 from unittest.mock import call
 
+import pytest
 import pytest_mock
 
 from dd_license_attribution.artifact_management.artifact_manager import (
@@ -1566,3 +1567,408 @@ def test_gopkg_single_module_without_root_go_mod_skips_collection(
         "Single Go module mode: no go.mod in %s, skipping Go module collection.",
         "cache_dir/org_package1",
     )
+
+
+def test_gopkg_collection_strategy_scopes_subdirectory_urls_and_ignores_go_work(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/repo/tree/main/apis",
+        mock_source_code_manager,
+        ProjectScope.ALL,
+    )
+    assert strategy.top_package == "https://github.com/org/repo/tree/main/apis"
+
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/repo",
+        branch="main",
+        local_root_path="cache_dir/org_repo",
+        local_full_path="cache_dir/org_repo/apis",
+    )
+    mock_walk_directory = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+        return_value=[("cache_dir/org_repo/apis", [], ["go.mod"])],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        return_value="module github.com/org/repo/apis\n",
+    )
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value="""{
+    "ImportPath": "github.com/org/dep",
+    "Module": {"Path": "github.com/org/dep", "Version": "v1.0.0"}
+}""",
+    )
+
+    result = strategy.augment_metadata([])
+
+    mock_source_code_manager.get_code.assert_called_once_with(
+        "https://github.com/org/repo/tree/main/apis"
+    )
+    mock_walk_directory.assert_called_once_with("cache_dir/org_repo/apis")
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="cache_dir/org_repo/apis",
+        env={"GOTOOLCHAIN": "auto", "GOWORK": "off"},
+    )
+    assert [(m.name, m.version) for m in result] == [("github.com/org/dep", "v1.0.0")]
+    mock_open_file.assert_called_once_with("cache_dir/org_repo/apis/go.mod")
+
+
+def test_gopkg_collection_strategy_keeps_go_work_at_repository_root(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/repo",
+        "https://api.github.com/repos/org/repo",
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/repo", mock_source_code_manager, ProjectScope.ALL
+    )
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/repo",
+        branch="main",
+        local_root_path="cache_dir/org_repo",
+        local_full_path="cache_dir/org_repo",
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+        return_value=[("cache_dir/org_repo", [], ["go.mod"])],
+    )
+    mock_open_file = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        return_value="module github.com/org/repo/apis\n",
+    )
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value="",
+    )
+
+    strategy.augment_metadata([])
+
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="cache_dir/org_repo",
+        env={"GOTOOLCHAIN": "auto"},
+    )
+    mock_open_file.assert_called_once_with("cache_dir/org_repo/go.mod")
+
+
+def test_gopkg_collection_strategy_single_module_in_subdirectory(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/monorepo",
+        "https://api.github.com/repos/org/monorepo",
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/monorepo/tree/main/contrib/net/http",
+        mock_source_code_manager,
+        ProjectScope.ONLY_TRANSITIVE_DEPENDENCIES,
+        single_module=True,
+    )
+    assert (
+        strategy.top_package
+        == "https://github.com/org/monorepo/tree/main/contrib/net/http"
+    )
+
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/monorepo",
+        branch="main",
+        local_root_path="cache_dir/org_monorepo",
+        local_full_path="cache_dir/org_monorepo/contrib/net/http",
+    )
+    mock_path_exists = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.path_exists",
+        return_value=True,
+    )
+    mock_walk_directory = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+    )
+    mock_output_from_command = mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        return_value="""{
+    "ImportPath": "github.com/org/monorepo/contrib/net/http/v2",
+    "Module": {"Path": "github.com/org/monorepo/contrib/net/http/v2", "Main": true}
+}
+{
+    "ImportPath": "github.com/org/dep",
+    "Module": {"Path": "github.com/org/dep", "Version": "v1.0.0"}
+}""",
+    )
+
+    result = strategy.augment_metadata([])
+
+    mock_source_code_manager.get_code.assert_called_once_with(
+        "https://github.com/org/monorepo/tree/main/contrib/net/http"
+    )
+    mock_path_exists.assert_called_once_with(
+        "cache_dir/org_monorepo/contrib/net/http/go.mod"
+    )
+    mock_walk_directory.assert_not_called()
+    mock_output_from_command.assert_called_once_with(
+        ["go", "list", "-json", "all"],
+        cwd="cache_dir/org_monorepo/contrib/net/http",
+        env={"GOTOOLCHAIN": "auto", "GOWORK": "off"},
+    )
+    assert [(m.name, m.version) for m in result] == [("github.com/org/dep", "v1.0.0")]
+
+
+def test_gopkg_only_root_project_excludes_nested_and_workspace_main_modules(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/monorepo",
+        "https://api.github.com/repos/org/monorepo",
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/monorepo/tree/main/pkg",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+    )
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/monorepo",
+        branch="main",
+        local_root_path="/cache/org_monorepo",
+        local_full_path="/cache/org_monorepo/pkg",
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        return_value="module github.com/org/monorepo/pkg\n",
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+        return_value=[
+            ("/cache/org_monorepo/pkg", ["nested"], ["go.mod"]),
+            ("/cache/org_monorepo/pkg/nested", [], ["go.mod"]),
+        ],
+    )
+
+    def _fake_output(
+        args: list[str],
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+    ) -> str:
+        if args[:2] == ["git", "ls-remote"]:
+            return "ref: refs/heads/main\tHEAD\n"
+        if cwd == "/cache/org_monorepo/pkg":
+            return """{
+    "ImportPath": "github.com/org/monorepo/pkg",
+    "Module": {"Path": "github.com/org/monorepo/pkg", "Dir": "/cache/org_monorepo/pkg", "Main": true}
+}
+{
+    "ImportPath": "github.com/org/monorepo/sibling",
+    "Module": {"Path": "github.com/org/monorepo/sibling", "Dir": "/cache/org_monorepo/sibling", "Main": true}
+}"""
+        return """{
+    "ImportPath": "github.com/org/monorepo/pkg/nested",
+    "Module": {"Path": "github.com/org/monorepo/pkg/nested", "Dir": "/cache/org_monorepo/pkg/nested", "Main": true}
+}"""
+
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=_fake_output,
+    )
+    seed = Metadata(
+        name="github.com/org/monorepo/tree/main/pkg",
+        version=None,
+        origin="https://github.com/org/monorepo/tree/main/pkg",
+        local_src_path=None,
+        license=[],
+        copyright=[],
+    )
+
+    result = strategy.augment_metadata([seed])
+
+    assert [m.name for m in result] == [
+        "github.com/org/monorepo/tree/main/pkg",
+        "github.com/org/monorepo/pkg",
+    ]
+
+
+def test_gopkg_only_root_project_matches_relative_cache_dir_against_absolute_go_dir(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    import os
+
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/monorepo",
+        "https://api.github.com/repos/org/monorepo",
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/monorepo/tree/main/pkg",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+        single_module=True,
+    )
+    relative_pkg_dir = "relative_cache/org_monorepo/pkg"
+    abs_pkg_dir = os.path.realpath(relative_pkg_dir)
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/monorepo",
+        branch="main",
+        local_root_path="relative_cache/org_monorepo",
+        local_full_path=relative_pkg_dir,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.path_exists",
+        return_value=True,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=lambda args, cwd=None, env=None: (
+            "ref: refs/heads/main\tHEAD\n"
+            if args[:2] == ["git", "ls-remote"]
+            else f'{{"ImportPath": "github.com/org/monorepo/pkg", "Module": {{"Path": "github.com/org/monorepo/pkg", "Dir": "{abs_pkg_dir}", "Main": true}}}}'
+        ),
+    )
+    seed = Metadata(
+        name="github.com/org/monorepo/tree/main/pkg",
+        version=None,
+        origin="https://github.com/org/monorepo/tree/main/pkg",
+        local_src_path=None,
+        license=[],
+        copyright=[],
+    )
+
+    result = strategy.augment_metadata([seed])
+
+    assert [m.name for m in result] == [
+        "github.com/org/monorepo/tree/main/pkg",
+        "github.com/org/monorepo/pkg",
+    ]
+
+
+@pytest.mark.parametrize("single_module", [False, True])
+def test_gopkg_only_root_project_matches_original_seed_after_repo_rename(
+    mocker: pytest_mock.MockFixture,
+    single_module: bool,
+) -> None:
+    import os
+
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/new-org/new-repo",
+        "https://api.github.com/repos/new-org/new-repo",
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/old-org/old-repo/tree/main/pkg",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+        single_module=single_module,
+    )
+    pkg_dir = "cache/new-org_new-repo/pkg"
+    abs_pkg_dir = os.path.realpath(pkg_dir)
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/new-org/new-repo",
+        branch="main",
+        local_root_path="cache/new-org_new-repo",
+        local_full_path=pkg_dir,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.path_exists",
+        return_value=True,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+        return_value=[(pkg_dir, [], ["go.mod"])],
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        return_value="module github.com/new-org/new-repo/pkg\n",
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=lambda args, cwd=None, env=None: (
+            "ref: refs/heads/main\tHEAD\n"
+            if args[:2] == ["git", "ls-remote"]
+            else f'{{"ImportPath": "github.com/new-org/new-repo/pkg", "Module": {{"Path": "github.com/new-org/new-repo/pkg", "Dir": "{abs_pkg_dir}", "Main": true}}}}'
+        ),
+    )
+    seed = Metadata(
+        name="github.com/old-org/old-repo/tree/main/pkg",
+        version=None,
+        origin="https://github.com/old-org/old-repo/tree/main/pkg",
+        local_src_path=None,
+        license=[],
+        copyright=[],
+    )
+
+    result = strategy.augment_metadata([seed])
+
+    assert [m.name for m in result] == [
+        "github.com/old-org/old-repo/tree/main/pkg",
+        "github.com/new-org/new-repo/pkg",
+    ]
+
+
+def test_gopkg_only_root_project_ignores_nested_module_requiring_older_selected_module(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    import os
+
+    mock_source_code_manager = mocker.Mock()
+    mock_source_code_manager.get_canonical_urls.return_value = (
+        "https://github.com/org/monorepo",
+        "https://api.github.com/repos/org/monorepo",
+    )
+    strategy = GoPkgMetadataCollectionStrategy(
+        "https://github.com/org/monorepo/tree/main/pkg",
+        mock_source_code_manager,
+        ProjectScope.ONLY_ROOT_PROJECT,
+    )
+    pkg_dir = "cache/org_monorepo/pkg"
+    nested_dir = "cache/org_monorepo/pkg/nested"
+    abs_pkg_dir = os.path.realpath(pkg_dir)
+    mock_source_code_manager.get_code.return_value = SourceCodeReference(
+        repo_url="https://github.com/org/monorepo",
+        branch="main",
+        local_root_path="cache/org_monorepo",
+        local_full_path=pkg_dir,
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.walk_directory",
+        return_value=[
+            (pkg_dir, ["nested"], ["go.mod"]),
+            (nested_dir, [], ["go.mod"]),
+        ],
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.open_file",
+        return_value="module github.com/org/monorepo/pkg\n",
+    )
+    mocker.patch(
+        "dd_license_attribution.metadata_collector.strategies.gopkg_collection_strategy.output_from_command",
+        side_effect=lambda args, cwd=None, env=None: (
+            "ref: refs/heads/main\tHEAD\n"
+            if args[:2] == ["git", "ls-remote"]
+            else (
+                f'{{"ImportPath": "github.com/org/monorepo/pkg", "Module": {{"Path": "github.com/org/monorepo/pkg", "Dir": "{abs_pkg_dir}", "Main": true}}}}'
+                if cwd == pkg_dir
+                else '{"ImportPath": "github.com/org/monorepo/pkg", "Module": {"Path": "github.com/org/monorepo/pkg", "Version": "v0.1.0", "Dir": "/go/pkg/mod/pkg@v0.1.0"}}'
+            )
+        ),
+    )
+    seed = Metadata(
+        name="github.com/org/monorepo/tree/main/pkg",
+        version=None,
+        origin="https://github.com/org/monorepo/tree/main/pkg",
+        local_src_path=None,
+        license=[],
+        copyright=[],
+    )
+
+    result = strategy.augment_metadata([seed])
+
+    selected = next(m for m in result if m.name == "github.com/org/monorepo/pkg")
+    assert selected.local_src_path == abs_pkg_dir
+    assert selected.version != "v0.1.0"

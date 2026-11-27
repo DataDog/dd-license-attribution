@@ -7,6 +7,7 @@
 
 import json
 import logging
+import os
 import re
 from typing import Any
 
@@ -22,6 +23,7 @@ from dd_license_attribution.artifact_management.go_package_resolver import (
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
+    keep_tree_path,
 )
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
@@ -50,13 +52,15 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
         self.single_module = single_module
         self._head_branch_cache: dict[str, str] = {}
 
+        self._requested_top_package = top_package
         if local_project_path is not None:
             # In go-package mode, top_package is a Go import path, not a URL
             self.top_package = top_package
         else:
-            # Resolve canonical URL if this is a GitHub repository
+            # Resolve the canonical GitHub URL, keeping any /tree/<ref>/<path>
+            # suffix so subdirectory URLs stay scoped to that subdirectory.
             canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
-            self.top_package = canonical_url if canonical_url else top_package
+            self.top_package = keep_tree_path(canonical_url, top_package)
 
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         if self.local_project_path is not None:
@@ -72,16 +76,29 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
             return self._augment_metadata_from_single_module(
                 metadata, source_code_ref.local_full_path
             )
+        # A repository-level go.work would pull sibling modules outside the
+        # requested subdirectory into the build list; consumers of a published
+        # module never see it, so ignore it when scoped to a subdirectory.
+        selected_module_dir = os.path.realpath(source_code_ref.local_full_path)
+        disable_workspace = selected_module_dir != os.path.realpath(
+            source_code_ref.local_root_path
+        )
         for root, _, files in walk_directory(source_code_ref.local_full_path):
             if "go.mod" in files:
                 if self._is_example_package(root):
                     continue
-                module_data_list = self._run_go_list_modules(root)
+                current_module_dir = os.path.realpath(root)
+                module_data_list = self._run_go_list_modules(
+                    root, disable_workspace=disable_workspace
+                )
                 for module_data in module_data_list:
-                    module_path = module_data["Path"]
-
                     if self.only_root_project:
-                        if not any(meta.name == module_path for meta in metadata):
+                        if not self._matches_root_project(
+                            metadata,
+                            module_data,
+                            selected_module_dir=selected_module_dir,
+                            current_module_dir=current_module_dir,
+                        ):
                             continue
 
                     self._upsert_metadata(metadata, module_data)
@@ -102,17 +119,49 @@ class GoPkgMetadataCollectionStrategy(MetadataCollectionStrategy):
                 module_dir,
             )
             return metadata
+        selected_module_dir = os.path.realpath(module_dir)
         for module_data in self._run_go_list_modules(
             module_dir, disable_workspace=True
         ):
             if self.only_transitive_dependencies and module_data.get("Main"):
                 continue
-            if self.only_root_project and not any(
-                meta.name == module_data["Path"] for meta in metadata
+            if self.only_root_project and not self._matches_root_project(
+                metadata,
+                module_data,
+                selected_module_dir=selected_module_dir,
+                current_module_dir=selected_module_dir,
             ):
                 continue
             self._upsert_metadata(metadata, module_data)
         return metadata
+
+    def _matches_root_project(
+        self,
+        metadata: list[Metadata],
+        module_data: dict[str, Any],
+        selected_module_dir: str,
+        current_module_dir: str,
+    ) -> bool:
+        if not module_data.get("Main") and current_module_dir != selected_module_dir:
+            return False
+        module_path = module_data["Path"]
+        if any(meta.name == module_path for meta in metadata):
+            return True
+        if not module_data.get("Main") or current_module_dir != selected_module_dir:
+            return False
+        module_dir = module_data.get("Dir")
+        if (
+            module_dir is not None
+            and os.path.realpath(module_dir) != selected_module_dir
+        ):
+            return False
+        seed_urls = {self.top_package, self._requested_top_package}
+        seed_names = {
+            url.removeprefix("https://").removeprefix("http://") for url in seed_urls
+        }
+        return any(
+            meta.origin in seed_urls or meta.name in seed_names for meta in metadata
+        )
 
     def _augment_metadata_from_local_path(
         self, metadata: list[Metadata]

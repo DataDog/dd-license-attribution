@@ -25,6 +25,8 @@ from dd_license_attribution.artifact_management.rust_package_resolver import (
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
+    has_repository_path,
+    keep_tree_path,
 )
 from dd_license_attribution.metadata_collector.metadata import Metadata
 from dd_license_attribution.metadata_collector.project_scope import ProjectScope
@@ -103,9 +105,13 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
 
         if local_project_path is not None:
             self.top_package = top_package
+            self.canonical_top_package = top_package
         else:
+            # Resolve the canonical GitHub URL, keeping any /tree/<ref>/<path>
+            # suffix so subdirectory URLs stay scoped to that subdirectory.
             canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
-            self.top_package = canonical_url if canonical_url else top_package
+            self.canonical_top_package = canonical_url if canonical_url else top_package
+            self.top_package = keep_tree_path(canonical_url, top_package)
 
     def augment_metadata(self, metadata: list[Metadata]) -> list[Metadata]:
         updated_metadata = metadata.copy()
@@ -149,12 +155,17 @@ class RustMetadataCollectionStrategy(MetadataCollectionStrategy):
         ]
 
     def _is_repository_seed_metadata(self, metadata: Metadata) -> bool:
-        root_names = {
-            self._strip_url_scheme(self.requested_top_package),
-            self._strip_url_scheme(self.top_package),
-        }
-        root_origins = {self.requested_top_package, self.top_package}
-        return metadata.name in root_names and metadata.origin in root_origins
+        candidate_urls = {self.requested_top_package, self.top_package}
+        if (
+            not has_repository_path(self.requested_top_package)
+            or self.source_code_manager.get_subdirectory_path(
+                self.requested_top_package
+            )
+            == ""
+        ):
+            candidate_urls.add(self.canonical_top_package)
+        root_names = {self._strip_url_scheme(url) for url in candidate_urls}
+        return metadata.name in root_names and metadata.origin in candidate_urls
 
     def _strip_url_scheme(self, value: str) -> str:
         return value.replace("https://", "").replace("http://", "")

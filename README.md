@@ -396,6 +396,14 @@ dd-license-attribution generate-sbom https://github.com/owner/repo > LICENSE-3rd
 dd-license-attribution generate-sbom --go-single-module --only-transitive-dependencies https://github.com/DataDog/dd-trace-go > LICENSE-3rdparty.csv
 ```
 
+#### Analyzing a Repository Subdirectory
+```bash
+# Scope the analysis to a subfolder of a monorepo, e.g. a nested Go module
+dd-license-attribution generate-sbom https://github.com/DataDog/watermarkpodautoscaler/tree/main/apis > LICENSE-3rdparty.csv
+```
+
+Only the manifests under the given path are analyzed. The GitHub SBOM strategy is skipped for subdirectory URLs, since GitHub's dependency graph covers the whole repository, and Go modules are resolved with `GOWORK=off` so a repository-level `go.work` does not pull in sibling modules. Combine with `--go-single-module` when the subdirectory also contains nested Go modules you want to exclude.
+
 #### Analyzing Go Packages by Module Path
 ```bash
 # Analyze a Go module and its transitive dependencies

@@ -163,9 +163,13 @@ class ScanCodeToolkitMetadataCollectionStrategy(MetadataCollectionStrategy):
                     self._filter_candidate_files(root, all_files, filter_files)
                 )
         else:
+            try:
+                dir_entries = list_dir(source_code_reference.local_full_path)
+            except (NotADirectoryError, FileNotFoundError):
+                dir_entries = []
             candidates = self._filter_candidate_files(
                 source_code_reference.local_full_path,
-                list_dir(source_code_reference.local_full_path),
+                dir_entries,
                 filter_files,
             )
         if (

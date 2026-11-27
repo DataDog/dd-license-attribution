@@ -20,6 +20,8 @@ from dd_license_attribution.artifact_management.python_env_manager import (
 )
 from dd_license_attribution.artifact_management.source_code_manager import (
     SourceCodeManager,
+    has_repository_path,
+    keep_tree_path,
 )
 from dd_license_attribution.config import string_formatting_config
 from dd_license_attribution.metadata_collector.metadata import Metadata
@@ -44,15 +46,19 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         local_project_path: str | None = None,
     ) -> None:
         self.local_project_path = local_project_path
+        self.original_top_package = top_package
 
         if local_project_path is not None:
             # In pypi-package mode, top_package is a package name, not a URL
             self.top_package = top_package
+            self.canonical_top_package = top_package
         else:
-            # Resolve canonical URL if this is a GitHub repository
             # This ensures we can match packages that were canonicalized by earlier strategies
+            # Resolve the canonical GitHub URL, keeping any /tree/<ref>/<path>
+            # suffix so subdirectory URLs stay scoped to that subdirectory.
             canonical_url, _ = source_code_manager.get_canonical_urls(top_package)
-            self.top_package = canonical_url if canonical_url else top_package
+            self.canonical_top_package = canonical_url if canonical_url else top_package
+            self.top_package = keep_tree_path(canonical_url, top_package)
 
         self.source_code_manager = source_code_manager
         self.python_env_manager = python_env_manager
@@ -333,22 +339,63 @@ class PypiMetadataCollectionStrategy(MetadataCollectionStrategy):
         ret = ret.replace("github.com/", "com.github.")
         return ret
 
+    def _resolve_top_package_code_url(
+        self, package_origin: str, is_root_target: bool
+    ) -> str:
+        # Pass self.top_package when it carries a ref/path suffix that
+        # GitHubSbom stripped from package.origin, while still honoring
+        # --override-spec replacements pointing to another repository or the
+        # repository root.
+        if package_origin == self.original_top_package:
+            return self.top_package
+        if (
+            self.top_package != self.canonical_top_package
+            and package_origin == self.canonical_top_package
+            and is_root_target
+        ):
+            return self.top_package
+        return package_origin
+
     def _find_top_metadata_path(self, metadata: list[Metadata]) -> str | None:
-        translated_top_pkg_name = self._translate_name_gh_to_pypi_sbom(self.top_package)
+        candidate_list = [self.top_package, self.original_top_package]
+        is_root_target = (
+            not has_repository_path(self.original_top_package)
+            or self.source_code_manager.get_subdirectory_path(self.original_top_package)
+            == ""
+        )
+        if is_root_target:
+            candidate_list.append(self.canonical_top_package)
+        candidate_packages = tuple(candidate_list)
+        translated_names = {
+            self._translate_name_gh_to_pypi_sbom(pkg) for pkg in candidate_packages
+        }
+        stripped_names = {
+            pkg.removeprefix("https://").removeprefix("http://")
+            for pkg in candidate_packages
+        }
         for package in metadata:
             if (
-                package.name == self.top_package
-                or package.name == translated_top_pkg_name
+                package.name in candidate_packages
+                or package.name in translated_names
+                or package.name in stripped_names
             ):
                 if package.local_src_path is not None:
                     return package.local_src_path
                 if package.origin is not None:
-                    pkg_source = self.source_code_manager.get_code(package.origin)
+                    code_url = self._resolve_top_package_code_url(
+                        package.origin, is_root_target=is_root_target
+                    )
+                    pkg_source = self.source_code_manager.get_code(code_url)
                     if pkg_source is not None:
                         package.local_src_path = pkg_source.local_full_path
                         return pkg_source.local_full_path
-            if package.origin is not None and package.origin.endswith(self.top_package):
-                pkg_source = self.source_code_manager.get_code(package.origin)
+            if package.origin is not None and any(
+                package.origin.endswith(pkg) for pkg in candidate_packages
+            ):
+                code_url = self._resolve_top_package_code_url(
+                    package.origin, is_root_target=is_root_target
+                )
+                pkg_source = self.source_code_manager.get_code(code_url)
                 if pkg_source is not None:
                     package.local_src_path = pkg_source.local_full_path
                     return pkg_source.local_full_path

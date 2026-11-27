@@ -34,6 +34,7 @@ from dd_license_attribution.artifact_management.source_code_manager import (
     UnauthorizedRepository,
     github_api_get_with_retry,
     github_response_headers,
+    has_repository_path,
 )
 from dd_license_attribution.utils.bounded_download import download_bounded
 
@@ -202,6 +203,21 @@ class GitHubSbomMetadataCollectionStrategy(MetadataCollectionStrategy):
             # Skip packages without an origin URL
             if not package.origin:
                 logger.debug("Package '%s' has no origin URL, skipping", package.name)
+                updated_metadata.append(package)
+                continue
+
+            # The dependency graph covers only the default branch of the whole
+            # repository and cannot be scoped to a subdirectory or a non-default
+            # ref: leave those (and unresolved /tree/ or /blob/ targets) to the
+            # ecosystem strategies.
+            if has_repository_path(
+                package.origin
+            ) and not self.source_code_manager.is_default_branch_root(package.origin):
+                logger.info(  # pragma: no mutate
+                    "Package origin '%s' does not target the default-branch "
+                    "repository root, skipping the repository-wide GitHub SBOM.",
+                    package.origin,
+                )
                 updated_metadata.append(package)
                 continue
 

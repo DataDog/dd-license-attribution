@@ -54,6 +54,8 @@ from dd_license_attribution.artifact_management.source_code_manager import (
     NonAccessibleRepository,
     SourceCodeManager,
     UnauthorizedRepository,
+    has_repository_path,
+    keep_tree_path,
 )
 from dd_license_attribution.config import JsonConfigParser
 from dd_license_attribution.metadata_collector import ThreePhaseMetadataCollector
@@ -80,6 +82,8 @@ from dd_license_attribution.metadata_collector.strategies.npm_collection_strateg
 )
 from dd_license_attribution.metadata_collector.strategies.override_strategy import (
     OverrideCollectionStrategy,
+    OverrideTargetField,
+    OverrideType,
 )
 from dd_license_attribution.metadata_collector.strategies.pypi_collection_strategy import (
     PypiMetadataCollectionStrategy,
@@ -200,18 +204,23 @@ def _without_analyzed_repository(
 
     Used for --only-transitive-dependencies: when the GitHub SBOM strategy
     does not run for a repository (disabled, failed, or skipped for a remapped
-    default branch), nothing else removes its root row. That strategy also
-    renames the seed to the canonical name, so a seed from a non-canonical URL
-    (e.g. ending in .git, or a pre-rename name) is matched as passed too.
+    default branch or subdirectory URL), nothing else removes its root row.
+    That strategy also renames the seed to the canonical name, so a seed from
+    a non-canonical URL (e.g. ending in .git, or a pre-rename name) is matched
+    as passed too. For a subdirectory URL the canonical repo name is not
+    dropped, because the subdirectory may legitimately depend on the parent
+    repository's root package.
     """
     canonical_url, _ = source_code_manager.get_canonical_urls(repository_url)
     parsed_url = parse_git_url(canonical_url)
     if not parsed_url.valid or not parsed_url.github:
         return metadata
-    root_names = {
-        f"github.com/{parsed_url.owner}/{parsed_url.repo}".lower(),
-        root_seed_name(repository_url).lower(),
-    }
+    root_names = {root_seed_name(repository_url).lower()}
+    if (
+        not has_repository_path(repository_url)
+        or source_code_manager.get_subdirectory_path(repository_url) == ""
+    ):
+        root_names.add(f"github.com/{parsed_url.owner}/{parsed_url.repo}".lower())
     return [m for m in metadata if (m.name or "").lower() not in root_names]
 
 
@@ -1036,6 +1045,95 @@ def generate_sbom(
         except RustLicenseToolNotInstalledError as e:
             logger.error(str(e))
             sys.exit(1)
+
+        # Fail closed if a /tree/ or /blob/ target failed ref/path resolution
+        # during collection and no collector opened a checkout for it (or for
+        # a REPLACE override targeting the root seed).
+        if ecosystem is None and has_repository_path(package):
+            target_urls = {package}
+            canonical_url, _ = source_code_manager.get_canonical_urls(package)
+            if canonical_url:
+                target_urls.add(keep_tree_path(canonical_url, package))
+            target_names = {
+                url.removeprefix("https://").removeprefix("http://")
+                for url in target_urls
+            }
+            target_names.add(root_seed_name(package))
+            if canonical_url:
+                target_names.add(
+                    canonical_url.removeprefix("https://").removeprefix("http://")
+                )
+            root_override_satisfied = False
+            if override_strategy is not None:
+                for rule in override_strategy.override_rules:
+                    if (
+                        rule.override_type == OverrideType.REPLACE
+                        and rule.replacement is not None
+                        and rule.target
+                        and all(
+                            (
+                                field == OverrideTargetField.COMPONENT
+                                and value in target_names
+                            )
+                            or (
+                                field == OverrideTargetField.ORIGIN
+                                and (value in target_urls or value == canonical_url)
+                            )
+                            for field, value in rule.target.items()
+                        )
+                    ):
+                        if rule.replacement.origin:
+                            target_urls.add(rule.replacement.origin)
+                        if rule not in override_strategy.unused_rules and (
+                            (
+                                project_scope == ProjectScope.ONLY_ROOT_PROJECT
+                                and rule.replacement.license
+                                and rule.replacement.copyright
+                            )
+                            or (
+                                rule.replacement.origin
+                                and not has_repository_path(rule.replacement.origin)
+                                and "github.com/" not in rule.replacement.origin
+                            )
+                        ):
+                            root_override_satisfied = True
+            if not root_override_satisfied:
+                has_checkout = any(
+                    source_code_manager.has_successful_checkout(url)
+                    for url in target_urls
+                )
+                has_unresolved = any(
+                    source_code_manager.has_unresolved_path(url) for url in target_urls
+                )
+                if not has_checkout and not has_unresolved:
+                    has_resolved_root = any(
+                        source_code_manager.has_resolved_path(url)
+                        and source_code_manager.get_subdirectory_path(url) == ""
+                        for url in target_urls
+                        if has_repository_path(url)
+                    )
+                    if not has_resolved_root:
+                        subdirectory = source_code_manager.get_subdirectory_path(
+                            package
+                        )
+                        if subdirectory is None:
+                            has_unresolved = True
+                        elif subdirectory or not source_code_manager.has_resolved_path(
+                            package
+                        ):
+                            # Nonempty paths and provisional refs require checkout.
+                            if source_code_manager.get_code(package) is None:
+                                has_unresolved = True
+                            else:
+                                has_checkout = True
+                if has_unresolved and not has_checkout:
+                    logger.error(
+                        "Could not resolve requested repository ref/path for '%s'. "
+                        "Verify that the ref exists on the repository (or configured "
+                        "mirror) and that the path is valid.",
+                        package,
+                    )
+                    sys.exit(1)
 
         if (
             ecosystem is None
