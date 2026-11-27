@@ -5,6 +5,7 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2026-present Datadog, Inc.
 
+import json
 import posixpath
 from collections.abc import Iterator
 from contextlib import ExitStack
@@ -820,6 +821,8 @@ def test_provisional_sha_fetch_failure_tries_later_mirrors(
     active = [""]
 
     def lookup(args: list[str], **kwargs: object) -> str:
+        if args[:2] == ["git", "rev-parse"]:
+            return "f" * 40
         if args[3] == REPOSITORY:
             raise OSError("original lookup timed out")
         return ""
@@ -868,3 +871,165 @@ def test_provisional_sha_fetch_failure_tries_later_mirrors(
     )
     git_mocks["mkdir"].assert_called_once_with(STAGE)
     git_mocks["cache_dirs"].assert_called_once_with("cache")
+
+
+@pytest.mark.parametrize("target_type", [RefType.BRANCH, RefType.TAG])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "valid",
+        "invalid-json",
+        "not-list",
+        "wrong-length",
+        "not-string",
+        "wrong-source",
+        "wrong-url",
+        "wrong-type",
+        "wrong-target",
+        "wrong-head",
+        "unmapped",
+        "unreadable",
+        "empty-head",
+        "invalid-head",
+    ],
+)
+def test_cached_sha_mapping_requires_matching_provenance(
+    git_mocks: dict[str, Mock], target_type: RefType, case: str
+) -> None:
+    first = "https://mirror.example/missing"
+    healthy = "https://mirror.example/healthy"
+    head = (
+        ""
+        if case == "empty-head"
+        else "not-a-sha" if case == "invalid-head" else "f" * 40
+    )
+    target = "stable"
+    mapping = {(RefType.COMMIT, SHA): (target_type, target)}
+    git_mocks["cache_dirs"].return_value = ["20261127_120000Z"]
+    git_mocks["cached"].return_value = True
+    git_mocks["is_file"].return_value = True
+    git_mocks["run"].return_value = 1
+    metadata: object = [SHA, healthy, target_type.value, target, head]
+    replacements: dict[str, object] = {
+        "not-list": {},
+        "wrong-length": [],
+        "not-string": [SHA, healthy, target_type.value, target, None],
+        "wrong-source": ["a" * 40, healthy, target_type.value, target, head],
+        "wrong-url": [
+            SHA,
+            "https://mirror.example/removed",
+            target_type.value,
+            target,
+            head,
+        ],
+        "wrong-type": [SHA, healthy, "other", target, head],
+        "wrong-target": [SHA, healthy, target_type.value, "changed", head],
+        "wrong-head": [SHA, healthy, target_type.value, target, "b" * 40],
+        "unmapped": [SHA, first, RefType.COMMIT.value, SHA, head],
+    }
+    metadata = replacements.get(case, metadata)
+
+    def lookup(args: list[str], **kwargs: object) -> str:
+        if args[:2] == ["git", "ls-remote"]:
+            if args[3] == REPOSITORY:
+                raise OSError("original lookup timed out")
+            return ""
+        if args[:2] == ["git", "rev-parse"]:
+            return head
+        assert args == ["git", "config", "--local", "--get", "ddla.resolved-ref"]
+        if case == "unreadable":
+            raise OSError("missing local provenance")
+        return "{" if case == "invalid-json" else json.dumps(metadata)
+
+    git_mocks["lookup"].side_effect = lookup
+    scm = SourceCodeManager(
+        "cache",
+        Mock(),
+        mirrors=[
+            MirrorSpec(REPOSITORY, first),
+            MirrorSpec(REPOSITORY, healthy, mapping),
+        ],
+    )
+    result = scm.get_code(REPOSITORY + "/tree/" + SHA, skip_canonical_lookup=True)
+    git_mocks["lookup"].assert_any_call(
+        ["git", "rev-parse", "--verify", "HEAD"],
+        cwd=GENERATION,
+        **GIT_KWARGS,
+    )
+    if case in ("empty-head", "invalid-head"):
+        assert not any(
+            args.args[0][:2] == ["git", "config"]
+            for args in git_mocks["lookup"].call_args_list
+        )
+    else:
+        git_mocks["lookup"].assert_any_call(
+            ["git", "config", "--local", "--get", "ddla.resolved-ref"],
+            cwd=GENERATION,
+            **GIT_KWARGS,
+        )
+    if case == "valid":
+        assert result is not None
+        assert result.local_root_path == GENERATION
+        git_mocks["run"].assert_not_called()
+        git_mocks["mkdir"].assert_not_called()
+    else:
+        assert result is None
+        assert git_mocks["run"].call_args_list == [
+            call(["git", "init", "--quiet"], cwd=STAGE, **GIT_KWARGS),
+            call(["git", "init", "--quiet"], cwd=STAGE, **GIT_KWARGS),
+        ]
+        git_mocks["remove"].assert_called_once_with(STAGE)
+    git_mocks["rename"].assert_not_called()
+
+
+@pytest.mark.parametrize("failure", ["head-error", "invalid-head", "write-error"])
+def test_failed_sha_mapping_provenance_is_not_published(
+    git_mocks: dict[str, Mock], failure: str
+) -> None:
+    healthy = "https://mirror.example/healthy"
+    mapping = {(RefType.COMMIT, SHA): (RefType.BRANCH, "stable")}
+
+    def lookup(args: list[str], **kwargs: object) -> str:
+        if args[:2] == ["git", "rev-parse"]:
+            if failure == "head-error":
+                raise OSError("unreadable HEAD")
+            return "not-a-sha" if failure == "invalid-head" else "f" * 40
+        return ""
+
+    def execute(args: list[str], **kwargs: object) -> int:
+        return 1 if args[:4] == ["git", "config", "--local", "ddla.resolved-ref"] else 0
+
+    git_mocks["lookup"].side_effect = lookup
+    git_mocks["run"].side_effect = execute
+    scm = SourceCodeManager(
+        "cache", Mock(), mirrors=[MirrorSpec(REPOSITORY, healthy, mapping)]
+    )
+    assert scm.get_code(REPOSITORY + "/tree/" + SHA, skip_canonical_lookup=True) is None
+    git_mocks["lookup"].assert_any_call(
+        ["git", "rev-parse", "--verify", "HEAD"],
+        cwd=STAGE,
+        **GIT_KWARGS,
+    )
+    if failure == "write-error":
+        git_mocks["run"].assert_any_call(
+            [
+                "git",
+                "config",
+                "--local",
+                "ddla.resolved-ref",
+                json.dumps(
+                    [
+                        SHA,
+                        healthy,
+                        RefType.BRANCH.value,
+                        "stable",
+                        "f" * 40,
+                    ]
+                ),
+            ],
+            cwd=STAGE,
+            **GIT_KWARGS,
+        )
+    git_mocks["remove"].assert_called_once_with(STAGE)
+    git_mocks["rename"].assert_not_called()
+    git_mocks["replace"].assert_not_called()

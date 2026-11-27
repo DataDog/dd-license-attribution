@@ -6,6 +6,7 @@
 # Copyright 2024-present Datadog, Inc.
 
 import hashlib
+import json
 import logging
 import re
 import uuid
@@ -394,7 +395,7 @@ _COMMIT_SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 
 def _is_safe_git_ref_name(ref_name: str) -> bool:
     """Validate a Git ref name against git-check-ref-format and path-safety rules."""
-    if not ref_name or ref_name == "@":
+    if not ref_name:
         return False
     if ref_name.startswith("/") or ref_name.endswith("/") or ref_name.endswith("."):
         return False
@@ -1181,6 +1182,77 @@ class SourceCodeManager(ArtifactManager):
                 return False
         return True
 
+    def _record_mapped_commit(
+        self,
+        checkout: str,
+        source_ref: str,
+        target: tuple[str, RefType, str],
+        git_env: dict[str, str] | None,
+    ) -> bool:
+        try:
+            commit = output_from_command(
+                ["git", "rev-parse", "--verify", "HEAD"],
+                cwd=checkout,
+                env=git_env,
+                timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
+            ).strip()
+        except OSError:
+            return False
+        if not _COMMIT_SHA_PATTERN.fullmatch(commit):
+            return False
+        url, ref_type, ref_name = target
+        provenance = json.dumps([source_ref, url, ref_type.value, ref_name, commit])
+        return (
+            run_command(
+                ["git", "config", "--local", "ddla.resolved-ref", provenance],
+                cwd=checkout,
+                env=git_env,
+                timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
+            )
+            == 0
+        )
+
+    def _cached_commit_matches_mapping(
+        self,
+        checkout: str,
+        source_ref: str,
+        commit: str,
+        candidates: list[tuple[str, RefType, str]],
+        git_env: dict[str, str] | None,
+    ) -> bool:
+        if not _COMMIT_SHA_PATTERN.fullmatch(commit):
+            return False
+        candidates = [
+            candidate
+            for candidate in candidates
+            if candidate[1] in (RefType.BRANCH, RefType.TAG)
+        ]
+        if not candidates:
+            return False
+        try:
+            provenance = json.loads(
+                output_from_command(
+                    ["git", "config", "--local", "--get", "ddla.resolved-ref"],
+                    cwd=checkout,
+                    env=git_env,
+                    timeout=NONINTERACTIVE_GIT_TIMEOUT_SECONDS,
+                )
+            )
+        except (OSError, ValueError):
+            return False
+        if (
+            not isinstance(provenance, list)
+            or len(provenance) != 5
+            or not all(isinstance(value, str) for value in provenance)
+            or provenance[0] != source_ref
+            or provenance[4].lower() != commit.lower()
+        ):
+            return False
+        return any(
+            provenance[1:4] == [url, ref_type.value, ref_name]
+            for url, ref_type, ref_name in candidates
+        )
+
     def get_code(
         self,
         resource_url: str,
@@ -1263,6 +1335,27 @@ class SourceCodeManager(ArtifactManager):
             effective_branch,
         )
 
+        candidates = [(effective_repository_url, effective_ref_type, effective_branch)]
+        if provisional_commit:
+            for mirror in self.mirrors:
+                if mirror.original_url != repository_url:
+                    continue
+                try:
+                    candidate_url, candidate_type, candidate_ref, _ = (
+                        self._get_mirror_url_and_ref(
+                            repository_url,
+                            resolved_ref_type,
+                            branch,
+                            git_env=git_env,
+                            preferred_mirror=mirror,
+                        )
+                    )
+                except (NonAccessibleRepository, NotImplementedError):
+                    continue
+                candidate = (candidate_url, candidate_type, candidate_ref)
+                if candidate not in candidates:
+                    candidates.append(candidate)
+
         cached_timestamps = list_dir(self.local_cache_dir)
         cached_timestamps.sort(reverse=True)
         if not force_update:
@@ -1297,7 +1390,16 @@ class SourceCodeManager(ArtifactManager):
                             ).strip()
                         except OSError:
                             continue
-                        if cached_commit.lower() != effective_branch.lower():
+                        if cached_commit.lower() != effective_branch.lower() and not (
+                            provisional_commit
+                            and self._cached_commit_matches_mapping(
+                                local_branch_path,
+                                branch,
+                                cached_commit,
+                                candidates,
+                                git_env,
+                            )
+                        ):
                             continue
                     local_full_path = f"{local_branch_path}{path}"
                     if path and (
@@ -1338,26 +1440,6 @@ class SourceCodeManager(ArtifactManager):
             effective_branch,
             local_branch_path,
         )
-        candidates = [(effective_repository_url, effective_ref_type, effective_branch)]
-        if provisional_commit:
-            for mirror in self.mirrors:
-                if mirror.original_url != repository_url:
-                    continue
-                try:
-                    candidate_url, candidate_type, candidate_ref, _ = (
-                        self._get_mirror_url_and_ref(
-                            repository_url,
-                            resolved_ref_type,
-                            branch,
-                            git_env=git_env,
-                            preferred_mirror=mirror,
-                        )
-                    )
-                except (NonAccessibleRepository, NotImplementedError):
-                    continue
-                candidate = (candidate_url, candidate_type, candidate_ref)
-                if candidate not in candidates:
-                    candidates.append(candidate)
         clone_result = 1
         for (
             effective_repository_url,
@@ -1383,6 +1465,20 @@ class SourceCodeManager(ArtifactManager):
                 effective_branch,
                 local_branch_path,
             )
+            return None
+
+        if (
+            provisional_commit
+            and effective_ref_type in (RefType.BRANCH, RefType.TAG)
+            and not self._record_mapped_commit(
+                staging_branch_path,
+                branch,
+                (effective_repository_url, effective_ref_type, effective_branch),
+                git_env,
+            )
+        ):
+            if self._is_within_cache_dir(staging_branch_path):
+                remove_tree(staging_branch_path)
             return None
 
         if not self._publish_staging_checkout(staging_branch_path, local_branch_path):

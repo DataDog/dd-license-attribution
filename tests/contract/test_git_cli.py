@@ -409,11 +409,14 @@ def test_sha_checkout_retry_does_not_publish_partial_checkout_files(
     )
 
     def lookup(
-        args: list[str], env: dict[str, str] | None = None, timeout: int | None = None
+        args: list[str],
+        env: dict[str, str] | None = None,
+        timeout: int | None = None,
+        cwd: str | None = None,
     ) -> str:
         if args[3] == url:
             raise OSError("original lookup timed out")
-        return output_from_command(args, env=env, timeout=timeout)
+        return output_from_command(args, cwd=cwd, env=env, timeout=timeout)
 
     filter_env = {
         "GIT_CONFIG_COUNT": "3",
@@ -439,3 +442,55 @@ def test_sha_checkout_retry_does_not_publish_partial_checkout_files(
     assert (root / "ok").read_text() == "healthy checkout"
     assert not (root / "a_extra").exists()
     assert not (root / ".gitattributes").exists()
+
+    fresh = SourceCodeManager(str(cache), Mock(), mirrors=scm.mirrors)
+    with (
+        patch(
+            "dd_license_attribution.artifact_management.source_code_manager.output_from_command",
+            side_effect=lookup,
+        ) as cached_lookup,
+        patch(
+            "dd_license_attribution.artifact_management.source_code_manager.run_command",
+            return_value=1,
+        ) as unavailable_checkout,
+    ):
+        assert (
+            fresh.get_code(url + "/tree/" + requested, skip_canonical_lookup=True)
+            == result
+        )
+        unavailable_checkout.assert_not_called()
+        cached_lookup.assert_any_call(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            cwd=str(root),
+            env={"GIT_TERMINAL_PROMPT": "0"},
+            timeout=30,
+        )
+
+
+@pytest.mark.parametrize("ref_type", [RefType.BRANCH, RefType.TAG])
+def test_at_sign_ref_is_retrievable(tmp_path: Path, ref_type: RefType) -> None:
+    origin = tmp_path / "origin"
+    origin.mkdir()
+    _git(["init", "--quiet"], origin)
+    _git(["commit", "--quiet", "--allow-empty", "-m", "at sign"], origin)
+    commit = _git(["rev-parse", "HEAD"], origin)
+    _git(["branch" if ref_type == RefType.BRANCH else "tag", "@"], origin)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    url = "https://github.com/example/repo"
+    scm = SourceCodeManager(
+        str(cache), Mock(), mirrors=[MirrorSpec(url, origin.as_uri())]
+    )
+    namespace = "heads" if ref_type == RefType.BRANCH else "tags"
+    with patch(
+        "dd_license_attribution.artifact_management.source_code_manager.output_from_command",
+        return_value=f"{commit}\trefs/{namespace}/@\n",
+    ) as advertised:
+        result = scm.get_code(url + "/tree/@", skip_canonical_lookup=True)
+        advertised.assert_called_once_with(
+            ["git", "ls-remote", "--", url, "@"],
+            env={"GIT_TERMINAL_PROMPT": "0"},
+            timeout=30,
+        )
+    assert result is not None
+    assert _git(["rev-parse", "HEAD"], Path(result.local_root_path)) == commit
