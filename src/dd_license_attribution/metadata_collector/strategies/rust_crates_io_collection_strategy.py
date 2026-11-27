@@ -73,23 +73,26 @@ class RustCratesIoMetadataCollectionStrategy(MetadataCollectionStrategy):
         non_crates_io_versions: dict[str, set[str]] = {}
         direct_crates_io_crates: set[str] = set()
         for project_path in project_paths:
-            self._merge_crate_versions(
-                locked_crate_versions,
-                self._get_locked_crate_versions(
-                    project_path,
-                    workspace_root=workspace_root,
-                    non_crates_io_crates=non_crates_io_crates,
-                    non_crates_io_versions=non_crates_io_versions,
-                ),
+            project_locked_versions = self._get_locked_crate_versions(
+                project_path,
+                workspace_root=workspace_root,
+                non_crates_io_crates=non_crates_io_crates,
+                non_crates_io_versions=non_crates_io_versions,
             )
+            self._merge_crate_versions(locked_crate_versions, project_locked_versions)
+            manifest_non_crates_io_crates: set[str] = set()
             self._merge_crate_versions(
                 manifest_crate_versions,
                 self._get_manifest_crate_versions(
                     project_path,
                     include_package_version=self.local_project_path is not None,
-                    non_crates_io_crates=non_crates_io_crates,
+                    non_crates_io_crates=manifest_non_crates_io_crates,
                     direct_crates_io_crates=direct_crates_io_crates,
                 ),
+            )
+            # Manifest declarations alone do not conflict with a resolved registry package.
+            non_crates_io_crates.update(
+                manifest_non_crates_io_crates.difference(project_locked_versions)
             )
         non_crates_io_crates.difference_update(direct_crates_io_crates)
         for crate_name in direct_crates_io_crates:

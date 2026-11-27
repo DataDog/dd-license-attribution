@@ -1956,6 +1956,187 @@ def test_direct_ecosystem_rust_mode_preserves_root_crate_enrichment_with_lockfil
     assert mock_download.call_count == 2
 
 
+@pytest.mark.parametrize(
+    "unused_source",
+    [
+        'git = "https://github.com/serde-rs/serde"',
+        'path = "unused-serde"',
+    ],
+    ids=["git", "path"],
+)
+@pytest.mark.parametrize("local_project", [False, True], ids=["repository", "local"])
+def test_unused_workspace_alias_does_not_block_locked_registry_enrichment(
+    mocker: pytest_mock.MockFixture,
+    unused_source: str,
+    local_project: bool,
+) -> None:
+    root = "/cache/org-project"
+    prefix = (
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy."
+    )
+    source_code_manager = _source_code_manager()
+    mock_walk = mocker.patch(
+        prefix + "walk_directory",
+        return_value=[(root, [], ["Cargo.toml", "Cargo.lock"])],
+    )
+    mock_join = mocker.patch(
+        prefix + "path_join", side_effect=lambda *parts: "/".join(parts)
+    )
+    mock_normalize = mocker.patch(prefix + "normalize_path", side_effect=lambda p: p)
+    files = {
+        root
+        + "/Cargo.lock": (
+            '[[package]]\nname = "app"\nversion = "0.1.0"\n'
+            'dependencies = ["serde"]\n\n'
+            '[[package]]\nname = "serde"\nversion = "1.0.228"\n'
+            'source = "registry+https://github.com/rust-lang/crates.io-index"\n'
+        ),
+        root
+        + "/Cargo.toml": (
+            '[package]\nname = "app"\nversion = "0.1.0"\n'
+            '[dependencies]\nserde = "1"\n'
+            "[workspace.dependencies]\n"
+            f'unused-serde = {{ package = "serde", {unused_source} }}\n'
+        ),
+    }
+    mock_exists = mocker.patch(prefix + "path_exists", side_effect=files.__contains__)
+    mock_open = mocker.patch(prefix + "open_file", side_effect=files.__getitem__)
+    mock_download = mocker.patch(
+        prefix + "download_bounded",
+        side_effect=[
+            _crate_response(
+                "serde", "1.0.228", repository="https://github.com/serde-rs/serde"
+            ),
+            b"crate archive",
+        ],
+    )
+    mock_archive = mocker.patch(
+        prefix + "read_tar_gz_text_file",
+        return_value='[package]\nname = "serde"\nauthors = ["Serde Developers"]\n',
+    )
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "https://github.com/org/project",
+        source_code_manager,
+        local_project_path=root if local_project else None,
+    )
+
+    result = strategy.augment_metadata([mark_rust_metadata(_metadata("serde", None))])
+
+    assert result == [
+        _metadata(
+            "serde",
+            "1.0.228",
+            origin="https://github.com/serde-rs/serde",
+            license=["MIT OR Apache-2.0"],
+            copyright=["Serde Developers"],
+        )
+    ]
+    if local_project:
+        source_code_manager.get_code.assert_not_called()
+        mock_walk.assert_not_called()
+    else:
+        source_code_manager.get_code.assert_called_once_with(
+            "https://github.com/org/project"
+        )
+        mock_walk.assert_called_once_with(root)
+    join_calls = [call(root, "Cargo.lock"), call(root, "Cargo.toml")]
+    exists_calls = [call(root + "/Cargo.lock"), call(root + "/Cargo.toml")]
+    normalize_calls = [call(root)]
+    if unused_source.startswith("path"):
+        join_calls.extend(
+            [call(root, "unused-serde"), call(root + "/unused-serde", "Cargo.toml")]
+        )
+        exists_calls.append(call(root + "/unused-serde/Cargo.toml"))
+        normalize_calls.append(call(root + "/unused-serde"))
+    for mocked, expected_calls in [
+        (mock_join, join_calls),
+        (mock_exists, exists_calls),
+        (mock_open, [call(root + "/Cargo.lock"), call(root + "/Cargo.toml")]),
+        (mock_normalize, normalize_calls),
+        (
+            mock_download,
+            [
+                call(f"{CRATES_IO_API_BASE_URL}/serde", user_agent=DDLA_USER_AGENT),
+                call(
+                    f"{CRATES_IO_API_BASE_URL}/serde/1.0.228/download",
+                    user_agent=DDLA_USER_AGENT,
+                ),
+            ],
+        ),
+    ]:
+        mocked.assert_has_calls(expected_calls)
+        assert mocked.call_count == len(expected_calls)
+    mock_archive.assert_called_once_with(
+        b"crate archive",
+        "serde-1.0.228/Cargo.toml",
+        max_members=MAX_CRATES_IO_ARCHIVE_MEMBERS,
+    )
+
+
+@pytest.mark.parametrize(
+    "non_registry_source",
+    [
+        'git = "https://github.com/serde-rs/serde"',
+        'path = "local-serde"',
+    ],
+    ids=["git", "path"],
+)
+def test_manifest_source_conflicts_remain_blocked_without_a_lockfile(
+    mocker: pytest_mock.MockFixture, non_registry_source: str
+) -> None:
+    root = "/project"
+    prefix = (
+        "dd_license_attribution.metadata_collector.strategies."
+        "rust_crates_io_collection_strategy."
+    )
+    source_code_manager = _source_code_manager()
+    mock_join = mocker.patch(
+        prefix + "path_join", side_effect=lambda *parts: "/".join(parts)
+    )
+    mock_normalize = mocker.patch(prefix + "normalize_path", side_effect=lambda p: p)
+    mock_exists = mocker.patch(
+        prefix + "path_exists", side_effect=lambda p: p == root + "/Cargo.toml"
+    )
+    mock_open = mocker.patch(
+        prefix + "open_file",
+        return_value=(
+            '[package]\nname = "app"\nversion = "0.1.0"\n'
+            "[dependencies]\n"
+            'registry-serde = { package = "serde", version = "=1.0.228" }\n'
+            f'other-serde = {{ package = "serde", {non_registry_source} }}\n'
+        ),
+    )
+    mock_download = mocker.patch(prefix + "download_bounded")
+    strategy = RustCratesIoMetadataCollectionStrategy(
+        "app", source_code_manager, local_project_path=root
+    )
+
+    assert strategy.augment_metadata([_metadata("serde", None)]) == [
+        _metadata("serde", None)
+    ]
+
+    source_code_manager.get_code.assert_not_called()
+    mock_open.assert_called_once_with(root + "/Cargo.toml")
+    mock_download.assert_not_called()
+    join_calls = [call(root, "Cargo.lock"), call(root, "Cargo.toml")]
+    exists_calls = [call(root + "/Cargo.lock"), call(root + "/Cargo.toml")]
+    normalize_calls = [call(root)]
+    if non_registry_source.startswith("path"):
+        join_calls.extend(
+            [call(root, "local-serde"), call(root + "/local-serde", "Cargo.toml")]
+        )
+        exists_calls.append(call(root + "/local-serde/Cargo.toml"))
+        normalize_calls.append(call(root + "/local-serde"))
+    for mocked, expected_calls in [
+        (mock_join, join_calls),
+        (mock_exists, exists_calls),
+        (mock_normalize, normalize_calls),
+    ]:
+        mocked.assert_has_calls(expected_calls)
+        assert mocked.call_count == len(expected_calls)
+
+
 def test_rust_crates_io_preserves_registry_version_when_same_name_has_non_registry_entry(
     mocker: pytest_mock.MockFixture,
 ) -> None:
