@@ -9,6 +9,7 @@
 
 import contextlib
 import os
+import socket
 import subprocess
 import tarfile
 import time
@@ -176,6 +177,15 @@ def stream_url(
     finally:
         if response is not None:
             response.close()
+
+
+def resolve_host_ips(hostname: str, port: int) -> list[str]:
+    """Resolve hostname to unique IP strings, keeping the resolver's preference order."""
+    try:
+        infos = socket.getaddrinfo(hostname, port, type=socket.SOCK_STREAM)
+    except OSError as e:
+        raise OSError(f"Failed to resolve host {hostname}: {e}") from e
+    return list(dict.fromkeys(str(info[4][0]) for info in infos))
 
 
 def is_dir(path: str) -> bool:

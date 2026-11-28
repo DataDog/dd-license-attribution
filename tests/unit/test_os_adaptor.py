@@ -5,6 +5,7 @@
 # This product includes software developed at Datadog (https://www.datadoghq.com/).
 # Copyright 2026-present Datadog, Inc.
 
+import socket
 import subprocess
 import tarfile
 from collections.abc import Iterator
@@ -20,6 +21,7 @@ from dd_license_attribution.adaptors.os import (
     get_env_var,
     is_absolute_path,
     normalize_path,
+    resolve_host_ips,
     run_command,
     run_command_with_check,
     stream_url,
@@ -227,3 +229,36 @@ def test_run_command_with_check_returns_timeout_details(
         env=None,
         timeout=1,
     )
+
+
+def test_resolve_host_ips_dedupes_in_resolver_order(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mock_getaddrinfo = mocker.patch(
+        "dd_license_attribution.adaptors.os.socket.getaddrinfo",
+        return_value=[
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443)),
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:2800::1", 443, 0, 0)),
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 443)),
+        ],
+    )
+
+    assert resolve_host_ips("vanity.example", 443) == [
+        "93.184.216.34",
+        "2606:2800::1",
+    ]
+    mock_getaddrinfo.assert_called_once_with(
+        "vanity.example", 443, type=socket.SOCK_STREAM
+    )
+
+
+def test_resolve_host_ips_wraps_resolution_errors(
+    mocker: pytest_mock.MockFixture,
+) -> None:
+    mocker.patch(
+        "dd_license_attribution.adaptors.os.socket.getaddrinfo",
+        side_effect=socket.gaierror("name not known"),
+    )
+
+    with pytest.raises(OSError, match="Failed to resolve host bad.example"):
+        resolve_host_ips("bad.example", 8443)
